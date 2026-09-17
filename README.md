@@ -1,67 +1,70 @@
 # ASM X
 
-Ambiente de desktop para estudar, validar, testar e depurar assembly x86-64.
-Python + Tkinter, sem servidor, sem dependência externa.
+A desktop environment for studying, validating, testing, and debugging x86-64
+assembly. Built with Python and Tkinter—no server or external dependencies.
 
 ```bash
-python3 asmx.py          # Linux/macOS/Windows (precisa de python3-tk no Linux)
+python3 asmx.py          # Linux/macOS/Windows (Linux needs python3-tk)
 ```
 
-## O que ele faz
+## Features
 
-- **Lê o código e explica**: cada instrução ganha uma etiqueta ("Escreve na
-  memória", "Desvia se for igual", "Chamada de sistema") e uma frase em
-  português dizendo o efeito. Rótulos, dados e diretivas também.
-- **Mapa de fluxo**: funções e blocos básicos com "vem de" e "vai para",
-  incluindo o motivo de cada desvio.
-- **Detecta a plataforma**: Linux ou Windows, com as pistas que levaram à
-  conclusão e a ABI correspondente.
-- **Valida** com 30 regras: string com acento, string sem terminador, `div` sem
-  zerar RDX, `push` sem `pop`, `mov al, 300`, laço infinito, shadow space do
-  Windows, rótulo inexistente, escrita em `.rodata` e por aí.
-- **Executa passo a passo**: registradores, flags, pilha e memória à vista,
-  breakpoints na calha, histórico do que cada instrução fez.
-- **Branches**: variações do mesmo programa dentro de um projeto, com diff.
-- **Cenários de teste**: estado inicial + expectativa, rodando uma função
-  isolada ou o programa inteiro — é assim que se responde "o que acontece se
-  esse número for gigante?".
-- **Anotações por linha**, guardadas no projeto e fora do `.asm`.
-- **Documentação** de 148 mnemônicos, 43 syscalls do Linux e as principais
-  funções do kernel32/user32, em português.
+- **Reads and explains code:** every instruction receives a label (such as
+  "Writes to memory", "Jumps if equal", or "System call") and a plain-language
+  description of its effect. Labels, data, and directives are covered too.
+- **Control-flow map:** functions and basic blocks with their incoming and
+  outgoing paths, including the reason for every branch.
+- **Platform detection:** identifies Linux or Windows, explains the evidence,
+  and shows the corresponding ABI.
+- **Static validation:** 30 rules catch issues such as strings with no
+  terminator, `div` without clearing RDX, unmatched `push`/`pop`, `mov al, 300`,
+  infinite loops, missing Windows shadow space, unknown labels, and writes to
+  `.rodata`.
+- **Step-by-step execution:** inspect registers, flags, stack, and memory;
+  set gutter breakpoints and review a history of each instruction's effects.
+- **Branches:** keep variations of the same program within a project and
+  compare them with a diff.
+- **Test scenarios:** define an initial state and expected outcome, then run an
+  isolated function or the whole program—useful for questions like "what
+  happens if this value is huge?"
+- **Per-line annotations:** stored in the project, separately from `.asm`
+  source files.
+- **Documentation:** reference material for 148 mnemonics, 43 Linux syscalls,
+  and key kernel32/user32 functions (currently in Portuguese).
 
-## Estrutura
+## Project layout
 
 ```
-asmx.py               abre a interface
+asmx.py               launches the interface
 asmx/
-  isa.py              base de instruções, registradores, flags, syscalls
-  parser.py           NASM/Intel, MASM e GAS/AT&T
-  analyzer.py         plataforma, semântica, blocos e fluxo
-  emulator.py         máquina virtual + detecção de problemas em execução
-  linter.py           validação estática (30 regras)
-  workspace.py        projeto, branches, anotações, cenários
-  examples.py         8 programas de exemplo
-  ui/                 interface Tkinter (editor, diálogos, tema)
-  data/isa.json       o acervo de documentação
-docs/GUIA.md          manual de uso
-docs/REFERENCIA.md    referência dos 148 mnemônicos
-tests/                141 testes
+  isa.py              instruction, register, flag, and syscall data
+  parser.py           NASM/Intel, MASM, and GAS/AT&T parser
+  analyzer.py         platform, semantics, blocks, and control flow
+  emulator.py         virtual machine and runtime issue detection
+  linter.py           static validation (30 rules)
+  workspace.py        projects, branches, annotations, and scenarios
+  examples.py         eight example programs
+  ui/                 Tkinter interface (editor, dialogs, theme)
+  data/isa.json       documentation data
+docs/GUIA.md          user guide (Portuguese)
+docs/REFERENCIA.md    148-mnemonic reference (Portuguese)
+tests/                141 tests
 ```
 
-## Testes
+## Tests
 
 ```bash
-python3 -m unittest discover -s tests          # núcleo
-xvfb-run -a python3 -m unittest discover -s tests   # inclui a GUI sem tela
+python3 -m unittest discover -s tests               # core
+xvfb-run -a python3 -m unittest discover -s tests   # includes the GUI headlessly
 ```
 
-Os testes de interface são pulados automaticamente quando não há display.
+GUI tests are skipped automatically when no display is available.
 
-## Onde ele não vai
+## Scope and limitations
 
-Não monta, não liga e não executa binário de verdade. A máquina virtual cobre o
-essencial de inteiros; SSE, macros do NASM e a maior parte das syscalls ficam
-de fora da simulação (a documentação continua lá). Passar aqui não substitui
-`nasm` + `ld` + `gdb` — serve para entender o código e achar defeito antes.
+ASM X does not assemble, link, or run real binaries. Its virtual machine covers
+the essential integer operations; SSE, NASM macros, and most syscalls are not
+simulated (although their documentation is still available). It does not replace
+`nasm` + `ld` + `gdb`; it helps you understand code and catch issues earlier.
 
-Detalhes e limites completos em `docs/GUIA.md`.
+See `docs/GUIA.md` for complete details and limitations (Portuguese).
