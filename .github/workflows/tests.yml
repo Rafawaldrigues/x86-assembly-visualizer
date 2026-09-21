@@ -1,0 +1,78 @@
+name: Tests
+
+on:
+  push:
+    branches: ["**"]
+    tags-ignore: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Install xvfb (the GUI tests need an X display)
+        run: |
+          sudo apt-get update
+          # xauth is required by xvfb-run itself
+          sudo apt-get install -y --no-install-recommends xvfb xauth
+
+      - name: Lint with flake8
+        run: |
+          flake8 asmx/ tests/ tools/ asmx.py \
+            --max-line-length=100 \
+            --extend-ignore=E203,W503 \
+            --count --statistics
+
+      - name: Type check with mypy
+        run: mypy asmx/
+
+      - name: Quality gates (100% type hints and Google docstrings)
+        run: |
+          python tools/quality_gates.py
+          python tools/export_examples.py --check
+
+      - name: Run tests with coverage under a virtual display
+        run: |
+          xvfb-run -a python -m coverage run --source=asmx -m unittest discover -s tests
+          python -m coverage report --fail-under=94
+          python -m coverage xml -o coverage.xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

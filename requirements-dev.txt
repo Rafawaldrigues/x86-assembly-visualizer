@@ -1,0 +1,22 @@
+# ASM X — development and CI tooling only.
+#
+# None of these are runtime dependencies of the `asmx` package: they are the
+# tools used by `make quality`, the GitHub Actions workflows and pre-commit.
+# Loose lower bounds on purpose — the floor is what we know works, so CI
+# keeps testing newer releases instead of a frozen pin.
+
+-r requirements.txt
+
+pytest>=8.0
+coverage[toml]>=7.4
+mypy>=1.8
+flake8>=7.0
+black>=24.1
+bandit>=1.7
+pip-audit>=2.7
+pre-commit>=3.6
+build>=1.0
+
+# Optional at runtime, but the YAML configuration tests only run when it is
+# installed, so CI installs it to exercise those paths.
+pyyaml>=6.0

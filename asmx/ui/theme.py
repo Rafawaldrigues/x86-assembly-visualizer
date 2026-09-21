@@ -1,6 +1,10 @@
 """Cores e fontes da interface."""
 
+from __future__ import annotations
+
+import tkinter as tk
 import tkinter.font as tkfont
+from tkinter import ttk
 
 BG = "#0F1826"
 PANEL = "#16202E"
@@ -30,43 +34,90 @@ MISC = "#8AA0B8"
 SEV_COLOR = {"erro": "#EF7D9D", "alerta": "#E3A44B", "info": "#79A6E8"}
 
 TAG_COLOR = {
-    "store": DATA, "load": "#41A5AE", "set": DATA, "copy": DATA, "addr": DATA,
-    "push": STACK, "pop": STACK, "frame": STACK,
-    "arith": ARITH, "logic": LOGIC, "compare": CMP,
-    "branch": BRANCH, "jump": BRANCH, "call": CALL, "return": CALL,
-    "syscall": SYS, "string": "#B79AE8", "misc": MISC, "unknown": "#E08282",
+    "store": DATA,
+    "load": "#41A5AE",
+    "set": DATA,
+    "copy": DATA,
+    "addr": DATA,
+    "push": STACK,
+    "pop": STACK,
+    "frame": STACK,
+    "arith": ARITH,
+    "logic": LOGIC,
+    "compare": CMP,
+    "branch": BRANCH,
+    "jump": BRANCH,
+    "call": CALL,
+    "return": CALL,
+    "syscall": SYS,
+    "string": "#B79AE8",
+    "misc": MISC,
+    "unknown": "#E08282",
 }
 
 
-def mono(size=11, weight="normal"):
-    for family in ("JetBrains Mono", "DejaVu Sans Mono", "Consolas",
-                   "Liberation Mono", "Courier New", "TkFixedFont"):
+def mono(size: int = 11, weight: str = "normal") -> tkfont.Font:
+    """Escolhe a primeira fonte monoespaçada disponível no sistema.
+
+    Args:
+        size: tamanho da fonte em pontos.
+        weight: peso da fonte ("normal" ou "bold").
+
+    Returns:
+        A fonte criada; Courier é o último recurso.
+    """
+    for family in (
+        "JetBrains Mono",
+        "DejaVu Sans Mono",
+        "Consolas",
+        "Liberation Mono",
+        "Courier New",
+        "TkFixedFont",
+    ):
         try:
             f = tkfont.Font(family=family, size=size, weight=weight)
             if f.actual("family"):
                 return f
-        except Exception:                       # noqa: BLE001
+        except Exception:  # noqa: BLE001
             continue
     return tkfont.Font(family="Courier", size=size, weight=weight)
 
 
-def ui(size=10, weight="normal"):
+def ui(size: int = 10, weight: str = "normal") -> tkfont.Font:
+    """Escolhe a primeira fonte de interface disponível no sistema.
+
+    Args:
+        size: tamanho da fonte em pontos.
+        weight: peso da fonte ("normal" ou "bold").
+
+    Returns:
+        A fonte criada; a fonte padrão do Tk é o último recurso.
+    """
     for family in ("Segoe UI", "DejaVu Sans", "Liberation Sans", "Helvetica", "TkDefaultFont"):
         try:
             f = tkfont.Font(family=family, size=size, weight=weight)
             if f.actual("family"):
                 return f
-        except Exception:                       # noqa: BLE001
+        except Exception:  # noqa: BLE001
             continue
     return tkfont.Font(size=size, weight=weight)
 
 
-def apply_ttk_theme(root):
+def apply_ttk_theme(root: tk.Misc) -> ttk.Style:
+    """Aplica o tema escuro do ASM X aos widgets ttk.
+
+    Args:
+        root: janela dona do estilo, normalmente a janela principal.
+
+    Returns:
+        O estilo já configurado.
+    """
     from tkinter import ttk
+
     style = ttk.Style(root)
     try:
         style.theme_use("clam")
-    except Exception:                           # noqa: BLE001
+    except Exception:  # noqa: BLE001
         pass
     base = ui(10)
     style.configure(".", background=PANEL, foreground=FG, fieldbackground=BG, font=base)
@@ -76,17 +127,23 @@ def apply_ttk_theme(root):
     style.configure("Head.TLabel", foreground=WHITE, font=ui(10, "bold"))
     style.configure("TButton", background=PANEL2, foreground=FG, borderwidth=1, padding=(8, 3))
     style.map("TButton", background=[("active", LINE), ("pressed", LINE)])
-    style.configure("Accent.TButton", background=ACCENT, foreground="#0F1826",
-                    font=ui(10, "bold"))
+    style.configure("Accent.TButton", background=ACCENT, foreground="#0F1826", font=ui(10, "bold"))
     style.map("Accent.TButton", background=[("active", "#F0B865")])
     style.configure("TNotebook", background=PANEL, borderwidth=0)
     style.configure("TNotebook.Tab", background=PANEL, foreground=DIM, padding=(10, 5))
-    style.map("TNotebook.Tab", background=[("selected", PANEL2)],
-              foreground=[("selected", WHITE)])
-    style.configure("Treeview", background=BG, fieldbackground=BG, foreground=FG,
-                    rowheight=20, borderwidth=0, font=ui(9))
-    style.configure("Treeview.Heading", background=PANEL2, foreground=DIM,
-                    font=ui(9), relief="flat")
+    style.map("TNotebook.Tab", background=[("selected", PANEL2)], foreground=[("selected", WHITE)])
+    style.configure(
+        "Treeview",
+        background=BG,
+        fieldbackground=BG,
+        foreground=FG,
+        rowheight=20,
+        borderwidth=0,
+        font=ui(9),
+    )
+    style.configure(
+        "Treeview.Heading", background=PANEL2, foreground=DIM, font=ui(9), relief="flat"
+    )
     style.map("Treeview", background=[("selected", SEL)], foreground=[("selected", WHITE)])
     style.configure("TPanedwindow", background=LINE)
     style.configure("TEntry", fieldbackground=BG, foreground=FG, insertcolor=FG)

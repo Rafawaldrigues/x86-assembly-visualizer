@@ -1,0 +1,60 @@
+# ASM X — pre-commit hooks.
+#
+#   pip install -r requirements-dev.txt
+#   pre-commit install
+#   pre-commit run --all-files
+#
+# The versions below are the same ones CI installs, so a green local run is a
+# good predictor of a green build.
+
+default_language_version:
+  python: python3
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=512"]
+
+  - repo: https://github.com/psf/black
+    rev: 24.8.0
+    hooks:
+      - id: black
+        args: ["--line-length", "100"]
+
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.1.1
+    hooks:
+      - id: flake8
+        args: ["--max-line-length=100", "--extend-ignore=E203,W503"]
+        files: ^(asmx|tests|tools)/.*\.py$|^asmx\.py$
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.2
+    hooks:
+      - id: mypy
+        files: ^asmx/
+
+  # Os dois portões que sustentam a promessa de "100% de type hints e
+  # docstrings no padrão Google", e a garantia de que examples/*.asm continua
+  # igual ao acervo embutido em asmx/examples.py.
+  - repo: local
+    hooks:
+      - id: asmx-quality-gates
+        name: portões de qualidade (anotações e docstrings)
+        entry: python tools/quality_gates.py
+        language: system
+        pass_filenames: false
+        files: ^(asmx|tests|tools)/.*\.py$|^asmx\.py$
+      - id: asmx-examples-sync
+        name: exemplos em examples/ iguais aos do pacote
+        entry: python tools/export_examples.py --check
+        language: system
+        pass_filenames: false
+        files: ^(asmx/examples\.py|examples/.*\.asm)$

@@ -6,10 +6,12 @@ Escrita em Python com Tkinter — a mesma base gráfica do IDLE.
 ## Rodando
 
 ```bash
-python3 asmx.py
+python3 asmx.py                       # interface gráfica
+python3 -m asmx check programa.asm    # linha de comando
 ```
 
-Único requisito além do Python 3.8+: o Tkinter.
+Único requisito além do Python 3.9+: o Tkinter (e só para a interface — a linha
+de comando funciona sem ele, o que também vale para um contêiner mínimo).
 
 | Sistema | Como instalar |
 |---|---|
@@ -19,6 +21,105 @@ python3 asmx.py
 | Windows/macOS | já vem com o instalador oficial do Python |
 
 Nada é baixado, nada sai da máquina, não existe servidor.
+
+## Linha de comando
+
+A mesma análise da interface, sem interface — e com saída em JSON para CI.
+
+```bash
+asmx check programa.asm                      # valida; sai com 1 se achar problema
+asmx check a.asm b.asm --min-severity erro   # só erro reprova
+asmx check programa.asm --json               # relatório estruturado
+asmx run programa.asm                        # executa na máquina virtual
+asmx run programa.asm --entry soma_ate       # começa numa função, com pilha limpa
+asmx run programa.asm --stdin "texto" --trace --max-trace 20
+asmx run lento.asm --timeout 2 --limit 500000
+asmx explain programa.asm --line 12          # explica a linha 12
+asmx explain programa.asm --mnemonic div     # documenta a instrução
+asmx examples --list                         # os 8 exemplos
+asmx examples --dump exemplos/               # grava todos como .asm
+asmx info --json                             # versão, acervo e configuração
+```
+
+Códigos de saída: `0` tudo certo, `1` problemas encontrados, `2` erro de uso,
+`3` erro de entrada (arquivo, formato, configuração, rótulo), `4` tempo limite.
+
+Opções globais, antes ou depois do comando: `-v` (log de depuração), `-q`
+(silencioso), `--log-json`, `--log-file CAMINHO`, `--config CAMINHO`,
+`--no-color`.
+
+## Configuração
+
+O ASM X funciona sem nenhum arquivo de configuração. Quando você quiser fixar
+limites, crie um `asmx.yaml`, `asmx.json` ou `~/.config/asmx/config.yaml` — ou
+aponte com `--config`.
+
+Ordem de precedência: linha de comando → variáveis de ambiente → arquivo →
+padrões.
+
+| Campo | Padrão | Para que serve |
+|---|---|---|
+| `timeout` | 30 | segundos de parede antes de parar uma execução |
+| `max_steps` | 200000 | limite de instruções executadas |
+| `max_memory` | 512 | memória reservada ao sandbox, em MB |
+| `enable_network` | false | reservado: a máquina virtual nunca acessa a rede |
+| `log_level` | INFO | DEBUG, INFO, WARNING, ERROR ou CRITICAL |
+| `log_json` | false | log em JSON, uma linha por evento |
+| `log_file` | — | arquivo que recebe cópia dos logs |
+| `workers` | 4 | paralelismo em análises futuras de vários arquivos |
+| `output_dir` | results | diretório dos relatórios |
+| `strict` | false | transforma problema detectado em exceção |
+
+```bash
+ASMX_TIMEOUT=5 ASMX_LOG_JSON=1 asmx run programa.asm
+asmx --config asmx.json check programa.asm
+```
+
+YAML exige o PyYAML instalado; JSON funciona sempre, porque o projeto não tem
+dependência obrigatória.
+
+## Logging
+
+O log é estruturado: cada linha é um evento com nome (`check_finished`,
+`project_saved`, `scenario_finished`...) e campos próprios. Em texto ele fica
+legível; em JSON vira dado para `jq`, para o CI e para o Docker.
+
+```bash
+asmx -v check programa.asm
+asmx -v --log-json check programa.asm 2>&1 | jq -c '{event, path, errors}'
+asmx -v --log-file asmx.log check programa.asm
+```
+
+Na biblioteca, use `asmx.configure_logging(...)` e `asmx.get_logger(__name__)`;
+a função `asmx.log_event(logger, "meu_evento", campo=1)` emite um evento.
+
+## Erros
+
+Toda exceção da biblioteca tem código estável e contexto, e continua sendo
+`ValueError`, `KeyError`, `FileNotFoundError` ou `TimeoutError` para quem já
+tratava assim:
+
+| Código | Quando acontece |
+|---|---|
+| `ERR_SOURCE_NOT_FOUND` | o arquivo não existe |
+| `ERR_SOURCE_READ` / `ERR_SOURCE_WRITE` | falha de leitura ou gravação |
+| `ERR_UNSUPPORTED_SOURCE` | extensão fora das aceitas |
+| `ERR_PROJECT_FORMAT` | `.asmproj` corrompido ou de outro programa |
+| `ERR_BRANCH_NOT_FOUND` / `ERR_BRANCH_EXISTS` / `ERR_BRANCH_LAST` | branches |
+| `ERR_SCENARIO` | cenário inválido ou com rótulo inexistente |
+| `ERR_CONFIG` | configuração ausente ou fora da faixa |
+| `ERR_EMULATION` | execução que não pôde começar |
+| `ERR_TIMEOUT` | tempo limite estourado |
+| `ERR_UNKNOWN_MNEMONIC` / `ERR_LINE_NOT_FOUND` | consultas do `explain` |
+
+```python
+from asmx.errors import AsmxError
+
+try:
+    analise = asmx.analyze(open(caminho, encoding="utf-8").read())
+except AsmxError as erro:
+    print(erro.code, erro.message, erro.context)
+```
 
 ## A tela
 

@@ -1,0 +1,199 @@
+# ---------------------------------------------------------------------------
+# ASM X — packaging metadata plus every tool configuration we own.
+#
+# Layout note: the repository root is flat and holds BOTH `asmx/` (the
+# importable package) and `asmx.py` (the convenience launcher used by
+# `python3 asmx.py`).  Packages are therefore listed explicitly — automatic
+# discovery is fragile on a flat layout like this — and `asmx.py` is
+# deliberately NOT installed as a top-level module, because a module and a
+# package sharing the name `asmx` cannot coexist inside site-packages.
+#
+# `asmx.cli` and `asmx.ui` are console-script targets; the first is only
+# loaded when the CLI entry point is actually invoked.
+# ---------------------------------------------------------------------------
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "asmx"
+dynamic = ["version"]
+description = "Desktop environment to study, validate and debug x86-64 assembly (Tkinter, zero runtime dependencies)"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "ASM X contributors" }]
+keywords = [
+    "assembly",
+    "x86-64",
+    "asm",
+    "nasm",
+    "emulator",
+    "debugger",
+    "disassembler",
+    "linter",
+    "tkinter",
+    "education",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Win32 (MS Windows)",
+    "Environment :: X11 Applications",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Education",
+    "Topic :: Software Development :: Assemblers",
+    "Topic :: Software Development :: Debuggers",
+    "Topic :: System :: Emulators",
+]
+# ASM X is standard-library only — this list stays empty on purpose.
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "coverage[toml]>=7.4",
+    "mypy>=1.8",
+    "flake8>=7.0",
+    "black>=24.1",
+    "bandit>=1.7",
+    "pip-audit>=2.7",
+    "pre-commit>=3.6",
+    "build>=1.0",
+]
+
+[project.scripts]
+asmx = "asmx.cli:main"
+asmx-gui = "asmx.ui:main"
+
+[project.urls]
+Homepage = "https://github.com/rafawaldrigues/asmx"
+Repository = "https://github.com/rafawaldrigues/asmx"
+Issues = "https://github.com/rafawaldrigues/asmx/issues"
+Documentation = "https://github.com/rafawaldrigues/asmx/tree/main/docs"
+Changelog = "https://github.com/rafawaldrigues/asmx/releases"
+
+# ---------------------------------------------------------------------------
+# setuptools
+# ---------------------------------------------------------------------------
+
+[tool.setuptools]
+packages = ["asmx", "asmx.ui"]
+# Data files are declared explicitly below, so nothing is pulled in by a
+# MANIFEST.in or by version-control bookkeeping.
+include-package-data = false
+
+[tool.setuptools.dynamic]
+# NB: `asmx.__init__.__version__` (not `asmx.__version__`).  With the flat
+# layout, setuptools' attribute resolver looks for `<root>/asmx.py` before
+# `<root>/asmx/__init__.py`, so the short form would import the `asmx.py`
+# launcher instead of the package and fail.  The dotted `__init__` form points
+# straight at `asmx/__init__.py`, so the version really is read from there.
+version = { attr = "asmx.__init__.__version__" }
+
+[tool.setuptools.package-data]
+asmx = ["data/*.json"]
+
+# ---------------------------------------------------------------------------
+# Formatting and linting
+# ---------------------------------------------------------------------------
+
+[tool.black]
+line-length = 100
+target-version = ["py39"]
+extend-exclude = '''
+/(
+    build
+  | dist
+  | \.venv
+  | venv
+)/
+'''
+
+# NOTE: flake8 does not read pyproject.toml by itself.  CI, pre-commit and the
+# Makefile pass these values as command-line flags; install the
+# `Flake8-pyproject` plugin (`pip install Flake8-pyproject`) if you want
+# `flake8` to pick this section up automatically.
+[tool.flake8]
+max-line-length = 100
+extend-ignore = ["E203", "W503"]
+exclude = [".git", "__pycache__", "build", "dist", ".venv", "venv"]
+max-complexity = 15
+
+# ---------------------------------------------------------------------------
+# Static typing
+# ---------------------------------------------------------------------------
+
+[tool.mypy]
+# Sem `python_version` fixo de propósito: as versões novas do mypy recusam alvos
+# antigos (3.9), e a compatibilidade real com cada versão do Python é verificada
+# pela matriz do CI, que roda a suíte no 3.9, 3.10, 3.11, 3.12 e 3.13.
+disallow_untyped_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+show_error_codes = true
+exclude = ["build", "dist", "\\.venv"]
+
+# O núcleo usa o padrão "campo preenchido em duas fases": o parser cria Line e
+# Operand com campos opcionais (mnemonic, reg, sem, block...) e o analisador e a
+# máquina virtual preenchem depois. Dentro dos laços o mypy não estreita esses
+# Optional, e as mensagens de erro seriam todas do mesmo tipo. As checagens de
+# anotação (disallow_untyped_defs) continuam valendo para esses módulos — é o
+# que garante a promessa de 100% de type hints, reforçada por
+# `tools/quality_gates.py`. Os códigos desligados aqui são só os que dependem
+# desse estreitamento.
+[[tool.mypy.overrides]]
+module = ["asmx.analyzer", "asmx.emulator", "asmx.linter"]
+disable_error_code = ["union-attr", "arg-type", "index", "operator", "attr-defined", "assignment"]
+
+# A interface Tkinter passa estado entre métodos (`self.analysis`, `self.machine`)
+# e os widgets são dinâmicos, então os stubs do Tk não descrevem o que o código
+# garante em tempo de execução.
+[[tool.mypy.overrides]]
+module = ["asmx.ui.*"]
+disable_error_code = ["union-attr", "arg-type", "index", "operator", "attr-defined", "call-arg", "assignment", "var-annotated", "misc"]
+
+# ---------------------------------------------------------------------------
+# Coverage (used by `make coverage`, the entrypoint and CI)
+# ---------------------------------------------------------------------------
+
+[tool.coverage.run]
+branch = true
+source = ["asmx"]
+
+[tool.coverage.report]
+fail_under = 94
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@(abc\\.)?abstractmethod",
+]
+
+[tool.coverage.xml]
+output = "coverage.xml"
+
+# ---------------------------------------------------------------------------
+# Tests (the suite is unittest-based; pytest just runs it)
+# ---------------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q"

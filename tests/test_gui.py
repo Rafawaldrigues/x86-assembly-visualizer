@@ -6,8 +6,9 @@ import unittest
 
 try:
     import tkinter as tk
+
     TK_OK = True
-except ImportError:                                   # pragma: no cover
+except ImportError:  # pragma: no cover
     TK_OK = False
 
 HAS_DISPLAY = bool(os.environ.get("DISPLAY")) or os.name == "nt"
@@ -17,51 +18,54 @@ HAS_DISPLAY = bool(os.environ.get("DISPLAY")) or os.name == "nt"
 class TestGUI(unittest.TestCase):
 
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls) -> None:
         from asmx.ui.app import AsmXApp
+
         cls.AsmXApp = AsmXApp
 
-    def setUp(self):
+    def setUp(self) -> None:
         self.app = self.AsmXApp()
         self.app.update()
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         try:
             self.app.destroy()
         except tk.TclError:
             pass
 
-    def pump(self):
+    def pump(self) -> None:
         for _ in range(3):
             self.app.update_idletasks()
             self.app.update()
 
-    def set_code(self, code):
+    def set_code(self, code: str) -> None:
         self.app.editor.set_code(code)
         self.app.on_code_change()
         self.pump()
 
     # ------------------------------------------------------------ básico --
-    def test_abre_com_exemplo_e_analisa(self):
+    def test_abre_com_exemplo_e_analisa(self) -> None:
         self.assertIn("Ola, mundo!", self.app.editor.get_code())
         self.assertIsNotNone(self.app.analysis)
         self.assertIn("Linux", self.app.platform_label.cget("text"))
         self.assertTrue(self.app.tree.get_children(), "a árvore de estrutura deveria ter itens")
 
-    def test_status_mostra_branch_e_contagem(self):
+    def test_status_mostra_branch_e_contagem(self) -> None:
         self.app.set_status()
         texto = self.app.status.cget("text")
         self.assertIn("branch: principal", texto)
         self.assertIn("instruções", texto)
 
-    def test_troca_de_exemplo_reanalisa(self):
+    def test_troca_de_exemplo_reanalisa(self) -> None:
         from asmx.examples import EXAMPLES
+
         self.set_code(EXAMPLES["windows-hello"]["code"])
         self.assertIn("Windows", self.app.platform_label.cget("text"))
 
     # ---------------------------------------------------------- problemas -
-    def test_validacao_lista_problemas_e_marca_linhas(self):
+    def test_validacao_lista_problemas_e_marca_linhas(self) -> None:
         from asmx.examples import EXAMPLES
+
         self.set_code(EXAMPLES["quebrado"]["code"])
         self.app.validate_now()
         self.pump()
@@ -73,8 +77,9 @@ class TestGUI(unittest.TestCase):
         ranges = self.app.editor.text.tag_ranges("errorline")
         self.assertTrue(ranges, "as linhas com erro deveriam ficar marcadas no editor")
 
-    def test_clique_no_problema_pula_para_a_linha(self):
+    def test_clique_no_problema_pula_para_a_linha(self) -> None:
         from asmx.examples import EXAMPLES
+
         self.set_code(EXAMPLES["quebrado"]["code"])
         self.app.validate_now()
         self.pump()
@@ -85,15 +90,16 @@ class TestGUI(unittest.TestCase):
         self.pump()
         self.assertEqual(self.app.editor.cursor_line(), linha_esperada)
 
-    def test_codigo_limpo_nao_lista_erros(self):
+    def test_codigo_limpo_nao_lista_erros(self) -> None:
         self.app.validate_now()
         self.pump()
-        severidades = [self.app.problem_tree.item(i, "tags")[0]
-                       for i in self.app.problem_tree.get_children()]
+        severidades = [
+            self.app.problem_tree.item(i, "tags")[0] for i in self.app.problem_tree.get_children()
+        ]
         self.assertNotIn("erro", severidades)
 
     # ---------------------------------------------------------- execução --
-    def test_passo_atualiza_registradores(self):
+    def test_passo_atualiza_registradores(self) -> None:
         self.app.reset_machine()
         self.app.step()
         self.pump()
@@ -101,7 +107,7 @@ class TestGUI(unittest.TestCase):
         self.assertEqual(valores[1], "1")
         self.assertIn("próxima", self.app.exec_label.cget("text"))
 
-    def test_rodar_mostra_saida(self):
+    def test_rodar_mostra_saida(self) -> None:
         self.app.reset_machine()
         self.app.run()
         self.pump()
@@ -109,7 +115,7 @@ class TestGUI(unittest.TestCase):
         self.assertIn("Ola, mundo!", saida)
         self.assertTrue(self.app.trace_tree.get_children())
 
-    def test_breakpoint_para_a_execucao(self):
+    def test_breakpoint_para_a_execucao(self) -> None:
         self.app.reset_machine()
         linha_syscall = next(i.n for i in self.app.analysis.instrs if i.mnemonic == "syscall")
         self.app.editor.breakpoints = {linha_syscall}
@@ -118,7 +124,7 @@ class TestGUI(unittest.TestCase):
         self.assertFalse(self.app.machine.halted)
         self.assertEqual(self.app.machine.current.n, linha_syscall)
 
-    def test_rodar_ate_o_cursor(self):
+    def test_rodar_ate_o_cursor(self) -> None:
         self.app.reset_machine()
         alvo = self.app.analysis.instrs[2].n
         self.app.editor.goto_line(alvo)
@@ -126,24 +132,24 @@ class TestGUI(unittest.TestCase):
         self.pump()
         self.assertEqual(self.app.machine.current.n, alvo)
 
-    def test_reiniciar_zera_estado(self):
+    def test_reiniciar_zera_estado(self) -> None:
         self.app.run()
         self.app.reset_machine()
         self.pump()
         self.assertEqual(self.app.machine.regs["rax"], 0)
         self.assertEqual(self.app.output_text.get("1.0", "end-1c"), "")
 
-    def test_depurar_funcao_isolada(self):
+    def test_depurar_funcao_isolada(self) -> None:
         from asmx.examples import EXAMPLES
         from asmx.ui import app as appmod
 
         self.set_code(EXAMPLES["escala"]["code"])
 
         class FakeDialog:
-            def __init__(self, *a, **k):
+            def __init__(self, *a: object, **k: object) -> None:
                 pass
 
-            def show(self):
+            def show(self) -> str:
                 return "soma_ate"
 
         original = appmod.TextPromptDialog
@@ -153,19 +159,20 @@ class TestGUI(unittest.TestCase):
         finally:
             appmod.TextPromptDialog = original
         self.pump()
-        self.assertEqual(self.app.machine.current.n,
-                         next(i.n for i in self.app.analysis.instrs
-                              if i.func == "soma_ate"))
+        self.assertEqual(
+            self.app.machine.current.n,
+            next(i.n for i in self.app.analysis.instrs if i.func == "soma_ate"),
+        )
 
     # ----------------------------------------------------------- branches -
-    def test_criar_branch_pela_interface(self):
+    def test_criar_branch_pela_interface(self) -> None:
         from asmx.ui import app as appmod
 
         class FakeDialog:
-            def __init__(self, *a, **k):
+            def __init__(self, *a: object, **k: object) -> None:
                 pass
 
-            def show(self):
+            def show(self) -> str:
                 return "experimento"
 
         original = appmod.TextPromptDialog
@@ -178,7 +185,7 @@ class TestGUI(unittest.TestCase):
         self.assertEqual(self.app.project.active, "experimento")
         self.assertIn("experimento", self.app.branch_box.cget("values"))
 
-    def test_branches_guardam_codigos_diferentes(self):
+    def test_branches_guardam_codigos_diferentes(self) -> None:
         self.app.project.fork("alt")
         self.app.project.switch("alt")
         self.app.load_branch_into_editor()
@@ -191,7 +198,7 @@ class TestGUI(unittest.TestCase):
         self.assertIn("mov rax, 99", self.app.editor.get_code())
 
     # ---------------------------------------------------------- anotações -
-    def test_anotacao_aparece_na_lista(self):
+    def test_anotacao_aparece_na_lista(self) -> None:
         self.app.project.set_note(4, "aqui mora a string")
         self.app.refresh_notes()
         self.pump()
@@ -199,7 +206,7 @@ class TestGUI(unittest.TestCase):
         self.assertIn("4", itens)
         self.assertEqual(self.app.note_tree.item("4", "values")[0], "aqui mora a string")
 
-    def test_comentar_linha_com_atalho(self):
+    def test_comentar_linha_com_atalho(self) -> None:
         self.set_code("mov rax, 1\nmov rbx, 2")
         self.app.editor.goto_line(1)
         self.app.editor_toggle_comment()
@@ -211,29 +218,32 @@ class TestGUI(unittest.TestCase):
         self.assertTrue(self.app.editor.get_code().startswith("mov rax, 1"))
 
     # ------------------------------------------------------------ testes --
-    def test_cenarios_rodam_e_mostram_resultado(self):
+    def test_cenarios_rodam_e_mostram_resultado(self) -> None:
         from asmx.workspace import Scenario
-        self.app.project.add_scenario(Scenario(name="saída certa",
-                                               expect_output="Ola, mundo!\n"))
-        self.app.project.add_scenario(Scenario(name="saída errada",
-                                               expect_output="qualquer coisa"))
+
+        self.app.project.add_scenario(Scenario(name="saída certa", expect_output="Ola, mundo!\n"))
+        self.app.project.add_scenario(Scenario(name="saída errada", expect_output="qualquer coisa"))
         self.app.run_all_scenarios()
         self.pump()
         self.assertEqual(self.app.scenario_tree.item("saída certa", "tags"), ("ok",))
         self.assertEqual(self.app.scenario_tree.item("saída errada", "tags"), ("falhou",))
         self.assertIn("1 de 2", self.app.status.cget("text"))
 
-    def test_cenario_criado_pelo_dialogo(self):
+    def test_cenario_criado_pelo_dialogo(self) -> None:
         from asmx.ui import app as appmod
         from asmx.workspace import Scenario
 
         class FakeDialog:
-            def __init__(self, *a, **k):
+            def __init__(self, *a: object, **k: object) -> None:
                 pass
 
-            def show(self):
-                return Scenario(name="valor gigante", entry="_start",
-                                regs={"rdi": "0xFFFFFFFF"}, expect_issue=True)
+            def show(self) -> Scenario:
+                return Scenario(
+                    name="valor gigante",
+                    entry="_start",
+                    regs={"rdi": "0xFFFFFFFF"},
+                    expect_issue=True,
+                )
 
         original = appmod.ScenarioDialog
         appmod.ScenarioDialog = FakeDialog
@@ -245,8 +255,9 @@ class TestGUI(unittest.TestCase):
         self.assertIn("valor gigante", self.app.scenario_tree.get_children())
 
     # ------------------------------------------------------- persistência -
-    def test_salvar_e_reabrir_projeto(self):
+    def test_salvar_e_reabrir_projeto(self) -> None:
         from asmx.workspace import Project
+
         self.app.project.set_note(2, "nota")
         self.app.project.fork("b2")
         with tempfile.TemporaryDirectory() as d:
@@ -257,7 +268,7 @@ class TestGUI(unittest.TestCase):
         self.assertEqual(recarregado.note(2), "nota")
 
     # ------------------------------------------------------ documentação --
-    def test_documentacao_responde_ao_cursor(self):
+    def test_documentacao_responde_ao_cursor(self) -> None:
         linha = next(i.n for i in self.app.analysis.instrs if i.mnemonic == "syscall")
         self.app.editor.goto_line(linha)
         self.app.on_cursor(linha, 1)
@@ -266,7 +277,7 @@ class TestGUI(unittest.TestCase):
         self.assertIn("SYSCALL", texto)
         self.assertIn("kernel", texto.lower())
 
-    def test_busca_na_documentacao(self):
+    def test_busca_na_documentacao(self) -> None:
         self.app.doc_query.insert(0, "jn")
         self.app.refresh_doc_list()
         self.pump()
@@ -275,7 +286,7 @@ class TestGUI(unittest.TestCase):
         self.assertIn("jne", itens)
 
     # ------------------------------------------------------- robustez ----
-    def test_codigo_invalido_nao_derruba_a_interface(self):
+    def test_codigo_invalido_nao_derruba_a_interface(self) -> None:
         for lixo in ("", "   ", "???", "mov", "[[[", '"', "section"):
             with self.subTest(codigo=lixo):
                 self.set_code(lixo)
@@ -295,55 +306,60 @@ class TestGUIExtra(unittest.TestCase):
     """Casos que nasceram de defeitos encontrados na revisão visual."""
 
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls) -> None:
         from asmx.ui.app import AsmXApp
+
         cls.AsmXApp = AsmXApp
 
-    def setUp(self):
+    def setUp(self) -> None:
         self.app = self.AsmXApp()
         self.app.update()
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         try:
             self.app.destroy()
         except tk.TclError:
             pass
 
-    def test_coluna_de_bloco_nao_vira_lista(self):
+    def test_coluna_de_bloco_nao_vira_lista(self) -> None:
         """values precisa ser tupla, senão o Tcl quebra o texto em palavras."""
-        raiz = [i for i in self.app.tree.get_children()
-                if self.app.tree.item(i, "tags") and "fn" in self.app.tree.item(i, "tags")]
+        raiz = [
+            i
+            for i in self.app.tree.get_children()
+            if self.app.tree.item(i, "tags") and "fn" in self.app.tree.item(i, "tags")
+        ]
         self.assertTrue(raiz)
         bloco = self.app.tree.get_children(raiz[0])[0]
         info = self.app.tree.item(bloco, "values")[0]
         self.assertIn("instr", info, "a descrição do bloco foi truncada: %r" % info)
 
-    def test_registrador_grande_nao_mostra_decimal_ilegivel(self):
+    def test_registrador_grande_nao_mostra_decimal_ilegivel(self) -> None:
         self.app.reset_machine()
         self.app.refresh_machine()
         self.assertEqual(self.app.reg_tree.item("rsp", "values")[1], "")
         self.assertNotEqual(self.app.reg_tree.item("rsp", "values")[0], "")
 
-    def test_cursor_sobre_rotulo_explica_o_rotulo(self):
-        linha = next(l.n for l in self.app.analysis.program.lines if l.kind == "label")
+    def test_cursor_sobre_rotulo_explica_o_rotulo(self) -> None:
+        linha = next(linha.n for linha in self.app.analysis.program.lines if linha.kind == "label")
         self.app.on_cursor(linha, 1)
         self.app.update()
         texto = self.app.doc_text.get("1.0", "end-1c")
         self.assertIn("Rótulo", texto)
 
-    def test_cursor_sobre_dado_explica_o_dado(self):
-        linha = next(l.n for l in self.app.analysis.program.lines if l.kind == "data")
+    def test_cursor_sobre_dado_explica_o_dado(self) -> None:
+        linha = next(linha.n for linha in self.app.analysis.program.lines if linha.kind == "data")
         self.app.on_cursor(linha, 1)
         self.app.update()
         texto = self.app.doc_text.get("1.0", "end-1c")
         self.assertTrue("Dado" in texto or "Constante" in texto or "Reserva" in texto)
 
-    def test_plataforma_tem_explicacao_completa(self):
+    def test_plataforma_tem_explicacao_completa(self) -> None:
         self.assertTrue(hasattr(self.app, "platform_detail"))
         self.assertIn("System V", self.app.platform_detail)
 
-    def test_detalhe_do_cenario_mostra_motivo(self):
+    def test_detalhe_do_cenario_mostra_motivo(self) -> None:
         from asmx.workspace import Scenario
+
         self.app.project.add_scenario(Scenario(name="falha", expect_exit=42))
         self.app.run_all_scenarios()
         self.app.scenario_tree.selection_set("falha")
@@ -353,14 +369,14 @@ class TestGUIExtra(unittest.TestCase):
         self.assertIn("FALHOU", texto)
         self.assertIn("instruções executadas", texto)
 
-    def test_maquina_acompanha_codigo_novo_quando_parada(self):
+    def test_maquina_acompanha_codigo_novo_quando_parada(self) -> None:
         self.app.editor.set_code("mov rax, 7")
         self.app.on_code_change()
         self.app.update()
         self.app.step()
         self.assertEqual(self.app.machine.regs["rax"], 7)
 
-    def test_maquina_avisa_quando_o_codigo_muda_no_meio(self):
+    def test_maquina_avisa_quando_o_codigo_muda_no_meio(self) -> None:
         self.app.reset_machine()
         self.app.step()
         self.app.editor.set_code("mov rbx, 1\nmov rcx, 2")

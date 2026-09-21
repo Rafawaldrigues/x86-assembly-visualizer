@@ -1,16 +1,20 @@
 """Janela principal do ASM X."""
 
+from __future__ import annotations
+
 import os
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from typing import Dict, List, Optional, Tuple, Union
 
 from .. import __version__
-from ..analyzer import analyze, callers_of
+from ..analyzer import Analysis, analyze, callers_of
 from ..emulator import Machine, hexs, to_signed
 from ..examples import EXAMPLES
-from ..isa import (CATEGORIES, FLAG_DOC, ISA, REGS64, REG_DOC, REG_INFO)
-from ..linter import ERRO, summary, validate
-from ..workspace import Project, run_all_scenarios, run_scenario
+from ..isa import CATEGORIES, FLAG_DOC, ISA, REGS64, REG_DOC, REG_INFO
+from ..linter import ERRO, Problem, summary, validate
+from ..parser import Line
+from ..workspace import Project, Scenario, ScenarioResult, run_all_scenarios, run_scenario
 from . import theme
 from .dialogs import AboutDialog, DiffDialog, ScenarioDialog, TextPromptDialog
 from .editor import CodeEditor
@@ -20,8 +24,15 @@ ASM_TYPES = [("Assembly", "*.asm *.s *.S *.nasm"), ("Todos os arquivos", "*.*")]
 
 
 class AsmXApp(tk.Tk):
+    """Janela principal: editor, estrutura, problemas, máquina, docs e testes."""
 
-    def __init__(self, project: Project = None):
+    def __init__(self, project: Optional[Project] = None) -> None:
+        """Monta a janela, carrega o projeto e faz a primeira análise.
+
+        Args:
+            project: projeto a abrir; None cria um projeto novo com o exemplo
+                "linux-hello".
+        """
         super().__init__()
         self.title("ASM X")
         self.geometry("1360x820")
@@ -29,13 +40,13 @@ class AsmXApp(tk.Tk):
         self.configure(bg=theme.PANEL)
         theme.apply_ttk_theme(self)
 
-        self.project = project or Project.new(code=EXAMPLES["linux-hello"]["code"])
-        self.analysis = None
-        self.machine = None
-        self.problems = []
-        self.results = []
-        self.last_regs = {}
-        self._suspend_change = False
+        self.project: Project = project or Project.new(code=EXAMPLES["linux-hello"]["code"])
+        self.analysis: Optional[Analysis] = None
+        self.machine: Optional[Machine] = None
+        self.problems: List[Problem] = []
+        self.results: List[ScenarioResult] = []
+        self.last_regs: Dict[str, int] = {}
+        self._suspend_change: bool = False
 
         self._build_menu()
         self._build_layout()
@@ -50,17 +61,41 @@ class AsmXApp(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
     # ===================================================== construção =====
-    def _build_menu(self):
-        menubar = tk.Menu(self, bg=theme.PANEL, fg=theme.FG, activebackground=theme.SEL,
-                          activeforeground=theme.WHITE, borderwidth=0)
+    def _build_menu(self) -> None:
+        """Monta a barra de menus: Arquivo, Editar, Branch, Executar e Ajuda.
 
-        def menu():
-            return tk.Menu(menubar, tearoff=0, bg=theme.PANEL, fg=theme.FG,
-                           activebackground=theme.SEL, activeforeground=theme.WHITE)
+        As ações de menu são registradas como comandos Tk, então cada item
+        chama o método correspondente da janela.
+        """
+        menubar = tk.Menu(
+            self,
+            bg=theme.PANEL,
+            fg=theme.FG,
+            activebackground=theme.SEL,
+            activeforeground=theme.WHITE,
+            borderwidth=0,
+        )
+
+        def menu() -> tk.Menu:
+            """Cria um menu suspenso com as cores do tema.
+
+            Returns:
+                O menu recém-criado, ainda sem itens.
+            """
+            return tk.Menu(
+                menubar,
+                tearoff=0,
+                bg=theme.PANEL,
+                fg=theme.FG,
+                activebackground=theme.SEL,
+                activeforeground=theme.WHITE,
+            )
 
         arquivo = menu()
         arquivo.add_command(label="Novo projeto", accelerator="Ctrl+N", command=self.new_project)
-        arquivo.add_command(label="Abrir projeto...", accelerator="Ctrl+O", command=self.open_project)
+        arquivo.add_command(
+            label="Abrir projeto...", accelerator="Ctrl+O", command=self.open_project
+        )
         arquivo.add_command(label="Salvar projeto", accelerator="Ctrl+S", command=self.save_project)
         arquivo.add_command(label="Salvar projeto como...", command=self.save_project_as)
         arquivo.add_separator()
@@ -68,21 +103,23 @@ class AsmXApp(tk.Tk):
         arquivo.add_command(label="Exportar branch como .asm...", command=self.export_asm)
         exemplos = menu()
         for key, ex in EXAMPLES.items():
-            exemplos.add_command(label=ex["title"],
-                                 command=lambda k=key: self.load_example(k))
+            exemplos.add_command(label=ex["title"], command=lambda k=key: self.load_example(k))
         arquivo.add_cascade(label="Abrir exemplo", menu=exemplos)
         arquivo.add_separator()
         arquivo.add_command(label="Sair", command=self.on_close)
         menubar.add_cascade(label="Arquivo", menu=arquivo)
 
         editar = menu()
-        editar.add_command(label="Desfazer", accelerator="Ctrl+Z",
-                           command=lambda: self.editor.text.edit_undo())
-        editar.add_command(label="Refazer", accelerator="Ctrl+Y",
-                           command=lambda: self.editor.text.edit_redo())
+        editar.add_command(
+            label="Desfazer", accelerator="Ctrl+Z", command=lambda: self.editor.text.edit_undo()
+        )
+        editar.add_command(
+            label="Refazer", accelerator="Ctrl+Y", command=lambda: self.editor.text.edit_redo()
+        )
         editar.add_separator()
-        editar.add_command(label="Comentar/descomentar", accelerator="Ctrl+/",
-                           command=self.editor_toggle_comment)
+        editar.add_command(
+            label="Comentar/descomentar", accelerator="Ctrl+/", command=self.editor_toggle_comment
+        )
         editar.add_command(label="Anotar esta linha", accelerator="Ctrl+E", command=self.edit_note)
         editar.add_separator()
         editar.add_command(label="Procurar...", accelerator="Ctrl+F", command=self.find)
@@ -90,8 +127,9 @@ class AsmXApp(tk.Tk):
         menubar.add_cascade(label="Editar", menu=editar)
 
         branch = menu()
-        branch.add_command(label="Nova branch a partir desta", accelerator="Ctrl+B",
-                           command=self.branch_new)
+        branch.add_command(
+            label="Nova branch a partir desta", accelerator="Ctrl+B", command=self.branch_new
+        )
         branch.add_command(label="Renomear branch atual", command=self.branch_rename)
         branch.add_command(label="Excluir branch atual", command=self.branch_delete)
         branch.add_separator()
@@ -103,12 +141,15 @@ class AsmXApp(tk.Tk):
         executar.add_separator()
         executar.add_command(label="Passo", accelerator="F8", command=self.step)
         executar.add_command(label="Rodar", accelerator="F9", command=self.run)
-        executar.add_command(label="Rodar até o cursor", accelerator="F7", command=self.run_to_cursor)
+        executar.add_command(
+            label="Rodar até o cursor", accelerator="F7", command=self.run_to_cursor
+        )
         executar.add_command(label="Reiniciar", accelerator="F10", command=self.reset_machine)
         executar.add_separator()
         executar.add_command(label="Depurar função isolada...", command=self.debug_function)
-        executar.add_command(label="Rodar todos os cenários", accelerator="F11",
-                             command=self.run_all_scenarios)
+        executar.add_command(
+            label="Rodar todos os cenários", accelerator="F11", command=self.run_all_scenarios
+        )
         menubar.add_cascade(label="Executar", menu=executar)
 
         ajuda = menu()
@@ -117,24 +158,30 @@ class AsmXApp(tk.Tk):
 
         self.configure(menu=menubar)
 
-    def _build_layout(self):
+    def _build_layout(self) -> None:
+        """Monta a barra superior, a linha de status e as três colunas."""
         barra = ttk.Frame(self, padding=(8, 5))
         barra.pack(fill="x")
-        self.branch_var = tk.StringVar(value=self.project.active)
+        self.branch_var: tk.StringVar = tk.StringVar(value=self.project.active)
         ttk.Label(barra, text="branch").pack(side="left")
-        self.branch_box = ttk.Combobox(barra, textvariable=self.branch_var, width=22,
-                                       state="readonly")
+        self.branch_box: ttk.Combobox = ttk.Combobox(
+            barra, textvariable=self.branch_var, width=22, state="readonly"
+        )
         self.branch_box.pack(side="left", padx=(6, 10))
-        self.branch_box.bind("<<ComboboxSelected>>", lambda e: self.branch_switch(self.branch_var.get()))
+        self.branch_box.bind(
+            "<<ComboboxSelected>>", lambda e: self.branch_switch(self.branch_var.get())
+        )
         ttk.Button(barra, text="Nova branch", command=self.branch_new).pack(side="left")
         ttk.Button(barra, text="Validar", command=self.validate_now).pack(side="left", padx=6)
         ttk.Button(barra, text="Passo", command=self.step).pack(side="left")
-        ttk.Button(barra, text="Rodar", style="Accent.TButton", command=self.run).pack(side="left", padx=6)
+        ttk.Button(barra, text="Rodar", style="Accent.TButton", command=self.run).pack(
+            side="left", padx=6
+        )
         ttk.Button(barra, text="Reiniciar", command=self.reset_machine).pack(side="left")
-        self.platform_label = ttk.Label(barra, text="—", style="Head.TLabel")
+        self.platform_label: ttk.Label = ttk.Label(barra, text="—", style="Head.TLabel")
         self.platform_label.pack(side="right")
 
-        self.status = ttk.Label(self, text="", style="Status.TLabel", padding=(8, 3))
+        self.status: ttk.Label = ttk.Label(self, text="", style="Status.TLabel", padding=(8, 3))
         self.status.pack(side="bottom", fill="x")
 
         principal = ttk.PanedWindow(self, orient="horizontal")
@@ -144,9 +191,12 @@ class AsmXApp(tk.Tk):
         esquerda = ttk.Frame(principal, width=330)
         esquerda.pack_propagate(False)
         principal.add(esquerda, weight=0)
-        ttk.Label(esquerda, text="Estrutura do código", style="Head.TLabel",
-                  padding=(8, 6)).pack(fill="x")
-        self.tree = ttk.Treeview(esquerda, columns=("info",), show="tree headings", height=20)
+        ttk.Label(esquerda, text="Estrutura do código", style="Head.TLabel", padding=(8, 6)).pack(
+            fill="x"
+        )
+        self.tree: ttk.Treeview = ttk.Treeview(
+            esquerda, columns=("info",), show="tree headings", height=20
+        )
         self.tree.heading("#0", text="programa")
         self.tree.heading("info", text="o que faz")
         self.tree.column("#0", width=140, stretch=True, minwidth=90)
@@ -164,21 +214,29 @@ class AsmXApp(tk.Tk):
 
         editor_frame = ttk.Frame(centro)
         centro.add(editor_frame, weight=3)
-        self.editor = CodeEditor(editor_frame, on_change=self.on_code_change,
-                                 on_breakpoint=self.on_breakpoint,
-                                 on_cursor=self.on_cursor)
+        self.editor: CodeEditor = CodeEditor(
+            editor_frame,
+            on_change=self.on_code_change,
+            on_breakpoint=self.on_breakpoint,
+            on_cursor=self.on_cursor,
+        )
         self.editor.pack(fill="both", expand=True)
 
         inferior = ttk.Notebook(centro)
         centro.add(inferior, weight=1)
-        self.bottom = inferior
+        self.bottom: ttk.Notebook = inferior
 
         # problemas
         aba_problemas = ttk.Frame(inferior)
         inferior.add(aba_problemas, text="Problemas")
-        self.problem_tree = ttk.Treeview(aba_problemas, columns=("linha", "codigo", "msg"),
-                                         show="headings", height=7)
-        for col, txt, w in (("linha", "linha", 55), ("codigo", "código", 70), ("msg", "problema", 700)):
+        self.problem_tree: ttk.Treeview = ttk.Treeview(
+            aba_problemas, columns=("linha", "codigo", "msg"), show="headings", height=7
+        )
+        for col, txt, w in (
+            ("linha", "linha", 55),
+            ("codigo", "código", 70),
+            ("msg", "problema", 700),
+        ):
             self.problem_tree.heading(col, text=txt)
             self.problem_tree.column(col, width=w, anchor="w")
         self.problem_tree.tag_configure("erro", foreground=theme.SEV_COLOR["erro"])
@@ -188,8 +246,14 @@ class AsmXApp(tk.Tk):
         self.problem_tree.configure(yscrollcommand=ps.set)
         ps.pack(side="right", fill="y")
         self.problem_tree.pack(side="top", fill="both", expand=True)
-        self.problem_hint = ttk.Label(aba_problemas, text="", style="Dim.TLabel",
-                                      wraplength=900, justify="left", padding=(8, 4))
+        self.problem_hint: ttk.Label = ttk.Label(
+            aba_problemas,
+            text="",
+            style="Dim.TLabel",
+            wraplength=900,
+            justify="left",
+            padding=(8, 4),
+        )
         self.problem_hint.pack(fill="x")
         self.problem_tree.bind("<<TreeviewSelect>>", self.on_problem_select)
         self.problem_tree.bind("<Double-1>", self.on_problem_open)
@@ -197,8 +261,15 @@ class AsmXApp(tk.Tk):
         # saída
         aba_saida = ttk.Frame(inferior)
         inferior.add(aba_saida, text="Saída")
-        self.output_text = tk.Text(aba_saida, bg=theme.BG, fg=theme.LOGIC, height=7,
-                                   font=theme.mono(10), borderwidth=0, highlightthickness=0)
+        self.output_text: tk.Text = tk.Text(
+            aba_saida,
+            bg=theme.BG,
+            fg=theme.LOGIC,
+            height=7,
+            font=theme.mono(10),
+            borderwidth=0,
+            highlightthickness=0,
+        )
         self.output_text.pack(fill="both", expand=True)
         self.output_text.configure(state="disabled")
 
@@ -210,12 +281,16 @@ class AsmXApp(tk.Tk):
         ttk.Button(acoes, text="Novo", command=self.scenario_new).pack(side="left")
         ttk.Button(acoes, text="Editar", command=self.scenario_edit).pack(side="left", padx=4)
         ttk.Button(acoes, text="Excluir", command=self.scenario_delete).pack(side="left")
-        ttk.Button(acoes, text="Rodar", command=self.run_selected_scenario).pack(side="left", padx=4)
-        ttk.Button(acoes, text="Rodar todos", style="Accent.TButton",
-                   command=self.run_all_scenarios).pack(side="left")
+        ttk.Button(acoes, text="Rodar", command=self.run_selected_scenario).pack(
+            side="left", padx=4
+        )
+        ttk.Button(
+            acoes, text="Rodar todos", style="Accent.TButton", command=self.run_all_scenarios
+        ).pack(side="left")
 
-        self.scenario_tree = ttk.Treeview(aba_testes, columns=("entrada", "estado", "resultado"),
-                                          show="tree headings", height=6)
+        self.scenario_tree: ttk.Treeview = ttk.Treeview(
+            aba_testes, columns=("entrada", "estado", "resultado"), show="tree headings", height=6
+        )
         self.scenario_tree.heading("#0", text="cenário")
         self.scenario_tree.heading("entrada", text="começa em")
         self.scenario_tree.heading("estado", text="registradores")
@@ -227,11 +302,16 @@ class AsmXApp(tk.Tk):
         self.scenario_tree.tag_configure("ok", foreground=theme.CALL)
         self.scenario_tree.tag_configure("falhou", foreground=theme.SEV_COLOR["erro"])
         self.scenario_tree.pack(fill="both", expand=True)
-        self.scenario_detail = ttk.Label(aba_testes, text="Um cenário guarda o estado inicial "
-                                         "(onde começar, quais registradores) e o que você espera "
-                                         "que aconteça. Selecione um para ver o resultado completo.",
-                                         style="Dim.TLabel", wraplength=900, justify="left",
-                                         padding=(8, 4))
+        self.scenario_detail: ttk.Label = ttk.Label(
+            aba_testes,
+            text="Um cenário guarda o estado inicial "
+            "(onde começar, quais registradores) e o que você espera "
+            "que aconteça. Selecione um para ver o resultado completo.",
+            style="Dim.TLabel",
+            wraplength=900,
+            justify="left",
+            padding=(8, 4),
+        )
         self.scenario_detail.pack(fill="x")
         self.scenario_tree.bind("<Double-1>", lambda e: self.scenario_edit())
         self.scenario_tree.bind("<<TreeviewSelect>>", self.on_scenario_select)
@@ -239,10 +319,14 @@ class AsmXApp(tk.Tk):
         # histórico
         aba_hist = ttk.Frame(inferior)
         inferior.add(aba_hist, text="Histórico da execução")
-        self.trace_tree = ttk.Treeview(aba_hist, columns=("linha", "instr", "efeito"),
-                                       show="headings", height=7)
-        for col, txt, w in (("linha", "linha", 55), ("instr", "instrução", 220),
-                            ("efeito", "o que aconteceu", 700)):
+        self.trace_tree: ttk.Treeview = ttk.Treeview(
+            aba_hist, columns=("linha", "instr", "efeito"), show="headings", height=7
+        )
+        for col, txt, w in (
+            ("linha", "linha", 55),
+            ("instr", "instrução", 220),
+            ("efeito", "o que aconteceu", 700),
+        ):
             self.trace_tree.heading(col, text=txt)
             self.trace_tree.column(col, width=w, anchor="w")
         ts = ttk.Scrollbar(aba_hist, orient="vertical", command=self.trace_tree.yview)
@@ -256,7 +340,7 @@ class AsmXApp(tk.Tk):
         principal.add(caixa_direita, weight=0)
         direita = ttk.Notebook(caixa_direita)
         direita.pack(fill="both", expand=True)
-        self.right = direita
+        self.right: ttk.Notebook = direita
 
         aba_insp = ttk.Frame(direita)
         direita.add(aba_insp, text="Máquina")
@@ -270,15 +354,22 @@ class AsmXApp(tk.Tk):
         direita.add(aba_notas, text="Notas")
         self._build_notes(aba_notas)
 
-    def _build_inspector(self, parent):
+    def _build_inspector(self, parent: ttk.Frame) -> None:
+        """Monta a aba Máquina: registradores, flags, pilha e variáveis.
+
+        Args:
+            parent: frame que recebe os widgets.
+        """
         topo = ttk.Frame(parent, padding=(6, 6))
         topo.pack(fill="x")
-        self.exec_label = ttk.Label(topo, text="máquina parada", style="Dim.TLabel",
-                                    wraplength=340, justify="left")
+        self.exec_label: ttk.Label = ttk.Label(
+            topo, text="máquina parada", style="Dim.TLabel", wraplength=340, justify="left"
+        )
         self.exec_label.pack(fill="x")
 
-        self.reg_tree = ttk.Treeview(parent, columns=("hex", "dec"), show="tree headings",
-                                     height=16)
+        self.reg_tree: ttk.Treeview = ttk.Treeview(
+            parent, columns=("hex", "dec"), show="tree headings", height=16
+        )
         self.reg_tree.heading("#0", text="reg")
         self.reg_tree.heading("hex", text="hexadecimal")
         self.reg_tree.heading("dec", text="decimal")
@@ -290,13 +381,17 @@ class AsmXApp(tk.Tk):
         self.reg_tree.pack(fill="x", padx=4)
         self.reg_tree.bind("<<TreeviewSelect>>", self.on_reg_select)
 
-        self.flags_label = ttk.Label(parent, text="", font=theme.mono(10), padding=(8, 6))
+        self.flags_label: ttk.Label = ttk.Label(
+            parent, text="", font=theme.mono(10), padding=(8, 6)
+        )
         self.flags_label.pack(fill="x")
 
-        ttk.Label(parent, text="Pilha e variáveis", style="Head.TLabel",
-                  padding=(8, 2)).pack(fill="x")
-        self.mem_tree = ttk.Treeview(parent, columns=("valor", "nota"), show="tree headings",
-                                     height=10)
+        ttk.Label(parent, text="Pilha e variáveis", style="Head.TLabel", padding=(8, 2)).pack(
+            fill="x"
+        )
+        self.mem_tree: ttk.Treeview = ttk.Treeview(
+            parent, columns=("valor", "nota"), show="tree headings", height=10
+        )
         self.mem_tree.heading("#0", text="onde")
         self.mem_tree.heading("valor", text="conteúdo")
         self.mem_tree.heading("nota", text="observação")
@@ -305,19 +400,40 @@ class AsmXApp(tk.Tk):
         self.mem_tree.column("nota", width=120)
         self.mem_tree.pack(fill="both", expand=True, padx=4, pady=(0, 6))
 
-    def _build_docs(self, parent):
+    def _build_docs(self, parent: ttk.Frame) -> None:
+        """Monta a aba Docs: busca, lista de mnemônicos e o texto de ajuda.
+
+        Args:
+            parent: frame que recebe os widgets.
+        """
         busca = ttk.Frame(parent, padding=(6, 6))
         busca.pack(fill="x")
-        self.doc_query = ttk.Entry(busca)
+        self.doc_query: ttk.Entry = ttk.Entry(busca)
         self.doc_query.pack(fill="x")
         self.doc_query.bind("<KeyRelease>", lambda e: self.refresh_doc_list())
-        self.doc_list = tk.Listbox(parent, bg=theme.BG, fg=theme.FG, height=6,
-                                   font=theme.mono(10), borderwidth=0, highlightthickness=0,
-                                   selectbackground=theme.SEL)
+        self.doc_list: tk.Listbox = tk.Listbox(
+            parent,
+            bg=theme.BG,
+            fg=theme.FG,
+            height=6,
+            font=theme.mono(10),
+            borderwidth=0,
+            highlightthickness=0,
+            selectbackground=theme.SEL,
+        )
         self.doc_list.pack(fill="x", padx=6)
         self.doc_list.bind("<<ListboxSelect>>", self.on_doc_select)
-        self.doc_text = tk.Text(parent, bg=theme.BG, fg=theme.FG, font=theme.ui(10),
-                                borderwidth=0, highlightthickness=0, wrap="word", padx=8, pady=6)
+        self.doc_text: tk.Text = tk.Text(
+            parent,
+            bg=theme.BG,
+            fg=theme.FG,
+            font=theme.ui(10),
+            borderwidth=0,
+            highlightthickness=0,
+            wrap="word",
+            padx=8,
+            pady=6,
+        )
         self.doc_text.pack(fill="both", expand=True, padx=6, pady=6)
         self.doc_text.tag_configure("titulo", foreground=theme.WHITE, font=theme.ui(12, "bold"))
         self.doc_text.tag_configure("sub", foreground=theme.ACCENT, font=theme.ui(10, "bold"))
@@ -327,14 +443,26 @@ class AsmXApp(tk.Tk):
         self.refresh_doc_list()
         self.show_doc("mov")
 
-    def _build_notes(self, parent):
+    def _build_notes(self, parent: ttk.Frame) -> None:
+        """Monta a aba Notas com a lista de anotações da branch.
+
+        Args:
+            parent: frame que recebe os widgets.
+        """
         topo = ttk.Frame(parent, padding=(6, 6))
         topo.pack(fill="x")
         ttk.Label(topo, text="Anotações desta branch", style="Head.TLabel").pack(anchor="w")
-        ttk.Label(topo, text="Ctrl+E anota a linha onde o cursor está. As anotações ficam "
-                            "salvas no projeto e não entram no arquivo .asm.",
-                  style="Dim.TLabel", wraplength=340, justify="left").pack(anchor="w", pady=(2, 0))
-        self.note_tree = ttk.Treeview(parent, columns=("texto",), show="tree headings", height=14)
+        ttk.Label(
+            topo,
+            text="Ctrl+E anota a linha onde o cursor está. As anotações ficam "
+            "salvas no projeto e não entram no arquivo .asm.",
+            style="Dim.TLabel",
+            wraplength=340,
+            justify="left",
+        ).pack(anchor="w", pady=(2, 0))
+        self.note_tree: ttk.Treeview = ttk.Treeview(
+            parent, columns=("texto",), show="tree headings", height=14
+        )
         self.note_tree.heading("#0", text="linha")
         self.note_tree.heading("texto", text="anotação")
         self.note_tree.column("#0", width=60)
@@ -346,7 +474,8 @@ class AsmXApp(tk.Tk):
         ttk.Button(botoes, text="Anotar linha atual", command=self.edit_note).pack(side="left")
         ttk.Button(botoes, text="Remover", command=self.delete_note).pack(side="left", padx=4)
 
-    def _bind_keys(self):
+    def _bind_keys(self) -> None:
+        """Liga as teclas de atalho da janela (F5–F11 e Ctrl+N/O/S/B/E/F/G)."""
         self.bind("<F5>", lambda e: self.validate_now())
         self.bind("<F7>", lambda e: self.run_to_cursor())
         self.bind("<F8>", lambda e: self.step())
@@ -362,17 +491,19 @@ class AsmXApp(tk.Tk):
         self.bind("<Control-g>", lambda e: self.goto_line())
 
     # ======================================================== análise =====
-    def on_code_change(self):
+    def on_code_change(self) -> None:
+        """Guarda o texto no projeto e reanalisa o código."""
         if self._suspend_change:
             return
         self.project.set_code(self.editor.get_code())
         self.analyze_now()
 
-    def analyze_now(self):
+    def analyze_now(self) -> None:
+        """Analisa o código, valida e atualiza todos os painéis da janela."""
         code = self.editor.get_code()
         try:
             self.analysis = analyze(code)
-        except Exception as exc:                       # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             self.set_status("falha ao analisar: %s" % exc)
             return
         self.problems = validate(self.analysis)
@@ -384,7 +515,7 @@ class AsmXApp(tk.Tk):
         self.sync_machine_with_code()
         self.set_status()
 
-    def sync_machine_with_code(self):
+    def sync_machine_with_code(self) -> None:
         """O painel da máquina não pode mostrar o estado de um código que mudou."""
         if self.machine is None or self.machine.analysis is self.analysis:
             return
@@ -394,27 +525,40 @@ class AsmXApp(tk.Tk):
             self.editor.set_exec_line(None)
             self.exec_label.configure(
                 text="o código mudou depois que a execução começou — reinicie (F10) para "
-                     "rodar a versão nova",
-                foreground=theme.ACCENT)
+                "rodar a versão nova",
+                foreground=theme.ACCENT,
+            )
 
-    def refresh_platform(self):
+    def refresh_platform(self) -> None:
+        """Atualiza o rótulo do sistema detectado e o texto da dica."""
         p = self.analysis.platform
-        nome = {"linux": "Linux", "windows": "Windows",
-                "ambíguo": "Ambíguo", "indefinido": "Sem pistas de sistema"}[p.os]
+        nome = {
+            "linux": "Linux",
+            "windows": "Windows",
+            "ambíguo": "Ambíguo",
+            "indefinido": "Sem pistas de sistema",
+        }[p.os]
         cor = {"linux": theme.ACCENT, "windows": theme.STACK}.get(p.os, theme.DIM)
         texto = "%s · %d bits" % (nome, p.bits)
         if p.confidence:
             texto += " · %d%%" % p.confidence
         self.platform_label.configure(text=texto, foreground=cor)
         pistas = p.evidence["linux"] + p.evidence["windows"]
-        self.platform_detail = ("%s — %s. %s%s" % (
-            nome, p.abi["name"], p.abi["notes"],
-            ("  Pistas: " + "; ".join(pistas) + ".") if pistas else
-            "  Nenhuma pista de sistema operacional: este código roda igual nos dois."))
+        self.platform_detail: str = "%s — %s. %s%s" % (
+            nome,
+            p.abi["name"],
+            p.abi["notes"],
+            (
+                ("  Pistas: " + "; ".join(pistas) + ".")
+                if pistas
+                else "  Nenhuma pista de sistema operacional: este código roda igual nos dois."
+            ),
+        )
         self.platform_label.bind("<Enter>", lambda e: self.set_status(self.platform_detail))
         self.platform_label.bind("<Button-1>", lambda e: self.set_status(self.platform_detail))
 
-    def refresh_structure(self):
+    def refresh_structure(self) -> None:
+        """Recria a árvore de estrutura: dados, funções, blocos e instruções."""
         self.tree.delete(*self.tree.get_children())
         a = self.analysis
         if not a:
@@ -426,54 +570,95 @@ class AsmXApp(tk.Tk):
         for tag, cor in theme.TAG_COLOR.items():
             self.tree.tag_configure("sem_" + tag, foreground=cor)
 
-        dados = [l for l in a.program.lines if l.kind == "data"]
+        dados = [linha for linha in a.program.lines if linha.kind == "data"]
         if dados:
-            no = self.tree.insert("", "end", text="dados", values=("variáveis declaradas",),
-                                  open=True, tags=("sec",))
-            for l in dados:
-                info = ("reserva %s" % (l.args[0] if l.args else "?")) if l.reserve \
-                    else "%s" % (l.directive or "")
-                self.tree.insert(no, "end", text=(l.label or l.directive or "?"),
-                                 values=(info,), tags=("linha:%d" % l.n, "sec"))
+            no = self.tree.insert(
+                "", "end", text="dados", values=("variáveis declaradas",), open=True, tags=("sec",)
+            )
+            for linha in dados:
+                info = (
+                    ("reserva %s" % (linha.args[0] if linha.args else "?"))
+                    if linha.reserve
+                    else "%s" % (linha.directive or "")
+                )
+                self.tree.insert(
+                    no,
+                    "end",
+                    text=(linha.label or linha.directive or "?"),
+                    values=(info,),
+                    tags=("linha:%d" % linha.n, "sec"),
+                )
 
         func_atual, no_func = None, None
         for b in a.blocks:
             if b.func != func_atual or no_func is None:
                 func_atual = b.func
                 chamadores = callers_of(a, func_atual) if func_atual else []
-                resumo = ("chamada por %s" % ", ".join(chamadores)) if chamadores else \
-                    ("ponto de entrada" if func_atual in ("_start", "main", "start", "WinMain")
-                     else "ninguém chama neste arquivo")
-                no_func = self.tree.insert("", "end", text=func_atual or "código",
-                                           values=(resumo,), open=True, tags=("fn",))
-            entradas = ", ".join("%s (%s)" % (a.blocks[e.target].name, e.why) for e in b.pred) \
-                or ("início" if b.id == 0 else "nada leva até aqui")
+                resumo = (
+                    ("chamada por %s" % ", ".join(chamadores))
+                    if chamadores
+                    else (
+                        "ponto de entrada"
+                        if func_atual in ("_start", "main", "start", "WinMain")
+                        else "ninguém chama neste arquivo"
+                    )
+                )
+                no_func = self.tree.insert(
+                    "",
+                    "end",
+                    text=func_atual or "código",
+                    values=(resumo,),
+                    open=True,
+                    tags=("fn",),
+                )
+            entradas = ", ".join("%s (%s)" % (a.blocks[e.target].name, e.why) for e in b.pred) or (
+                "início" if b.id == 0 else "nada leva até aqui"
+            )
             saidas = ", ".join("%s (%s)" % (a.blocks[e.target].name, e.why) for e in b.succ)
             if b.exit:
                 saidas = (saidas + ", " if saidas else "") + b.exit
-            no_b = self.tree.insert(no_func, "end", text=b.name,
-                                    values=("%d instr · L%d-%d"
-                                            % (len(b.instrs), b.instrs[0].n, b.instrs[-1].n),),
-                                    tags=("blk", "linha:%d" % b.instrs[0].n))
+            no_b = self.tree.insert(
+                no_func,
+                "end",
+                text=b.name,
+                values=("%d instr · L%d-%d" % (len(b.instrs), b.instrs[0].n, b.instrs[-1].n),),
+                tags=("blk", "linha:%d" % b.instrs[0].n),
+            )
             self.tree.insert(no_b, "end", text="vem de", values=(entradas,), tags=("flow",))
-            self.tree.insert(no_b, "end", text="vai para", values=(saidas or "nada",),
-                             tags=("flow",))
+            self.tree.insert(
+                no_b, "end", text="vai para", values=(saidas or "nada",), tags=("flow",)
+            )
             for ins in b.instrs:
-                self.tree.insert(no_b, "end", text="%d: %s" % (ins.n, ins.text[:34]),
-                                 values=(ins.sem.label,),
-                                 tags=("linha:%d" % ins.n, "sem_" + ins.sem.tag))
+                self.tree.insert(
+                    no_b,
+                    "end",
+                    text="%d: %s" % (ins.n, ins.text[:34]),
+                    values=(ins.sem.label,),
+                    tags=("linha:%d" % ins.n, "sem_" + ins.sem.tag),
+                )
 
-    def refresh_problems(self):
+    def refresh_problems(self) -> None:
+        """Recria a lista de problemas e marca as linhas com erro no editor."""
         self.problem_tree.delete(*self.problem_tree.get_children())
         for p in self.problems:
-            self.problem_tree.insert("", "end", values=(p.line, p.code, p.message),
-                                     tags=(p.severity, "linha:%d" % p.line))
+            self.problem_tree.insert(
+                "",
+                "end",
+                values=(p.line, p.code, p.message),
+                tags=(p.severity, "linha:%d" % p.line),
+            )
         self.editor.mark_error_lines([p.line for p in self.problems if p.severity == ERRO])
         idx = self.bottom.index(self.bottom.tabs()[0])
         self.bottom.tab(idx, text="Problemas (%d)" % len(self.problems))
 
     # ====================================================== interações ====
-    def on_cursor(self, line, col):
+    def on_cursor(self, line: int, col: int) -> None:
+        """Mostra no painel de docs a instrução ou a linha onde o cursor está.
+
+        Args:
+            line: linha onde o cursor está.
+            col: coluna onde o cursor está.
+        """
         self.set_status(cursor=(line, col))
         if not self.analysis:
             return
@@ -481,12 +666,16 @@ class AsmXApp(tk.Tk):
         if ins:
             self.show_doc(ins.mnemonic, ins)
             return
-        linha = next((l for l in self.analysis.program.lines if l.n == line), None)
+        linha = next((linha for linha in self.analysis.program.lines if linha.n == line), None)
         if linha is not None and linha.kind in ("label", "data", "directive"):
             self.describe_line(linha)
 
-    def describe_line(self, linha):
-        """Explica rótulos, dados e diretivas no painel de documentação."""
+    def describe_line(self, linha: Line) -> None:
+        """Explica rótulos, dados e diretivas no painel de documentação.
+
+        Args:
+            linha: linha do programa a descrever.
+        """
         t = self.doc_text
         t.configure(state="normal")
         t.delete("1.0", "end")
@@ -495,43 +684,76 @@ class AsmXApp(tk.Tk):
         if linha.kind == "label":
             chamadores = callers_of(self.analysis, linha.label)
             t.insert("end", "Rótulo %s\n" % linha.label, "titulo")
-            t.insert("end", "É um nome para este endereço. O que leva até aqui: %s.\n\n"
-                     % (", ".join(chamadores) if chamadores else "nada neste arquivo"))
+            t.insert(
+                "end",
+                "É um nome para este endereço. O que leva até aqui: %s.\n\n"
+                % (", ".join(chamadores) if chamadores else "nada neste arquivo"),
+            )
             if linha.local_label:
-                t.insert("end", "Começa com ponto: é um rótulo local, pertence à função "
-                                "anterior e pode repetir o nome em outras funções.\n", "dim")
+                t.insert(
+                    "end",
+                    "Começa com ponto: é um rótulo local, pertence à função "
+                    "anterior e pode repetir o nome em outras funções.\n",
+                    "dim",
+                )
         elif linha.kind == "data":
             if linha.reserve:
                 t.insert("end", "Reserva de espaço\n", "titulo")
-                t.insert("end", "%s reserva %s espaço(s) de %d byte(s) sem valor inicial. "
-                                "Fica na seção .bss e nasce zerado.\n"
-                         % (linha.label or "este rótulo", linha.args[0] if linha.args else "?",
-                            linha.unit))
+                t.insert(
+                    "end",
+                    "%s reserva %s espaço(s) de %d byte(s) sem valor inicial. "
+                    "Fica na seção .bss e nasce zerado.\n"
+                    % (
+                        linha.label or "este rótulo",
+                        linha.args[0] if linha.args else "?",
+                        linha.unit,
+                    ),
+                )
             elif linha.directive == "equ":
                 t.insert("end", "Constante do montador\n", "titulo")
-                t.insert("end", "Não ocupa memória: o valor é substituído no momento da "
-                                "montagem.\n")
+                t.insert(
+                    "end", "Não ocupa memória: o valor é substituído no momento da " "montagem.\n"
+                )
             else:
                 t.insert("end", "Dado inicializado\n", "titulo")
-                t.insert("end", "%s grava os valores direto no executável, %d byte(s) por item.\n"
-                         % (linha.directive.upper(), linha.unit))
+                t.insert(
+                    "end",
+                    "%s grava os valores direto no executável, %d byte(s) por item.\n"
+                    % (linha.directive.upper(), linha.unit),
+                )
         else:
             t.insert("end", "Diretiva do montador\n", "titulo")
             t.insert("end", "Instrui a ferramenta de montagem; não vira instrução de CPU.\n")
         t.configure(state="disabled")
 
-    def on_breakpoint(self, line, active):
+    def on_breakpoint(self, line: int, active: bool) -> None:
+        """Guarda os breakpoints na branch e avisa no rodapé.
+
+        Args:
+            line: linha do breakpoint.
+            active: True quando o breakpoint foi ligado.
+        """
         self.project.branch.breakpoints = sorted(self.editor.breakpoints)
         self.project.dirty = True
         self.set_status("breakpoint %s na linha %d" % ("ligado" if active else "desligado", line))
 
-    def _tag_line(self, tags):
+    def _tag_line(self, tags: Union[Tuple[str, ...], str]) -> Optional[int]:
+        """Extrai o número da linha de uma tag "linha:N" da árvore.
+
+        Args:
+            tags: tags do item selecionado; o Tk devolve uma string vazia quando
+                o item não tem nenhuma.
+
+        Returns:
+            O número da linha, ou None quando o item não aponta para uma linha.
+        """
         for t in tags:
             if str(t).startswith("linha:"):
                 return int(str(t).split(":")[1])
         return None
 
-    def on_tree_select(self, event=None):
+    def on_tree_select(self, event: Optional[tk.Event[tk.Misc]] = None) -> None:
+        """Salta para a linha do item selecionado na estrutura."""
         sel = self.tree.selection()
         if not sel:
             return
@@ -539,7 +761,8 @@ class AsmXApp(tk.Tk):
         if linha:
             self.editor.goto_line(linha)
 
-    def on_problem_select(self, event=None):
+    def on_problem_select(self, event: Optional[tk.Event[tk.Misc]] = None) -> None:
+        """Mostra no rodapé a dica do problema selecionado."""
         sel = self.problem_tree.selection()
         if not sel:
             return
@@ -548,7 +771,8 @@ class AsmXApp(tk.Tk):
         if p:
             self.problem_hint.configure(text="%s — %s" % (p.code, p.hint or p.message))
 
-    def on_problem_open(self, event=None):
+    def on_problem_open(self, event: Optional[tk.Event[tk.Misc]] = None) -> None:
+        """Salta para a linha do problema selecionado."""
         sel = self.problem_tree.selection()
         if not sel:
             return
@@ -556,22 +780,29 @@ class AsmXApp(tk.Tk):
         if linha:
             self.editor.goto_line(linha)
 
-    def on_reg_select(self, event=None):
+    def on_reg_select(self, event: Optional[tk.Event[tk.Misc]] = None) -> None:
+        """Mostra no rodapé o que o registrador selecionado faz."""
         sel = self.reg_tree.selection()
         if sel and sel[0] in REG_DOC:
             self.set_status("%s — %s" % (sel[0].upper(), REG_DOC[sel[0]]))
 
     # ========================================================= branches ===
-    def refresh_branches(self):
+    def refresh_branches(self) -> None:
+        """Recarrega a lista de branches da barra superior."""
         nomes = list(self.project.branches)
         self.branch_box.configure(values=nomes)
         self.branch_var.set(self.project.active)
 
-    def branch_new(self):
-        nome = TextPromptDialog(self, "Nova branch", "Nome da nova branch",
-                                hint="A branch copia o código atual. Serve para testar uma ideia "
-                                     "sem mexer no original — por exemplo, trocar um valor por um "
-                                     "número gigante e ver o que quebra.").show()
+    def branch_new(self) -> None:
+        """Pede um nome e cria uma branch a partir da atual."""
+        nome = TextPromptDialog(
+            self,
+            "Nova branch",
+            "Nome da nova branch",
+            hint="A branch copia o código atual. Serve para testar uma ideia "
+            "sem mexer no original — por exemplo, trocar um valor por um "
+            "número gigante e ver o que quebra.",
+        ).show()
         if not nome:
             return
         try:
@@ -583,10 +814,16 @@ class AsmXApp(tk.Tk):
             return
         self.refresh_branches()
         self.load_branch_into_editor()
-        self.set_status("branch %s criada a partir de %s"
-                        % (nome.strip(), self.project.branch.parent))
+        self.set_status(
+            "branch %s criada a partir de %s" % (nome.strip(), self.project.branch.parent)
+        )
 
-    def branch_switch(self, nome):
+    def branch_switch(self, nome: str) -> None:
+        """Troca a branch em edição.
+
+        Args:
+            nome: nome da branch escolhida.
+        """
         if nome == self.project.active:
             return
         self.project.set_code(self.editor.get_code())
@@ -594,9 +831,11 @@ class AsmXApp(tk.Tk):
         self.load_branch_into_editor()
         self.set_status("agora editando a branch %s" % nome)
 
-    def branch_rename(self):
-        novo = TextPromptDialog(self, "Renomear branch", "Novo nome",
-                                value=self.project.active).show()
+    def branch_rename(self) -> None:
+        """Pede um nome novo para a branch atual."""
+        novo = TextPromptDialog(
+            self, "Renomear branch", "Novo nome", value=self.project.active
+        ).show()
         if not novo:
             return
         try:
@@ -606,11 +845,12 @@ class AsmXApp(tk.Tk):
             return
         self.refresh_branches()
 
-    def branch_delete(self):
+    def branch_delete(self) -> None:
+        """Confirma e exclui a branch atual."""
         nome = self.project.active
-        if not messagebox.askyesno("Excluir branch",
-                                   "Excluir a branch %s? Isso não pode ser desfeito." % nome,
-                                   parent=self):
+        if not messagebox.askyesno(
+            "Excluir branch", "Excluir a branch %s? Isso não pode ser desfeito." % nome, parent=self
+        ):
             return
         try:
             self.project.delete_branch(nome)
@@ -620,22 +860,27 @@ class AsmXApp(tk.Tk):
         self.refresh_branches()
         self.load_branch_into_editor()
 
-    def branch_diff(self):
+    def branch_diff(self) -> None:
+        """Pede outra branch e abre a janela de comparação."""
         outras = [b for b in self.project.branches if b != self.project.active]
         if not outras:
             messagebox.showinfo("Comparar", "Só existe uma branch neste projeto.", parent=self)
             return
-        escolha = TextPromptDialog(self, "Comparar branches",
-                                   "Comparar %s com qual branch?" % self.project.active,
-                                   value=outras[0],
-                                   hint="disponíveis: " + ", ".join(outras)).show()
+        escolha = TextPromptDialog(
+            self,
+            "Comparar branches",
+            "Comparar %s com qual branch?" % self.project.active,
+            value=outras[0],
+            hint="disponíveis: " + ", ".join(outras),
+        ).show()
         if not escolha or escolha.strip() not in self.project.branches:
             return
         self.project.set_code(self.editor.get_code())
         diff = self.project.diff(self.project.active, escolha.strip())
         DiffDialog(self, "%s ↔ %s" % (self.project.active, escolha.strip()), diff)
 
-    def load_branch_into_editor(self):
+    def load_branch_into_editor(self) -> None:
+        """Joga a branch ativa no editor e refaz a análise e a máquina."""
         self._suspend_change = True
         self.editor.set_code(self.project.code)
         self.editor.breakpoints = set(self.project.branch.breakpoints)
@@ -647,26 +892,39 @@ class AsmXApp(tk.Tk):
         self.refresh_branches()
 
     # ========================================================== arquivo ===
-    def new_project(self):
+    def new_project(self) -> None:
+        """Cria um projeto vazio depois de confirmar o descarte do atual."""
         if not self.confirm_discard():
             return
-        self.project = Project.new(code="; novo programa\n\nsection .text\n    global _start\n\n_start:\n    \n")
+        self.project = Project.new(
+            code="; novo programa\n\nsection .text\n    global _start\n\n_start:\n    \n"
+        )
         self.load_branch_into_editor()
         self.title("ASM X")
 
-    def open_project(self):
-        caminho = filedialog.askopenfilename(title="Abrir projeto", filetypes=PROJ_TYPES, parent=self)
+    def open_project(self) -> None:
+        """Abre um arquivo .asmproj escolhido pelo usuário."""
+        caminho = filedialog.askopenfilename(
+            title="Abrir projeto", filetypes=PROJ_TYPES, parent=self
+        )
         if not caminho:
             return
         try:
             self.project = Project.load(caminho)
-        except Exception as exc:                       # noqa: BLE001
-            messagebox.showerror("Abrir projeto", "Não consegui ler o arquivo:\n%s" % exc, parent=self)
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror(
+                "Abrir projeto", "Não consegui ler o arquivo:\n%s" % exc, parent=self
+            )
             return
         self.load_branch_into_editor()
         self.title("ASM X — %s" % os.path.basename(caminho))
 
-    def save_project(self):
+    def save_project(self) -> bool:
+        """Salva o projeto; sem caminho definido, pede um.
+
+        Returns:
+            True quando o projeto foi salvo.
+        """
         self.project.set_code(self.editor.get_code())
         self.project.branch.breakpoints = sorted(self.editor.breakpoints)
         if not self.project.path:
@@ -675,9 +933,15 @@ class AsmXApp(tk.Tk):
         self.set_status("projeto salvo em %s" % self.project.path)
         return True
 
-    def save_project_as(self):
-        caminho = filedialog.asksaveasfilename(title="Salvar projeto", defaultextension=".asmproj",
-                                               filetypes=PROJ_TYPES, parent=self)
+    def save_project_as(self) -> bool:
+        """Pede um caminho e salva o projeto nele.
+
+        Returns:
+            True quando salvou, False quando o usuário cancela.
+        """
+        caminho = filedialog.asksaveasfilename(
+            title="Salvar projeto", defaultextension=".asmproj", filetypes=PROJ_TYPES, parent=self
+        )
         if not caminho:
             return False
         self.project.set_code(self.editor.get_code())
@@ -686,8 +950,11 @@ class AsmXApp(tk.Tk):
         self.set_status("projeto salvo em %s" % caminho)
         return True
 
-    def import_asm(self):
-        caminho = filedialog.askopenfilename(title="Importar .asm", filetypes=ASM_TYPES, parent=self)
+    def import_asm(self) -> None:
+        """Importa um arquivo .asm como um projeto novo."""
+        caminho = filedialog.askopenfilename(
+            title="Importar .asm", filetypes=ASM_TYPES, parent=self
+        )
         if not caminho:
             return
         if not self.confirm_discard():
@@ -696,41 +963,57 @@ class AsmXApp(tk.Tk):
         self.load_branch_into_editor()
         self.title("ASM X — %s" % os.path.basename(caminho))
 
-    def export_asm(self):
-        caminho = filedialog.asksaveasfilename(title="Exportar branch", defaultextension=".asm",
-                                               filetypes=ASM_TYPES, parent=self)
+    def export_asm(self) -> None:
+        """Exporta o código da branch atual para um arquivo .asm."""
+        caminho = filedialog.asksaveasfilename(
+            title="Exportar branch", defaultextension=".asm", filetypes=ASM_TYPES, parent=self
+        )
         if not caminho:
             return
         self.project.set_code(self.editor.get_code())
         self.project.export_asm(caminho)
         self.set_status("branch %s exportada para %s" % (self.project.active, caminho))
 
-    def load_example(self, key):
+    def load_example(self, key: str) -> None:
+        """Abre um dos exemplos embutidos.
+
+        Args:
+            key: chave do exemplo em EXAMPLES.
+        """
         if not self.confirm_discard():
             return
         self.project = Project.new(code=EXAMPLES[key]["code"], name=key)
         self.load_branch_into_editor()
         self.title("ASM X — %s" % EXAMPLES[key]["title"])
 
-    def confirm_discard(self):
+    def confirm_discard(self) -> bool:
+        """Pergunta o que fazer com alterações não salvas.
+
+        Returns:
+            True para seguir e descartar, False para cancelar a operação.
+        """
         if not self.project.dirty:
             return True
         resposta = messagebox.askyesnocancel(
             "Alterações não salvas",
-            "O projeto tem alterações não salvas. Quer salvar antes?", parent=self)
+            "O projeto tem alterações não salvas. Quer salvar antes?",
+            parent=self,
+        )
         if resposta is None:
             return False
         if resposta:
             return bool(self.save_project())
         return True
 
-    def on_close(self):
+    def on_close(self) -> None:
+        """Salva o que estiver pendente e fecha a janela."""
         self.project.set_code(self.editor.get_code())
         if self.confirm_discard():
             self.destroy()
 
     # ======================================================== execução ====
-    def reset_machine(self):
+    def reset_machine(self) -> None:
+        """Cria uma máquina nova a partir da análise atual."""
         if not self.analysis:
             return
         self.machine = Machine(self.analysis)
@@ -738,12 +1021,18 @@ class AsmXApp(tk.Tk):
         self.refresh_machine()
         self.set_status("máquina reiniciada")
 
-    def _ensure_machine(self):
+    def _ensure_machine(self) -> Optional[Machine]:
+        """Devolve a máquina da análise atual, reiniciando se o código mudou.
+
+        Returns:
+            A máquina pronta para executar, ou None quando não há análise.
+        """
         if self.machine is None or self.machine.analysis is not self.analysis:
             self.reset_machine()
         return self.machine
 
-    def step(self):
+    def step(self) -> None:
+        """Executa uma instrução e atualiza o painel da máquina."""
         m = self._ensure_machine()
         if m.halted:
             self.set_status("a execução já terminou — use Reiniciar (F10)")
@@ -752,7 +1041,8 @@ class AsmXApp(tk.Tk):
         m.step()
         self.refresh_machine()
 
-    def run(self):
+    def run(self) -> None:
+        """Roda até o fim ou até um breakpoint e atualiza o painel."""
         m = self._ensure_machine()
         if m.halted:
             self.reset_machine()
@@ -763,10 +1053,10 @@ class AsmXApp(tk.Tk):
         if m.halted:
             self.set_status("execução encerrada com código %s" % m.exit_code)
         else:
-            self.set_status("parou no breakpoint da linha %s"
-                            % (m.current.n if m.current else "?"))
+            self.set_status("parou no breakpoint da linha %s" % (m.current.n if m.current else "?"))
 
-    def run_to_cursor(self):
+    def run_to_cursor(self) -> None:
+        """Roda até a instrução da linha onde o cursor está."""
         m = self._ensure_machine()
         alvo = self.editor.cursor_line()
         indices = {i.idx for i in self.analysis.instrs if i.n == alvo}
@@ -777,7 +1067,8 @@ class AsmXApp(tk.Tk):
         m.run_until(indices)
         self.refresh_machine()
 
-    def debug_function(self):
+    def debug_function(self) -> None:
+        """Pede um rótulo e executa só aquela função, com a pilha limpa."""
         if not self.analysis:
             return
         funcoes = sorted(self.analysis.label_at)
@@ -785,11 +1076,14 @@ class AsmXApp(tk.Tk):
             messagebox.showinfo("Depurar função", "Este código não tem rótulos.", parent=self)
             return
         escolha = TextPromptDialog(
-            self, "Depurar função isolada", "Qual rótulo?",
+            self,
+            "Depurar função isolada",
+            "Qual rótulo?",
             value=funcoes[0],
             hint="A execução começa nele com a pilha limpa. Defina os registradores de entrada "
-                 "em um cenário de teste se a função depender de argumentos.\n\ndisponíveis: "
-                 + ", ".join(funcoes[:20])).show()
+            "em um cenário de teste se a função depender de argumentos.\n\ndisponíveis: "
+            + ", ".join(funcoes[:20]),
+        ).show()
         if not escolha or escolha.strip() not in self.analysis.label_at:
             return
         self.machine = Machine(self.analysis, entry=escolha.strip())
@@ -798,7 +1092,8 @@ class AsmXApp(tk.Tk):
         self.right.select(0)
         self.set_status("depurando %s isoladamente — use Passo (F8)" % escolha.strip())
 
-    def refresh_machine(self):
+    def refresh_machine(self) -> None:
+        """Redesenha registradores, flags, pilha, variáveis, saída e histórico."""
         m = self.machine
         if not m:
             return
@@ -814,8 +1109,9 @@ class AsmXApp(tk.Tk):
         texto += " · %d passos" % m.steps
         if m.issues:
             texto += "\n⚠ " + m.issues[-1]
-        self.exec_label.configure(text=texto,
-                                  foreground=theme.SEV_COLOR["erro"] if m.issues else theme.DIM)
+        self.exec_label.configure(
+            text=texto, foreground=theme.SEV_COLOR["erro"] if m.issues else theme.DIM
+        )
 
         self.reg_tree.delete(*self.reg_tree.get_children())
         for r in REGS64:
@@ -826,17 +1122,22 @@ class AsmXApp(tk.Tk):
             elif v == 0:
                 tags.append("zero")
             dec = to_signed(v)
-            legivel = "" if abs(dec) > 10 ** 12 else str(dec)   # endereços não ajudam em decimal
-            self.reg_tree.insert("", "end", iid=r, text=r, values=(hexs(v), legivel),
-                                 tags=tuple(tags))
+            legivel = "" if abs(dec) > 10**12 else str(dec)  # endereços não ajudam em decimal
+            self.reg_tree.insert(
+                "", "end", iid=r, text=r, values=(hexs(v), legivel), tags=tuple(tags)
+            )
 
         self.flags_label.configure(
             text="  ".join("%s=%d" % (f, m.flags[f]) for f in ("ZF", "SF", "CF", "OF", "PF", "DF")),
-            foreground=theme.CMP)
+            foreground=theme.CMP,
+        )
 
         self.mem_tree.delete(*self.mem_tree.get_children())
-        pilha = self.mem_tree.insert("", "end", text="pilha", values=("", "topo primeiro"), open=True)
+        pilha = self.mem_tree.insert(
+            "", "end", text="pilha", values=("", "topo primeiro"), open=True
+        )
         from ..emulator import RET_MAGIC, STACK_TOP
+
         endereco = m.regs["rsp"]
         for i in range(6):
             if endereco + i * 8 >= STACK_TOP:
@@ -854,13 +1155,15 @@ class AsmXApp(tk.Tk):
             dados = self.mem_tree.insert("", "end", text="variáveis", values=("", ""), open=True)
             for nome, s in m.symbols.items():
                 if s.addr is None:
-                    self.mem_tree.insert(dados, "end", text=nome,
-                                         values=(str(s.equ), "constante do montador"))
+                    self.mem_tree.insert(
+                        dados, "end", text=nome, values=(str(s.equ), "constante do montador")
+                    )
                     continue
                 n = min(s.size or 8, 12)
                 brutos = " ".join("%02x" % m.rd8(s.addr + i) for i in range(n))
-                texto = "".join(chr(b) if 32 <= b < 127 else "."
-                                for b in (m.rd8(s.addr + i) for i in range(n)))
+                texto = "".join(
+                    chr(b) if 32 <= b < 127 else "." for b in (m.rd8(s.addr + i) for i in range(n))
+                )
                 self.mem_tree.insert(dados, "end", text=nome, values=(brutos, texto))
 
         self.output_text.configure(state="normal")
@@ -873,18 +1176,21 @@ class AsmXApp(tk.Tk):
             self.trace_tree.insert("", "end", values=(passo.line, passo.text, passo.note))
 
     # ======================================================== validação ===
-    def validate_now(self):
+    def validate_now(self) -> None:
+        """Valida o código, abre a aba Problemas e resume o resultado no rodapé."""
         self.analyze_now()
         self.bottom.select(0)
         erros = [p for p in self.problems if p.severity == ERRO]
         if not self.problems:
             self.set_status("nenhum problema encontrado")
         else:
-            self.set_status(summary(self.problems) +
-                            (" — comece pelo primeiro erro da lista" if erros else ""))
+            self.set_status(
+                summary(self.problems) + (" — comece pelo primeiro erro da lista" if erros else "")
+            )
 
     # ========================================================= cenários ===
-    def refresh_scenarios(self):
+    def refresh_scenarios(self) -> None:
+        """Recria a lista de cenários com o resultado da última execução."""
         self.scenario_tree.delete(*self.scenario_tree.get_children())
         resultados = {r.scenario: r for r in self.results}
         for s in self.project.branch.scenarios:
@@ -896,13 +1202,19 @@ class AsmXApp(tk.Tk):
             else:
                 resultado, tag = "falhou", ("falhou",)
             regs = ", ".join("%s=%s" % (k, v) for k, v in (s.regs or {}).items())
-            self.scenario_tree.insert("", "end", iid=s.name, text=s.name,
-                                      values=(s.entry or "entrada do programa", regs, resultado),
-                                      tags=tag)
+            self.scenario_tree.insert(
+                "",
+                "end",
+                iid=s.name,
+                text=s.name,
+                values=(s.entry or "entrada do programa", regs, resultado),
+                tags=tag,
+            )
         idx = self.bottom.index(self.bottom.tabs()[2])
         self.bottom.tab(idx, text="Testes (%d)" % len(self.project.branch.scenarios))
 
-    def on_scenario_select(self, event=None):
+    def on_scenario_select(self, event: Optional[tk.Event[tk.Misc]] = None) -> None:
+        """Mostra no rodapé o resultado do cenário selecionado."""
         s = self._selected_scenario()
         if not s:
             return
@@ -910,28 +1222,42 @@ class AsmXApp(tk.Tk):
         if r is None:
             self.scenario_detail.configure(
                 text="%s — ainda não rodou. Começa em %s com %s."
-                     % (s.name, s.entry or "o ponto de entrada",
-                        ", ".join("%s=%s" % kv for kv in (s.regs or {}).items()) or "os registradores zerados"),
-                foreground=theme.DIM)
+                % (
+                    s.name,
+                    s.entry or "o ponto de entrada",
+                    ", ".join("%s=%s" % kv for kv in (s.regs or {}).items())
+                    or "os registradores zerados",
+                ),
+                foreground=theme.DIM,
+            )
             return
-        partes = ["%s: %s" % ("passou" if r.passed else "FALHOU", r.reason),
-                  "%d instruções executadas" % r.steps,
-                  "código de saída: %s" % r.exit_code]
+        partes = [
+            "%s: %s" % ("passou" if r.passed else "FALHOU", r.reason),
+            "%d instruções executadas" % r.steps,
+            "código de saída: %s" % r.exit_code,
+        ]
         if r.output:
             partes.append("saída: %r" % r.output)
         if r.issues:
             partes.append("problemas detectados: " + "; ".join(r.issues[:3]))
         self.scenario_detail.configure(
             text="   ·   ".join(partes),
-            foreground=theme.CALL if r.passed else theme.SEV_COLOR["erro"])
+            foreground=theme.CALL if r.passed else theme.SEV_COLOR["erro"],
+        )
 
-    def _selected_scenario(self):
+    def _selected_scenario(self) -> Optional[Scenario]:
+        """Devolve o cenário selecionado na lista.
+
+        Returns:
+            O cenário selecionado, ou None quando nada está selecionado.
+        """
         sel = self.scenario_tree.selection()
         if not sel:
             return None
         return next((s for s in self.project.branch.scenarios if s.name == sel[0]), None)
 
-    def scenario_new(self):
+    def scenario_new(self) -> None:
+        """Pede um cenário novo e guarda na branch."""
         labels = sorted(self.analysis.label_at) if self.analysis else []
         s = ScenarioDialog(self, labels).show()
         if s:
@@ -939,7 +1265,8 @@ class AsmXApp(tk.Tk):
             self.refresh_scenarios()
             self.bottom.select(2)
 
-    def scenario_edit(self):
+    def scenario_edit(self) -> None:
+        """Edita o cenário selecionado na lista."""
         s = self._selected_scenario()
         if not s:
             self.set_status("selecione um cenário na lista")
@@ -952,7 +1279,8 @@ class AsmXApp(tk.Tk):
             self.project.add_scenario(novo)
             self.refresh_scenarios()
 
-    def scenario_delete(self):
+    def scenario_delete(self) -> None:
+        """Remove o cenário selecionado e o resultado dele."""
         s = self._selected_scenario()
         if not s:
             return
@@ -960,7 +1288,8 @@ class AsmXApp(tk.Tk):
         self.results = [r for r in self.results if r.scenario != s.name]
         self.refresh_scenarios()
 
-    def run_selected_scenario(self):
+    def run_selected_scenario(self) -> None:
+        """Roda o cenário selecionado e mostra o resultado."""
         s = self._selected_scenario()
         if not s:
             self.set_status("selecione um cenário na lista")
@@ -971,7 +1300,8 @@ class AsmXApp(tk.Tk):
         self.refresh_scenarios()
         self.set_status("%s: %s" % (s.name, "passou" if r.passed else r.reason))
 
-    def run_all_scenarios(self):
+    def run_all_scenarios(self) -> None:
+        """Roda todos os cenários da branch e conta quantos passaram."""
         cenarios = self.project.branch.scenarios
         if not cenarios:
             self.bottom.select(2)
@@ -985,33 +1315,44 @@ class AsmXApp(tk.Tk):
         self.set_status("%d de %d cenários passaram" % (passou, len(self.results)))
 
     # ======================================================== anotações ===
-    def refresh_notes(self):
+    def refresh_notes(self) -> None:
+        """Recria a lista de anotações e sincroniza a calha do editor."""
         self.note_tree.delete(*self.note_tree.get_children())
         for linha in sorted(self.project.branch.notes, key=lambda x: int(x)):
-            self.note_tree.insert("", "end", iid=linha, text=linha,
-                                  values=(self.project.branch.notes[linha],))
+            self.note_tree.insert(
+                "", "end", iid=linha, text=linha, values=(self.project.branch.notes[linha],)
+            )
         self.editor.notes = dict(self.project.branch.notes)
         self.editor.redraw_gutter()
 
-    def edit_note(self):
+    def edit_note(self) -> None:
+        """Anota a linha do cursor; com o campo vazio, remove a anotação dela."""
         linha = self.editor.cursor_line()
         atual = self.project.note(linha)
-        texto = TextPromptDialog(self, "Anotação da linha %d" % linha,
-                                 "O que você quer lembrar sobre esta linha?",
-                                 value=atual, multiline=True,
-                                 hint="Fica guardado no projeto, separado do código.").show()
+        texto = TextPromptDialog(
+            self,
+            "Anotação da linha %d" % linha,
+            "O que você quer lembrar sobre esta linha?",
+            value=atual,
+            multiline=True,
+            hint="Fica guardado no projeto, separado do código.",
+        ).show()
         if texto is None:
             return
         self.project.set_note(linha, texto)
         self.refresh_notes()
-        self.set_status("anotação %s na linha %d" % ("salva" if texto.strip() else "removida", linha))
+        self.set_status(
+            "anotação %s na linha %d" % ("salva" if texto.strip() else "removida", linha)
+        )
 
-    def on_note_open(self, event=None):
+    def on_note_open(self, event: Optional[tk.Event[tk.Misc]] = None) -> None:
+        """Salta para a linha da anotação selecionada."""
         sel = self.note_tree.selection()
         if sel:
             self.editor.goto_line(int(sel[0]))
 
-    def delete_note(self):
+    def delete_note(self) -> None:
+        """Remove a anotação da linha selecionada na lista."""
         sel = self.note_tree.selection()
         if not sel:
             return
@@ -1019,19 +1360,27 @@ class AsmXApp(tk.Tk):
         self.refresh_notes()
 
     # ===================================================== documentação ===
-    def refresh_doc_list(self):
+    def refresh_doc_list(self) -> None:
+        """Filtra a lista de mnemônicos pelo texto digitado na busca."""
         termo = self.doc_query.get().strip().lower()
         self.doc_list.delete(0, "end")
         nomes = [k for k in sorted(ISA) if k.startswith(termo)] if termo else sorted(ISA)
         for n in nomes[:60]:
             self.doc_list.insert("end", n)
 
-    def on_doc_select(self, event=None):
+    def on_doc_select(self, event: Optional[tk.Event[tk.Misc]] = None) -> None:
+        """Mostra a documentação do mnemônico selecionado na lista."""
         sel = self.doc_list.curselection()
         if sel:
             self.show_doc(self.doc_list.get(sel[0]))
 
-    def show_doc(self, mnemonic, ins=None):
+    def show_doc(self, mnemonic: Optional[str], ins: Optional[Line] = None) -> None:
+        """Escreve no painel de docs a ajuda de um mnemônico.
+
+        Args:
+            mnemonic: mnemônico consultado; sem documentação, avisa no painel.
+            ins: instrução do código, quando a consulta veio do editor.
+        """
         info = ISA.get((mnemonic or "").lower())
         t = self.doc_text
         t.configure(state="normal")
@@ -1074,24 +1423,36 @@ class AsmXApp(tk.Tk):
         t.configure(state="disabled")
 
     # ============================================================ outros ==
-    def editor_toggle_comment(self):
+    def editor_toggle_comment(self) -> None:
+        """Comenta ou descomenta a seleção pelo menu Editar."""
         self.editor.toggle_comment()
 
-    def find(self):
+    def find(self) -> None:
+        """Pede um termo e procura no editor."""
         termo = TextPromptDialog(self, "Procurar", "Procurar por").show()
         if termo:
             if not self.editor.find(termo):
                 self.set_status("não encontrei %r" % termo)
 
-    def goto_line(self):
+    def goto_line(self) -> None:
+        """Pede um número de linha e salta até ela."""
         valor = TextPromptDialog(self, "Ir para a linha", "Número da linha").show()
         if valor and valor.strip().isdigit():
             self.editor.goto_line(int(valor.strip()))
 
-    def show_about(self):
+    def show_about(self) -> None:
+        """Abre a janela com os atalhos e a versão."""
         AboutDialog(self, __version__).show()
 
-    def set_status(self, mensagem=None, cursor=None):
+    def set_status(
+        self, mensagem: Optional[str] = None, cursor: Optional[Tuple[int, int]] = None
+    ) -> None:
+        """Escreve a linha de status com cursor, branch, estatísticas e avisos.
+
+        Args:
+            mensagem: recado extra no fim da linha.
+            cursor: posição (linha, coluna) a mostrar; sem ela vale a do cursor.
+        """
         partes = []
         if cursor:
             partes.append("Ln %d, Col %d" % cursor)
@@ -1110,6 +1471,7 @@ class AsmXApp(tk.Tk):
         self.status.configure(text="   ·   ".join(partes))
 
 
-def main():
+def main() -> None:
+    """Abre a janela principal e entra no laço de eventos do Tkinter."""
     app = AsmXApp()
     app.mainloop()

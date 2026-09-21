@@ -1,0 +1,16 @@
+# ASM X — runtime requirements
+#
+# ASM X has ZERO runtime dependencies: everything it needs ships with the
+# Python standard library (tkinter for the GUI, argparse, json, dataclasses,
+# unittest ...).  There is nothing to install here, on purpose.
+#
+# This file exists only so that `pip install -r requirements.txt` keeps
+# working in documentation, CI and downstream scripts.  It installs nothing.
+#
+# System-level extra: Tkinter must be present for the GUI.
+#   Debian/Ubuntu:  sudo apt install python3-tk
+#   Fedora:         sudo dnf install python3-tkinter
+#   macOS/Windows:  use the python.org installer (tcl/tk included)
+#
+# Development and CI tooling (flake8, mypy, coverage, black, bandit, ...)
+# lives in requirements-dev.txt.

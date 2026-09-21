@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256"
+     role="img" aria-labelledby="asmxMarkTitle">
+  <title id="asmxMarkTitle">ASM X — marca [x] com lente sobre registradores</title>
+
+  <defs>
+    <linearGradient id="markPanel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#16202E"/>
+      <stop offset="1" stop-color="#0F1826"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="8" y="8" width="240" height="240" rx="46" fill="url(#markPanel)"/>
+  <rect x="8" y="8" width="240" height="240" rx="46" fill="none" stroke="#26394E"
+        stroke-width="2"/>
+
+  <!-- colchetes do endereçamento -->
+  <g stroke="#57C8D2" stroke-width="7" stroke-linecap="round" fill="none" opacity="0.75">
+    <path d="M34 84 L34 70 L54 70"/>
+    <path d="M34 172 L34 186 L54 186"/>
+    <path d="M222 84 L222 70 L202 70"/>
+    <path d="M222 172 L222 186 L202 186"/>
+  </g>
+
+  <!-- registradores empilhados -->
+  <g fill="#57C8D2" opacity="0.42">
+    <rect x="82" y="78" width="92" height="11" rx="3"/>
+    <rect x="82" y="95" width="92" height="11" rx="3"/>
+    <rect x="82" y="150" width="92" height="11" rx="3"/>
+    <rect x="82" y="167" width="92" height="11" rx="3"/>
+  </g>
+  <rect x="82" y="112" width="92" height="11" rx="3" fill="#E3A44B"/>
+  <rect x="82" y="129" width="92" height="11" rx="3" fill="#E3A44B" opacity="0.45"/>
+
+  <!-- lente de inspeção -->
+  <circle cx="128" cy="118" r="40" fill="#0F1826" fill-opacity="0.3"
+          stroke="#57C8D2" stroke-width="7"/>
+  <circle cx="128" cy="118" r="40" fill="none" stroke="#9C8CF0" stroke-width="2"
+          opacity="0.55"/>
+  <line x1="157" y1="147" x2="180" y2="170" stroke="#57C8D2" stroke-width="9"
+        stroke-linecap="round"/>
+</svg>

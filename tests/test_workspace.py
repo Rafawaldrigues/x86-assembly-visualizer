@@ -3,28 +3,27 @@ import tempfile
 import unittest
 
 from asmx.examples import EXAMPLES
-from asmx.workspace import (Project, Scenario, parse_reg_values,
-                            run_all_scenarios, run_scenario)
+from asmx.workspace import Project, Scenario, parse_reg_values, run_all_scenarios, run_scenario
 
 HELLO = EXAMPLES["linux-hello"]["code"]
 
 
 class TestProjeto(unittest.TestCase):
 
-    def setUp(self):
+    def setUp(self) -> None:
         self.p = Project.new(code=HELLO, name="teste")
 
-    def test_projeto_novo_tem_branch_principal(self):
+    def test_projeto_novo_tem_branch_principal(self) -> None:
         self.assertEqual(self.p.active, "principal")
         self.assertEqual(self.p.code, HELLO)
 
-    def test_fork_copia_o_codigo(self):
+    def test_fork_copia_o_codigo(self) -> None:
         b = self.p.fork("experimento")
         self.assertEqual(b.code, HELLO)
         self.assertEqual(b.parent, "principal")
         self.assertIn("experimento", self.p.branches)
 
-    def test_branches_sao_independentes(self):
+    def test_branches_sao_independentes(self) -> None:
         self.p.fork("experimento")
         self.p.switch("experimento")
         self.p.set_code("mov rax, 1")
@@ -32,32 +31,32 @@ class TestProjeto(unittest.TestCase):
         self.p.switch("principal")
         self.assertEqual(self.p.code, HELLO)
 
-    def test_fork_com_nome_repetido_falha(self):
+    def test_fork_com_nome_repetido_falha(self) -> None:
         self.p.fork("x")
         with self.assertRaises(ValueError):
             self.p.fork("x")
 
-    def test_fork_sem_nome_falha(self):
+    def test_fork_sem_nome_falha(self) -> None:
         with self.assertRaises(ValueError):
             self.p.fork("   ")
 
-    def test_nao_apaga_a_ultima_branch(self):
+    def test_nao_apaga_a_ultima_branch(self) -> None:
         with self.assertRaises(ValueError):
             self.p.delete_branch("principal")
 
-    def test_apagar_branch_ativa_troca_para_outra(self):
+    def test_apagar_branch_ativa_troca_para_outra(self) -> None:
         self.p.fork("b2")
         self.p.switch("b2")
         self.p.delete_branch("b2")
         self.assertEqual(self.p.active, "principal")
 
-    def test_renomear_branch_mantem_filhos(self):
+    def test_renomear_branch_mantem_filhos(self) -> None:
         self.p.fork("filha")
         self.p.rename_branch("principal", "base")
         self.assertEqual(self.p.branches["filha"].parent, "base")
         self.assertEqual(self.p.active, "base")
 
-    def test_diff_entre_branches(self):
+    def test_diff_entre_branches(self) -> None:
         self.p.fork("alt")
         self.p.switch("alt")
         self.p.set_code(HELLO.replace("Ola, mundo!", "Outro texto"))
@@ -65,13 +64,13 @@ class TestProjeto(unittest.TestCase):
         self.assertIn("Outro texto", d)
         self.assertIn("-", d)
 
-    def test_anotacoes_por_linha(self):
+    def test_anotacoes_por_linha(self) -> None:
         self.p.set_note(3, "aqui começa o texto")
         self.assertEqual(self.p.note(3), "aqui começa o texto")
         self.p.set_note(3, "")
         self.assertEqual(self.p.note(3), "")
 
-    def test_anotacao_nao_vaza_para_nova_branch_depois_do_fork(self):
+    def test_anotacao_nao_vaza_para_nova_branch_depois_do_fork(self) -> None:
         self.p.set_note(1, "nota da principal")
         self.p.fork("b")
         self.p.switch("b")
@@ -80,13 +79,13 @@ class TestProjeto(unittest.TestCase):
         self.p.switch("principal")
         self.assertEqual(self.p.note(1), "nota da principal")
 
-    def test_breakpoints(self):
+    def test_breakpoints(self) -> None:
         self.assertTrue(self.p.toggle_breakpoint(10))
         self.assertIn(10, self.p.branch.breakpoints)
         self.assertFalse(self.p.toggle_breakpoint(10))
         self.assertNotIn(10, self.p.branch.breakpoints)
 
-    def test_salvar_e_carregar(self):
+    def test_salvar_e_carregar(self) -> None:
         self.p.set_note(2, "olha isto")
         self.p.fork("outra")
         self.p.toggle_breakpoint(4)
@@ -103,7 +102,7 @@ class TestProjeto(unittest.TestCase):
         self.assertEqual(q.branch.scenarios[0].name, "básico")
         self.assertFalse(q.dirty)
 
-    def test_importar_asm_e_exportar(self):
+    def test_importar_asm_e_exportar(self) -> None:
         with tempfile.TemporaryDirectory() as d:
             origem = os.path.join(d, "a.asm")
             with open(origem, "w", encoding="utf-8") as f:
@@ -115,7 +114,7 @@ class TestProjeto(unittest.TestCase):
             with open(destino, encoding="utf-8") as f:
                 self.assertEqual(f.read(), HELLO)
 
-    def test_marca_de_alteracao(self):
+    def test_marca_de_alteracao(self) -> None:
         self.assertFalse(self.p.dirty)
         self.p.set_code("mov rax, 1")
         self.assertTrue(self.p.dirty)
@@ -123,51 +122,58 @@ class TestProjeto(unittest.TestCase):
 
 class TestCenarios(unittest.TestCase):
 
-    def test_parse_reg_values(self):
+    def test_parse_reg_values(self) -> None:
         d = parse_reg_values("rax=10, rbx=0x20; rcx = 5")
         self.assertEqual(d, {"rax": 10, "rbx": 32, "rcx": 5})
         self.assertEqual(parse_reg_values("naoexiste=1"), {})
 
-    def test_cenario_aprovado(self):
-        r = run_scenario(HELLO, Scenario(name="saida", expect_output="Ola, mundo!\n", expect_exit=0))
+    def test_cenario_aprovado(self) -> None:
+        r = run_scenario(
+            HELLO, Scenario(name="saida", expect_output="Ola, mundo!\n", expect_exit=0)
+        )
         self.assertTrue(r.passed, r.reason)
         self.assertEqual(r.exit_code, 0)
 
-    def test_cenario_reprovado_mostra_motivo(self):
+    def test_cenario_reprovado_mostra_motivo(self) -> None:
         r = run_scenario(HELLO, Scenario(name="errado", expect_output="outra coisa"))
         self.assertFalse(r.passed)
         self.assertIn("saída diferente", r.reason)
 
-    def test_cenario_com_entrada_em_funcao_e_registradores(self):
+    def test_cenario_com_entrada_em_funcao_e_registradores(self) -> None:
         code = EXAMPLES["escala"]["code"]
-        r = run_scenario(code, Scenario(name="soma ate 10", entry="soma_ate",
-                                        regs={"rdi": 10}))
+        r = run_scenario(code, Scenario(name="soma ate 10", entry="soma_ate", regs={"rdi": 10}))
         self.assertTrue(r.passed, r.reason)
-        r2 = run_scenario(code, Scenario(name="soma ate 100", entry="soma_ate",
-                                         regs={"rdi": 100}))
+        r2 = run_scenario(code, Scenario(name="soma ate 100", entry="soma_ate", regs={"rdi": 100}))
         self.assertTrue(r2.passed, r2.reason)
         self.assertGreater(r2.steps, r.steps)
 
-    def test_cenario_de_valor_absurdo_detecta_problema(self):
+    def test_cenario_de_valor_absurdo_detecta_problema(self) -> None:
         """É o caso 'e se eu colocar um número muito alto?'."""
         code = EXAMPLES["escala"]["code"]
-        r = run_scenario(code, Scenario(name="N gigante", entry="soma_ate",
-                                        regs={"rdi": "0xFFFFFFFFFFFFFFFF"},
-                                        max_steps=5000, expect_issue=True))
+        r = run_scenario(
+            code,
+            Scenario(
+                name="N gigante",
+                entry="soma_ate",
+                regs={"rdi": "0xFFFFFFFFFFFFFFFF"},
+                max_steps=5000,
+                expect_issue=True,
+            ),
+        )
         self.assertTrue(r.passed, r.reason)
         self.assertTrue(r.issues)
 
-    def test_cenario_espera_problema_mas_nao_ha(self):
+    def test_cenario_espera_problema_mas_nao_ha(self) -> None:
         r = run_scenario(HELLO, Scenario(name="falso alarme", expect_issue=True))
         self.assertFalse(r.passed)
         self.assertIn("esperava", r.reason)
 
-    def test_rodar_todos_os_cenarios(self):
+    def test_rodar_todos_os_cenarios(self) -> None:
         cenarios = [Scenario(name="a", expect_exit=0), Scenario(name="b", expect_exit=99)]
         rs = run_all_scenarios(HELLO, cenarios)
         self.assertEqual([r.passed for r in rs], [True, False])
 
-    def test_cenario_serializa(self):
+    def test_cenario_serializa(self) -> None:
         s = Scenario(name="x", regs={"rax": 1}, expect_exit=0)
         d = s.to_dict()
         s2 = Scenario.from_dict(d)

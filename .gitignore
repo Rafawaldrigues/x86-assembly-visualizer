@@ -1,4 +1,66 @@
+# ---------------------------------------------------------------------------
+# ASM X .gitignore
+# ---------------------------------------------------------------------------
+
+# --- Python bytecode and caches ---
 __pycache__/
 *.py[cod]
-.DS_Store
+*$py.class
+*.so
+.Python
 
+# --- Build, packaging and distribution artefacts ---
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+MANIFEST
+pip-wheel-metadata/
+share/python-wheels/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# --- Tests, coverage and tooling caches ---
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+nosetests.xml
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+.tox/
+.nox/
+.ruff_cache/
+.cache/
+
+# --- IDEs and editors ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.spyderproject
+.spyproject
+
+# --- Operating systems ---
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# --- ASM X project artifacts (user work, never source) ---
+*.asmproj
+*.asmproj.bak
+results/
+*.asmx-session

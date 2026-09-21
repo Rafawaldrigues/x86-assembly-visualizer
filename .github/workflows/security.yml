@@ -1,0 +1,116 @@
+name: Security
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  schedule:
+    # Weekly, so new advisories are noticed even without a commit.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bandit:
+    name: Bandit SAST
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install bandit
+        run: python -m pip install --upgrade pip bandit
+
+      - name: Run bandit
+        run: bandit -r asmx/ -ll
+
+  dependency-audit:
+    name: Dependency audit (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install the project and its dev tooling
+        run: |
+          # Upgrade the toolchain as well: auditing the setuptools/pip bundled
+          # with the runner would flag their own advisories instead of ours.
+          python -m pip install --upgrade pip setuptools wheel
+          pip install pip-audit
+          pip install .
+          pip install -r requirements-dev.txt
+
+      - name: Audit installed dependencies
+        # ASM X itself has no runtime dependencies, so this audits the
+        # development tooling and whatever pip resolved.  It fails the build
+        # honestly when an advisory shows up.
+        run: pip-audit --desc --progress-spinner off
+
+  zero-runtime-dependencies:
+    name: Zero runtime dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install the package into a bare virtualenv
+        run: |
+          python -m venv /tmp/bare
+          /tmp/bare/bin/python -m pip install --upgrade pip
+          /tmp/bare/bin/python -m pip install .
+
+      - name: Assert nothing third-party was dragged in
+        run: |
+          /tmp/bare/bin/python - <<'PY'
+          import importlib.metadata as md
+
+          allowed = {"asmx", "pip", "setuptools", "wheel"}
+          installed = {
+              dist.metadata["Name"].lower().replace("_", "-")
+              for dist in md.distributions()
+          }
+          extra = sorted(installed - allowed)
+          assert not extra, f"third-party runtime dependencies found: {extra}"
+
+          import asmx
+          print("asmx", asmx.__version__, "installed distributions:", sorted(installed))
+          PY
+
+      - name: Assert no third-party module is imported at runtime
+        run: |
+          /tmp/bare/bin/python - <<'PY'
+          import sys
+          import sysconfig
+
+          import asmx  # noqa: F401  (imports the whole public API)
+
+          site_packages = sysconfig.get_paths()["purelib"]
+          offenders = sorted(
+              name
+              for name, module in list(sys.modules.items())
+              if name.split(".")[0] != "asmx"
+              and (getattr(module, "__file__", None) or "").startswith(site_packages)
+          )
+          assert not offenders, f"modules imported from site-packages: {offenders}"
+          print("standard-library only: ok")
+          PY
+
+      - name: Smoke test the CLI
+        run: /tmp/bare/bin/python -m asmx info

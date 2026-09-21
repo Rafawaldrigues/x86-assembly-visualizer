@@ -1,0 +1,55 @@
+# ---------------------------------------------------------------------------
+# ASM X — docker build context filter.
+#
+# Keep this file in sync with the Dockerfile: `asmx/`, `tests/`,
+# `requirements-dev.txt`, `pyproject.toml` and `README.md` MUST stay in the
+# context (the image installs the package and runs the suite inside).
+# ---------------------------------------------------------------------------
+
+# --- Version control and CI metadata ---
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# --- Python bytecode, caches and build artefacts ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+pip-wheel-metadata/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Tooling caches and coverage output ---
+.mypy_cache/
+.pytest_cache/
+.tox/
+.nox/
+.cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# --- ASM X user artifacts (never baked into the image) ---
+*.asmproj
+*.asmproj.bak
+results/
+samples/
+
+# --- Local docs, notes and editor/OS junk ---
+docs/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db

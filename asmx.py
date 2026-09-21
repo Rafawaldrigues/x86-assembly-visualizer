@@ -1,21 +1,16 @@
 #!/usr/bin/env python3
-"""Atalho para abrir o ASM X: python3 asmx.py"""
+"""Atalho para o ASM X a partir do código-fonte.
 
-import sys
+``python3 asmx.py`` abre a interface gráfica; ``python3 asmx.py check prog.asm``
+usa a linha de comando — os dois caminhos entram pelo mesmo pacote ``asmx``.
+"""
+
 import os
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-try:
-    import tkinter  # noqa: F401
-except ImportError:
-    print("O ASM X usa Tkinter, que não está instalado.\n"
-          "Debian/Ubuntu:  sudo apt install python3-tk\n"
-          "Fedora:         sudo dnf install python3-tkinter\n"
-          "Windows/macOS:  reinstale o Python marcando 'tcl/tk'")
-    raise SystemExit(1)
-
-from asmx.ui import main
+from asmx.cli import main  # noqa: E402  (o sys.path precisa vir antes)
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

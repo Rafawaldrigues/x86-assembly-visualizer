@@ -1,0 +1,57 @@
+# ---------------------------------------------------------------------------
+# ASM X — Docker Compose
+#
+# No top-level `version:` key: it is obsolete in the Compose specification.
+#
+#   docker compose run --rm asmx check examples/linux-hello.asm
+#   docker compose run --rm asmx run examples/linux-loop.asm --limit 50
+#   docker compose --profile test run --rm asmx-test      # coverage+flake8+mypy
+#
+# The 8 sample programs are already inside the image (`examples/`), so no mount
+# is needed to try them. Drop your own sources in `samples/` and they show up
+# read-only at /app/samples.
+#
+# GUI mode needs the X11 socket and DISPLAY; uncomment the two marked lines
+# in the `volumes`/`environment` blocks below and run:
+#
+#   xhost +local:docker
+#   docker compose run --rm asmx gui
+# ---------------------------------------------------------------------------
+
+services:
+  asmx:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: asmx:dev
+    init: true
+    stdin_open: true
+    tty: true
+    working_dir: /app
+    volumes:
+      - ./samples:/app/samples:ro
+      - ./results:/app/results
+      # - /tmp/.X11-unix:/tmp/.X11-unix   # GUI mode (Linux hosts)
+    environment:
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      ASMX_LOG_JSON: "${ASMX_LOG_JSON:-0}"
+      # DISPLAY: "${DISPLAY}"              # GUI mode (Linux hosts)
+    # Override-friendly: `docker compose run --rm asmx run file.asm`
+    command: ["info"]
+
+  # Quality gate: `docker compose --profile test run --rm asmx-test`
+  asmx-test:
+    profiles: ["test"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: asmx:test
+    init: true
+    working_dir: /app
+    volumes:
+      - ./samples:/app/samples:ro
+      - ./results:/app/results
+    environment:
+      LOG_LEVEL: "${LOG_LEVEL:-DEBUG}"
+      ASMX_LOG_JSON: "${ASMX_LOG_JSON:-0}"
+    command: ["quality"]
