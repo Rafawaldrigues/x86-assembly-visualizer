@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import tkinter as tk
+import webbrowser
 from tkinter import filedialog, messagebox, ttk
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -20,6 +21,8 @@ from .dialogs import AboutDialog, DiffDialog, ScenarioDialog, TextPromptDialog
 from .editor import CodeEditor
 
 PROJ_TYPES = [("Projeto ASM X", "*.asmproj"), ("Todos os arquivos", "*.*")]
+REPORT_TYPES = [("Relatório HTML", "*.html"), ("Markdown", "*.md"), ("JSON", "*.json"),
+                ("Todos os arquivos", "*.*")]
 ASM_TYPES = [("Assembly", "*.asm *.s *.S *.nasm"), ("Todos os arquivos", "*.*")]
 
 
@@ -150,6 +153,9 @@ class AsmXApp(tk.Tk):
         executar.add_command(
             label="Rodar todos os cenários", accelerator="F11", command=self.run_all_scenarios
         )
+        executar.add_separator()
+        executar.add_command(label="Gerar relatório...", accelerator="Ctrl+R",
+                             command=self.generate_report)
         menubar.add_cascade(label="Executar", menu=executar)
 
         ajuda = menu()
@@ -489,6 +495,7 @@ class AsmXApp(tk.Tk):
         self.bind("<Control-e>", lambda e: self.edit_note())
         self.bind("<Control-f>", lambda e: self.find())
         self.bind("<Control-g>", lambda e: self.goto_line())
+        self.bind("<Control-r>", lambda e: self.generate_report())
 
     # ======================================================== análise =====
     def on_code_change(self) -> None:
@@ -1421,6 +1428,33 @@ class AsmXApp(tk.Tk):
                 t.insert("end", "%s " % f, "code")
                 t.insert("end", d + "\n", "dim")
         t.configure(state="disabled")
+
+    def generate_report(self) -> None:
+        """Gera o relatório da análise e abre no navegador.
+
+        O arquivo sai autocontido (CSS, JavaScript e grafos embutidos), então
+        abre offline e pode ser anexado sem depender de nada externo.
+        """
+        from ..report import collect, write_report
+
+        self.project.set_code(self.editor.get_code())
+        nome = os.path.splitext(os.path.basename(self.project.path or self.project.name))[0]
+        caminho = filedialog.asksaveasfilename(
+            title="Salvar relatório", defaultextension=".html", filetypes=REPORT_TYPES,
+            initialfile="%s.report.html" % (nome or "analise"), parent=self)
+        if not caminho:
+            return
+        try:
+            dados = collect(self.project.code, emulate=True,
+                            command="asmx (interface) — %s" % self.project.name)
+            escrito = write_report(dados, caminho)
+        except Exception as exc:                       # noqa: BLE001
+            messagebox.showerror("Relatório",
+                                 "não consegui gerar o relatório:\n%s" % exc, parent=self)
+            return
+        self.set_status("relatório gravado em %s (%s, risco %s)"
+                        % (escrito, dados.counts["instructions"], dados.risk.get("level")))
+        webbrowser.open("file://" + os.path.abspath(escrito))
 
     # ============================================================ outros ==
     def editor_toggle_comment(self) -> None:

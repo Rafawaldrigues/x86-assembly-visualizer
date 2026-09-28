@@ -12,14 +12,14 @@ RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PASTA = os.path.join(RAIZ, "examples")
 
 #: Exemplos que precisam passar sem nenhum erro de validação.
-LIMPOS = ("linux-hello", "linux-loop", "linux-funcao", "windows-hello", "bubble")
+LIMPOS = ("linux-hello", "linux-loop", "linux-funcao", "windows-hello", "bubble", "suspeito")
 
 
 class TestCatalogo(unittest.TestCase):
     """O catálogo em memória."""
 
-    def test_oito_exemplos(self) -> None:
-        self.assertEqual(len(EXAMPLES), 8)
+    def test_nove_exemplos(self) -> None:
+        self.assertEqual(len(EXAMPLES), 9)
 
     def test_names_em_ordem(self) -> None:
         self.assertEqual(names(), sorted(EXAMPLES))

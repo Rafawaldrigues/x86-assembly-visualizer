@@ -47,6 +47,15 @@ class TestStringsEAvisos(unittest.TestCase):
         )
         self.assertIn("STR003", codes(src))
 
+    def test_ponto_e_virgula_dentro_da_string_nao_e_aspas_aberta(self) -> None:
+        """O comentário é separado respeitando as aspas; cortar em ";" na mão
+        dava falso positivo em User-Agent como "Mozilla/5.0 (compatible; X)"."""
+        codigo = 'section .data\nua db "Mozilla/5.0 (compatible; ASMX/1.0)", 0\n'
+        self.assertNotIn("STR002", codes(codigo))
+
+    def test_aspas_desbalanceadas_fora_de_string_ainda_pegam(self) -> None:
+        self.assertIn("STR002", codes('section .data\nmsg db "faltou, 10\n'))
+
     def test_string_com_tamanho_calculado_passa(self) -> None:
         self.assertNotIn("STR006", codes('section .data\nmsg db "abc"\ntam equ $ - msg\n'))
 
@@ -270,6 +279,20 @@ class TestRegistradores(unittest.TestCase):
 
     def test_argumento_nao_conta_como_nao_inicializado(self) -> None:
         self.assertNotIn("REG001", codes("f:\n mov rax, rdi\n ret"))
+
+
+class TestRegressao(unittest.TestCase):
+    """Defeitos já corrigidos não podem voltar."""
+
+    def test_att_nao_acusa_tamanho_ambiguo(self) -> None:
+        """`movl $0, -4(%rbp)` grava 4 bytes: o sufixo do AT&T é o tamanho."""
+        from asmx.examples import EXAMPLES
+
+        self.assertEqual(validate(analyze(EXAMPLES["gcc-att"]["code"])), [])
+
+    def test_ponto_e_virgula_em_string_nao_e_aspas_aberta(self) -> None:
+        codigo = 'section .data\nua db "Mozilla/5.0 (compatible; ASMX/1.0)", 0\n'
+        self.assertNotIn("STR002", codes(codigo))
 
 
 class TestInfraestrutura(unittest.TestCase):

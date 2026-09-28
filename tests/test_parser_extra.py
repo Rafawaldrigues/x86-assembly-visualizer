@@ -3,9 +3,11 @@
 import unittest
 
 from asmx.parser import (
+    ATT_SIZES,
     Line,
     Operand,
     Program,
+    att_operand_size,
     classify_operand,
     detect_flavor,
     normalize_att,
@@ -136,6 +138,34 @@ class TestDialetos(unittest.TestCase):
     def test_memoria_att_com_indice(self) -> None:
         _, operands = normalize_att("movl", ["(%rax,%rcx,4)", "%edx"])
         self.assertEqual(operands[1], "[rax+rcx*4]")
+
+    def test_sufixo_do_mnemonicos_diz_o_tamanho_da_memoria(self) -> None:
+        """Em AT&T a largura do acesso vem do sufixo, não do operando.
+
+        Sem isso, `movl $0, -4(%rbp)` ficava com tamanho ambíguo (MEM001) e a
+        máquina virtual lia 8 bytes onde o programa grava 4.
+        """
+        programa = parse("movl $0, -4(%rbp)\nmovb $1, -5(%rbp)\nmovq %rax, -16(%rbp)")
+        tamanhos = [i.operands[0].size for i in programa.instructions]
+        self.assertEqual(tamanhos, [4, 1, 8])
+
+    def test_sem_sufixo_nao_inventa_tamanho(self) -> None:
+        """`lea` sem sufixo não declara largura: não dá para inventar uma."""
+        programa = parse("movq %rsp, %rbp\nlea -4(%rbp), %rax\naddq $1, %rax")
+        self.assertIsNone(programa.instructions[1].operands[1].size)
+
+    def test_registrador_manda_no_tamanho(self) -> None:
+        programa = parse("movq %rsp, %rbp\nmovl -8(%rbp), %eax\naddl %eax, %eax")
+        instrucao = programa.instructions[1]
+        self.assertEqual(instrucao.operands[0].size, 4)
+        self.assertEqual(instrucao.operands[1].size, 4)
+
+    def test_att_operand_size(self) -> None:
+        self.assertEqual(att_operand_size("movl", "mov"), 4)
+        self.assertEqual(att_operand_size("pushq", "push"), 8)
+        self.assertIsNone(att_operand_size("call", "call"))
+        self.assertIsNone(att_operand_size("movsb", "movsb"))
+        self.assertEqual(set(ATT_SIZES), {"b", "w", "l", "q"})
 
     def test_deslocamento_zero_nao_aparece(self) -> None:
         _, operands = normalize_att("mov", ["0(%rbp)", "%rax"])

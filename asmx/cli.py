@@ -5,6 +5,8 @@ Comandos:
 * ``check``    — analisa e valida, mostrando os problemas por linha;
 * ``run``      — executa o programa na máquina virtual e mostra a saída;
 * ``explain``  — explica uma instrução do acervo ou uma linha do arquivo;
+* ``report``   — gera o relatório (HTML, Markdown, JSON, DOT, SVG);
+* ``analyze``  — analisa vários arquivos e monta um índice comparativo;
 * ``info``     — versão, acervo de instruções e configuração em vigor;
 * ``examples`` — lista, mostra ou grava os programas de exemplo;
 * ``version``  — só a versão.
@@ -33,6 +35,7 @@ import json
 import os
 import platform as _platform
 import sys
+import webbrowser
 from typing import Any, Callable, Dict, List, Optional, Sequence, TextIO, Tuple
 
 from . import __version__
@@ -45,6 +48,7 @@ from .errors import (
     ConfigError,
     EmulationError,
     LineNotFoundError,
+    ProjectError,
     SourceNotFoundError,
     SourceReadError,
     UnknownMnemonicError,
@@ -88,6 +92,22 @@ SEVERITIES: Tuple[str, ...] = (ERRO, ALERTA, INFO)
 
 #: Nomes das chaves de contagem no JSON, na mesma ordem de :data:`SEVERITIES`.
 SUMMARY_KEYS: Tuple[str, ...] = ("errors", "warnings", "infos")
+
+#: Formatos de relatório aceitos por ``report`` e ``analyze``.
+REPORT_FORMATS: Tuple[str, ...] = ("html", "md", "json", "dot", "svg", "mermaid")
+
+#: Níveis de risco, do mais tranquilo ao mais grave.
+RISK_LEVELS: Tuple[str, ...] = ("baixo", "medio", "alto", "critico")
+
+#: Extensão de cada formato de relatório.
+FORMAT_SUFFIX = {
+    "html": "html",
+    "md": "md",
+    "json": "json",
+    "dot": "dot",
+    "svg": "svg",
+    "mermaid": "mmd",
+}
 
 #: Cores ANSI usadas na saída de terminal.
 _COLORS = {
@@ -283,6 +303,104 @@ def build_parser() -> argparse.ArgumentParser:
     explain.add_argument("--json", action="store_true", help="saída em JSON")
     _add_global_options(explain, suppress=True)
 
+    report = sub.add_parser("report", help="gera o relatório da análise")
+    report.add_argument("file", metavar="ARQUIVO", help="fonte .asm")
+    report.add_argument(
+        "--out",
+        metavar="CAMINHO",
+        default=None,
+        help="destino do relatório (- para a saída padrão); sem ele, "
+        "HTML vai para results/ e os outros formatos para a tela",
+    )
+    report.add_argument(
+        "--format",
+        choices=REPORT_FORMATS,
+        default=None,
+        help="formato do relatório (padrão: pela extensão, ou html)",
+    )
+    report.add_argument(
+        "--no-emulate",
+        action="store_true",
+        help="não executa o programa; o relatório fica só estático",
+    )
+    report.add_argument(
+        "--limit", type=int, default=None, help="limite de instruções da execução simulada"
+    )
+    report.add_argument(
+        "--timeout", type=float, default=None, help="tempo máximo da execução simulada, em segundos"
+    )
+    report.add_argument(
+        "--stdin", metavar="TEXTO", default="", help="entrada simulada para a syscall read"
+    )
+    report.add_argument(
+        "--entry", metavar="RÓTULO", default=None, help="começa a execução neste rótulo"
+    )
+    report.add_argument(
+        "--open", action="store_true", help="abre o relatório no navegador ao terminar"
+    )
+    report.add_argument(
+        "--fail-on",
+        choices=RISK_LEVELS,
+        default=None,
+        help="sai com código 1 se o risco for deste nível ou maior",
+    )
+    report.add_argument(
+        "--json",
+        action="store_true",
+        help="resumo da análise em JSON na tela (não grava arquivo; use --out para "
+        "gravar e imprimir o resumo)",
+    )
+    _add_global_options(report, suppress=True)
+
+    analyze = sub.add_parser("analyze", help="analisa vários arquivos e monta um índice")
+    analyze.add_argument(
+        "paths", nargs="+", metavar="CAMINHO", help="arquivos .asm ou diretórios com fontes"
+    )
+    analyze.add_argument(
+        "--out",
+        metavar="DIRETÓRIO",
+        default=None,
+        help="diretório dos relatórios (padrão: output_dir da configuração)",
+    )
+    analyze.add_argument(
+        "--format",
+        choices=REPORT_FORMATS,
+        default="html",
+        help="formato de cada relatório (padrão: html)",
+    )
+    analyze.add_argument(
+        "--index",
+        dest="index",
+        action="store_true",
+        default=True,
+        help="grava index.html comparando os arquivos (padrão)",
+    )
+    analyze.add_argument(
+        "--no-index", dest="index", action="store_false", help="não grava o índice"
+    )
+    analyze.add_argument(
+        "--no-emulate",
+        action="store_true",
+        help="não executa os programas; relatórios só estáticos",
+    )
+    analyze.add_argument(
+        "--limit", type=int, default=None, help="limite de instruções por execução simulada"
+    )
+    analyze.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        help="tempo máximo por execução simulada, em segundos",
+    )
+    analyze.add_argument(
+        "--fail-on",
+        choices=RISK_LEVELS,
+        default=None,
+        help="sai com código 1 se algum arquivo atingir este risco",
+    )
+    analyze.add_argument("--json", action="store_true", help="resumo da análise em lote como JSON")
+    _add_global_options(analyze, suppress=True)
+
     info = sub.add_parser("info", help="versão, acervo e configuração em vigor")
     info.add_argument("--json", action="store_true", help="saída em JSON")
     _add_global_options(info, suppress=True)
@@ -431,7 +549,18 @@ def build_payload(args: argparse.Namespace) -> Dict[str, Any]:
         'check'
     """
     dados: Dict[str, Any] = {"command": args.command}
-    for campo in ("file", "files", "entry", "line", "mnemonic", "show", "dump"):
+    for campo in (
+        "file",
+        "files",
+        "paths",
+        "entry",
+        "line",
+        "mnemonic",
+        "show",
+        "dump",
+        "out",
+        "format",
+    ):
         valor = getattr(args, campo, None)
         if valor not in (None, False, []):
             dados[campo] = valor
@@ -997,9 +1126,240 @@ def cmd_version(args: argparse.Namespace, config: SandboxConfig, palette: Palett
     return EXIT_OK
 
 
+def _risk_rank(level: str) -> int:
+    """Converte o nível de risco em número, para comparar com ``--fail-on``.
+
+    Args:
+        level: ``baixo``, ``medio``, ``alto`` ou ``critico``.
+
+    Returns:
+        ``0`` a ``3``; nível desconhecido conta como o mais brando.
+    """
+    return RISK_LEVELS.index(level) if level in RISK_LEVELS else 0
+
+
+def _expand_sources(paths: Sequence[str]) -> List[str]:
+    """Expande diretórios em arquivos de assembly.
+
+    Args:
+        paths: Arquivos e diretórios indicados na linha de comando.
+
+    Returns:
+        Caminhos de arquivos, em ordem alfabética dentro de cada diretório;
+        arquivos sem extensão reconhecida também entram quando foram citados
+        diretamente (o leitor reclama só se não existirem).
+    """
+    encontrados: List[str] = []
+    for caminho in paths:
+        if os.path.isdir(caminho):
+            for pasta, subpastas, nomes in os.walk(caminho):
+                subpastas[:] = sorted(p for p in subpastas if not p.startswith("."))
+                for nome in sorted(nomes):
+                    if os.path.splitext(nome)[1].lower() in SOURCE_SUFFIXES:
+                        encontrados.append(os.path.join(pasta, nome))
+        else:
+            encontrados.append(caminho)
+    return encontrados
+
+
+def _report_summary(nome: str, dados: Any) -> str:
+    """Resume um relatório em uma linha de terminal.
+
+    Args:
+        nome: Nome do arquivo analisado.
+        dados: :class:`~asmx.report.ReportData` já preenchido.
+
+    Returns:
+        Linha com risco, contagens e destaques.
+    """
+    contagens = dados.counts
+    destaques = ", ".join(b["label"] for b in dados.behaviors[:3]) or "sem comportamento relevante"
+    return "%-28s %-8s %3d/100  %4d instr  %2d comport  %3d IOC  %2d prob  %s" % (
+        nome[:28],
+        str(dados.risk.get("level", "?")).upper(),
+        int(dados.risk.get("score", 0)),
+        contagens["instructions"],
+        contagens["behaviors"],
+        contagens["iocs"],
+        contagens["problems"],
+        destaques,
+    )
+
+
+def cmd_report(args: argparse.Namespace, config: SandboxConfig, palette: Palette) -> int:
+    """Executa o comando ``report``.
+
+    Args:
+        args: Namespace do comando.
+        config: Configuração em vigor (diretório de saída e limites).
+        palette: Paleta de cores da saída.
+
+    Returns:
+        :data:`EXIT_OK` ao gravar, :data:`EXIT_PROBLEMS` quando ``--fail-on``
+        for atingido.
+    """
+    from .report import collect, write_report
+
+    fonte = read_source(args.file, suffixes=SOURCE_SUFFIXES)
+    dados = collect(
+        fonte.text,
+        source=fonte,
+        emulate=not args.no_emulate,
+        limit=args.limit or config.max_steps,
+        timeout=args.timeout,
+        stdin=args.stdin,
+        entry=args.entry,
+        command="asmx report %s" % fonte.name,
+    )
+
+    # `--json` é modo script: imprime o resumo e não grava nada sem `--out`.
+    somente_resumo = args.json and args.out is None
+    destino = args.out
+    if destino is None and not somente_resumo:
+        if (args.format or "html") == "html":
+            os.makedirs(config.output_dir, exist_ok=True)
+            destino = os.path.join(
+                config.output_dir, "%s.report.html" % os.path.splitext(fonte.name)[0]
+            )
+        else:
+            destino = "-"
+    escrito = "-" if somente_resumo else write_report(dados, destino, fmt=args.format)
+
+    if args.json:
+        _emit_json(
+            {
+                "schema": "asmx-report/1",
+                "command": "report",
+                "file": fonte.name,
+                "output": escrito,
+                "risk": dados.risk,
+                "counts": dados.counts,
+                "behaviors": [b["category"] for b in dados.behaviors],
+                "techniques": [t["id"] for t in dados.techniques],
+                "exit_code": EXIT_PROBLEMS if _atingiu(args.fail_on, dados) else EXIT_OK,
+            }
+        )
+    elif escrito != "-":
+        _write(
+            "%s %s"
+            % (palette.paint("relatório gravado em", "bom"), palette.paint(escrito, "forte"))
+        )
+        _write("  %s" % _report_summary(fonte.name, dados))
+    if args.open and escrito != "-":
+        webbrowser.open("file://" + os.path.abspath(escrito))
+    return EXIT_PROBLEMS if _atingiu(args.fail_on, dados) else EXIT_OK
+
+
+def _atingiu(limite: Optional[str], dados: Any) -> bool:
+    """Diz se o risco do relatório alcançou o limite pedido.
+
+    Args:
+        limite: Nível passado em ``--fail-on`` (``None`` desliga a checagem).
+        dados: Relatório preenchido.
+
+    Returns:
+        ``True`` quando o risco do arquivo é igual ou maior que o limite.
+    """
+    if not limite:
+        return False
+    return _risk_rank(str(dados.risk.get("level", "baixo"))) >= _risk_rank(limite)
+
+
+def cmd_analyze(args: argparse.Namespace, config: SandboxConfig, palette: Palette) -> int:
+    """Executa o comando ``analyze`` (vários arquivos e índice comparativo).
+
+    Args:
+        args: Namespace do comando.
+        config: Configuração em vigor.
+        palette: Paleta de cores da saída.
+
+    Returns:
+        :data:`EXIT_OK`, ou :data:`EXIT_PROBLEMS` quando algum arquivo atinge o
+        risco pedido em ``--fail-on``.
+
+    Raises:
+        ProjectError: Se nenhum arquivo de assembly foi encontrado nos caminhos.
+        SourceNotFoundError: Se um arquivo indicado não existe.
+    """
+    from .report import collect, render_index, write_report
+
+    caminhos = _expand_sources(args.paths)
+    if not caminhos:
+        raise ProjectError("nenhum arquivo de assembly encontrado em: %s" % ", ".join(args.paths))
+    pasta = args.out or config.output_dir
+    os.makedirs(pasta, exist_ok=True)
+    extensao = FORMAT_SUFFIX.get(args.format, "html")
+    relatorios: List[Any] = []
+    pior = EXIT_OK
+
+    for caminho in caminhos:
+        fonte = read_source(caminho, suffixes=SOURCE_SUFFIXES)
+        dados = collect(
+            fonte.text,
+            source=fonte,
+            emulate=not args.no_emulate,
+            limit=args.limit or config.max_steps,
+            timeout=args.timeout,
+            command="asmx analyze %s" % " ".join(args.paths),
+        )
+        nome_base = os.path.splitext(fonte.name)[0]
+        destino = os.path.join(pasta, "%s.report.%s" % (nome_base, extensao))
+        write_report(dados, destino, fmt=args.format)
+        dados.source["report_file"] = os.path.basename(destino)
+        relatorios.append(dados)
+        if _atingiu(args.fail_on, dados):
+            pior = EXIT_PROBLEMS
+        if not args.json:
+            _write("  %s" % _report_summary(fonte.name, dados))
+
+    indice = ""
+    if args.index and args.format == "html":
+        indice = os.path.join(pasta, "index.html")
+        with open(indice, "w", encoding="utf-8") as arquivo:
+            arquivo.write(
+                render_index(relatorios, command="asmx analyze %s" % " ".join(args.paths))
+            )
+        log_event(logger, "index_written", path=indice, files=len(relatorios))
+
+    if args.json:
+        _emit_json(
+            {
+                "schema": "asmx-analyze/1",
+                "command": "analyze",
+                "directory": pasta,
+                "index": indice,
+                "files": [
+                    {
+                        "name": r.source.get("name"),
+                        "risk": r.risk.get("level"),
+                        "score": r.risk.get("score"),
+                        "counts": r.counts,
+                        "report": r.source.get("report_file"),
+                    }
+                    for r in relatorios
+                ],
+                "exit_code": pior,
+            }
+        )
+    else:
+        _write("")
+        _write(
+            "%s %d arquivo(s) · %d com risco alto ou crítico%s"
+            % (
+                palette.paint("resumo:", "forte"),
+                len(relatorios),
+                sum(1 for r in relatorios if _risk_rank(str(r.risk.get("level"))) >= 2),
+                " · índice em %s" % palette.paint(indice, "bom") if indice else "",
+            )
+        )
+    return pior
+
+
 #: Comandos disponíveis, ligados às funções que os executam.
 COMMANDS: Dict[str, Callable[[argparse.Namespace, SandboxConfig, Palette], int]] = {
     "check": cmd_check,
+    "report": cmd_report,
+    "analyze": cmd_analyze,
     "run": cmd_run,
     "explain": cmd_explain,
     "info": cmd_info,

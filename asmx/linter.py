@@ -109,8 +109,11 @@ def check_strings(analysis: Analysis) -> List[Problem]:
     for linha in analysis.program.lines:
         if linha.kind != "data" or linha.reserve:
             continue
-        body, _ = linha.raw, linha.comment
-        code = body.split(";")[0]
+        # O parser já separou comentário de código respeitando as aspas, então
+        # o código é o começo da linha crua, sem o comentário do fim. Cortar em
+        # ";" na mão daria falso positivo em string que contém ponto e vírgula
+        # (por exemplo um User-Agent "Mozilla/5.0 (compatible; ASMX/1.0)").
+        code = linha.raw[: len(linha.raw) - len(linha.comment)] if linha.comment else linha.raw
         aspas = code.count('"')
         simples = code.count("'")
         if aspas % 2 or simples % 2:

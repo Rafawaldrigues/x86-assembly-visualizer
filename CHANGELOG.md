@@ -94,7 +94,30 @@ nenhuma dependência externa.
 - **Docker**: imagem enxuta com usuário sem privilégio, `HEALTHCHECK` e alvos
   `check`, `run`, `test`, `quality` e `gui`.
 - **Documentação**: `README.md`, `docs/GUIA.md` (manual de uso, CLI,
-  configuração, logging e erros) e `docs/REFERENCIA.md` (acervo completo).
+  relatório, configuração, logging e erros) e `docs/REFERENCIA.md` (acervo
+  completo).
+- **Classificação de comportamento**: doze categorias (rede, arquivos,
+  processo, memória, evasão, criptografia, persistência, ambiente, console,
+  processamento de dados, manipulação de string, autocompilação) com evidência
+  por linha, confiança e mapeamento para 17 técnicas do MITRE ATT&CK — sempre
+  como indício, nunca como veredito.
+- **Indicadores de compromisso**: URLs, IPv4 válidos, domínios, e-mails,
+  caminhos Unix e Windows, chaves de registro, comandos, extensões sensíveis,
+  palavras de interesse e strings embutidas, com filtro de falso positivo.
+- **Grafos**: fluxo de controle e chamadas com layout determinístico, desenhados
+  em SVG por código próprio (sem biblioteca gráfica) e exportáveis em DOT e
+  Mermaid.
+- **Relatório**: HTML autocontido e offline (CSS, JavaScript e SVG embutidos)
+  com oito abas — resumo com risco de 0 a 100, fluxo, comportamentos,
+  indicadores, instruções, validação, execução com linha do tempo e dados crus —
+  mais exportação em Markdown, JSON, DOT, SVG e Mermaid.
+- **Análise em lote**: `asmx analyze` grava um relatório por arquivo e um
+  `index.html` comparando risco, tamanho, plataforma, comportamentos,
+  indicadores e problemas de todos eles.
+- **9º exemplo didático** (`suspeito.asm`): um programa que conversa com o
+  sistema (soquete, arquivo em `/tmp`, bytes aleatórios, informação do ambiente)
+  para o relatório mostrar comportamentos e técnicas de verdade. Não é malware e
+  não executa nada: a máquina virtual só interpreta as instruções em Python.
 
 ### Changed
 
@@ -134,6 +157,14 @@ teste que reproduz:
   faz, em vez de deixar lixo.
 - **Exemplos e arquivos `examples/*.asm`** não podem divergir: um teste compara os
   dois e `tools/export_examples.py` regrava a partir da fonte única.
+- **Falso positivo com ponto e vírgula dentro de string**: o validador cortava a
+  linha em `;` na mão e acusava "aspas não fechadas" (STR002) em coisas como
+  `db "Mozilla/5.0 (compatible; ASMX/1.0)"`. Agora usa o pedaço de código que o
+  parser já separou respeitando as aspas.
+- **Relatório com marcação escapada**: células que contêm HTML (chips, links,
+  `span` de caminho/hash) apareciam como texto. Agora saem como elementos.
+- **`--out` em diretório inexistente** falhava com erro de escrita; o diretório
+  de destino passou a ser criado.
 
 ### Performance
 

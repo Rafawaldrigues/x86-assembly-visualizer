@@ -91,7 +91,7 @@ class TestVersionEObjetos(BaseCLI):
         self.assertEqual(codigo, EXIT_OK)
         self.assertEqual(dados["isa"]["mnemonics"], 148)
         self.assertEqual(dados["isa"]["linux_syscalls"], 43)
-        self.assertEqual(dados["isa"]["examples"], 8)
+        self.assertEqual(dados["isa"]["examples"], 9)
         self.assertIn("tkinter", dados)
         self.assertIn("config", dados)
         self.assertIn("logging", dados)
@@ -372,17 +372,17 @@ class TestExamples(BaseCLI):
         destino = os.path.join(self.dir.name, "saida")
         codigo, saida, _ = self.run_cli("examples", "--dump", destino, "--no-color")
         self.assertEqual(codigo, EXIT_OK)
-        self.assertEqual(len(os.listdir(destino)), 8)
-        self.assertIn("8 exemplos", saida)
+        self.assertEqual(len(os.listdir(destino)), 9)
+        self.assertIn("9 exemplos", saida)
 
     def test_dump_json(self) -> None:
         destino = os.path.join(self.dir.name, "saida2")
         _, dados, _ = self.run_json("examples", "--dump", destino)
-        self.assertEqual(len(dados["files"]), 8)
+        self.assertEqual(len(dados["files"]), 9)
 
     def test_json_sem_dump(self) -> None:
         _, dados, _ = self.run_json("examples", "--list")
-        self.assertEqual(len(dados["examples"]), 8)
+        self.assertEqual(len(dados["examples"]), 9)
         self.assertIn("title", dados["examples"][0])
 
 

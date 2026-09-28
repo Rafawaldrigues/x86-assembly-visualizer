@@ -48,6 +48,50 @@ Opções globais, antes ou depois do comando: `-v` (log de depuração), `-q`
 (silencioso), `--log-json`, `--log-file CAMINHO`, `--config CAMINHO`,
 `--no-color`.
 
+## Relatório
+
+`asmx report prog.asm` junta tudo o que a análise descobriu num arquivo HTML
+autocontido: CSS, JavaScript e os grafos em SVG vão embutidos, então ele abre
+offline, sem CDN e sem servidor — pode ser anexado a um e-mail ou commit.
+
+```bash
+asmx report prog.asm                        # grava results/prog.report.html
+asmx report prog.asm --open                 # grava e abre no navegador
+asmx report prog.asm --out - --format md    # Markdown na tela
+asmx report prog.asm --format json          # dados crus (esquema asmx-report/1)
+asmx report prog.asm --format dot | dot -Tsvg -o grafo.svg
+asmx report prog.asm --no-emulate           # só estático, sem linha do tempo
+asmx report prog.asm --fail-on alto         # sai com 1 se o risco for alto ou maior
+```
+
+As abas do relatório:
+
+| Aba | O que mostra |
+|---|---|
+| Resumo | hashes, tamanho, dialeto, plataforma e ABI, pistas da detecção, resumo executivo e a nota de risco (0–100) |
+| Fluxo | grafo de fluxo de controle e grafo de chamadas em SVG, blocos básicos com "vem de"/"vai para" e o DOT para copiar |
+| Comportamentos | o que o programa faz: severidade, confiança, evidência por linha e o mapeamento MITRE ATT&CK (indício, não prova) |
+| Indicadores | strings, URLs, IPv4, domínios, caminhos, chaves de registro, comandos e extensões sensíveis |
+| Instruções | cada instrução com a explicação em português, com filtro de busca |
+| Validação | os problemas por severidade, com a dica de correção |
+| Execução | saída, código de saída, registradores, flags, problemas e a linha do tempo passo a passo |
+| Dados | o JSON completo, para copiar ou consumir |
+
+### Vários arquivos de uma vez
+
+```bash
+asmx analyze exemplos/ --out resultados/          # um relatório por arquivo + index.html
+asmx analyze exemplos/ --format json --no-index   # lote em JSON
+asmx analyze exemplos/ --fail-on medio            # reprova se algum passar de médio
+```
+
+O `index.html` compara os arquivos numa tabela — risco, plataforma, instruções,
+comportamentos, indicadores e problemas — que é o jeito mais rápido de ver o que
+chama atenção numa pasta antes de abrir arquivo por arquivo.
+
+Na interface gráfica o mesmo relatório sai por *Executar › Gerar relatório...*
+(`Ctrl+R`): escolha o caminho, o arquivo é gravado e aberto no navegador.
+
 ## Configuração
 
 O ASM X funciona sem nenhum arquivo de configuração. Quando você quiser fixar
@@ -164,6 +208,7 @@ registradores envolvidos. Há busca por prefixo entre os 148 mnemônicos.
 | F9 | rodar até o fim ou até o próximo breakpoint |
 | F10 | reiniciar a máquina |
 | F11 | rodar todos os cenários de teste |
+| Ctrl+R | gerar o relatório da análise e abrir no navegador |
 | Ctrl+/ | comentar ou descomentar a seleção |
 | Ctrl+E | anotar a linha atual |
 | Ctrl+B | nova branch |
@@ -285,4 +330,10 @@ A máquina virtual é didática, não um emulador de CPU:
 - memória é um dicionário de bytes: não há paginação, proteção real nem
   segmentação — o validador avisa sobre `.rodata`, a execução não;
 - o resultado de uma execução aqui **não** garante que o binário real funcione.
-  Serve para entender e para achar defeito cedo.
+  Serve para entender e para achar defeito cedo;
+- o classificador de comportamento e o mapeamento MITRE ATT&CK são **indícios**
+  lidos de padrões estáticos (syscalls, APIs, laços, strings), com evidência e
+  confiança. Não são prova de intenção e não substituem um analista;
+- o relatório é um arquivo só e **não faz requisição de rede**: sem CDN, sem
+  fonte remota, sem telemetria. Os links do MITRE são referência, não recurso
+  carregado.

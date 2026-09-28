@@ -146,6 +146,10 @@ class Program:
         return [linha for linha in self.lines if linha.kind == "instruction"]
 
 
+#: Tamanho, em bytes, que o sufixo do AT&T declara (``movl`` -> 4).
+ATT_SIZES: Dict[str, int] = {"b": 1, "w": 2, "l": 4, "q": 8}
+
+
 LABEL_RE = re.compile(r"^([A-Za-z_.$?@][\w.$@?]*)\s*:\s*(.*)$")
 MASM_PROC_RE = re.compile(r"^([A-Za-z_?@][\w?@]*)\s+(proc|endp)\b", re.I)
 DATA_DEF_RE = re.compile(
@@ -411,6 +415,30 @@ def _att_memory(expr: str) -> str:
     return re.sub(r"(-?\w*)\(([^)]*)\)", repl, expr)
 
 
+def att_operand_size(mnemonic: str, normalizado: str) -> Optional[int]:
+    """Lê o tamanho que o sufixo do AT&T declara (``movl`` -> 4 bytes).
+
+    Em AT&T quem diz a largura do acesso à memória é o sufixo do mnemônico, não
+    o operando: ``movl $0, -4(%rbp)`` grava 4 bytes, e não 8. Sem isso o
+    validador acusava "tamanho do operando ambíguo" (MEM001) num código correto
+    e a máquina virtual lia a largura errada.
+
+    Args:
+        mnemonic: Mnemônico como veio do arquivo (``movl``, ``pushq``...).
+        normalizado: Mnemônico depois de :func:`normalize_att` (``mov``).
+
+    Returns:
+        O tamanho em bytes, ou ``None`` quando o mnemônico não trazia sufixo de
+        tamanho (``lea``, ``call``, ``movsb``...).
+    """
+    original = mnemonic.lower()
+    if original == normalizado or len(original) < 2:
+        return None
+    if original[:-1] != normalizado:
+        return None
+    return ATT_SIZES.get(original[-1])
+
+
 def normalize_att(mnemonic: str, operands: List[str]) -> Tuple[str, List[str]]:
     """Ajusta uma instrução em AT&T para a forma canônica Intel.
 
@@ -596,13 +624,21 @@ def parse(text: str) -> Program:
         operand_text = body[len(tokens[0]) :].strip()
         operands = split_operands(operand_text)
 
+        tamanho_att: Optional[int] = None
         if flavor == "att":
+            tamanho_att = att_operand_size(mnemonic, normalize_att(mnemonic, [])[0])
             mnemonic, operands = normalize_att(mnemonic, operands)
 
         entry.kind = "instruction"
         entry.prefix = prefix
         entry.mnemonic = mnemonic
         entry.operands = [classify_operand(o) for o in operands]
+        if tamanho_att:
+            # Em AT&T a largura do acesso vem do sufixo do mnemônico: aplica nos
+            # operandos de memória que não declararam tamanho próprio.
+            for operando in entry.operands:
+                if operando.type == "mem" and operando.size is None:
+                    operando.size = tamanho_att
         entry.known = mnemonic in ISA
         lines.append(entry)
 
