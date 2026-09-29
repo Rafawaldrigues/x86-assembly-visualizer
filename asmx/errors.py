@@ -1,26 +1,26 @@
-"""Erros do ASM X: cada situação tem uma exceção própria e um código estável.
+"""Errors of ASM X: every situation has its own exception and a stable code.
 
-Por que não usar só ``ValueError``: quem chama a biblioteca (a interface, a linha
-de comando, um script de CI) precisa distinguir "o arquivo não existe" de "o
-projeto está corrompido" sem inspecionar texto de mensagem. Cada classe daqui
-carrega um ``code`` fixo — o mesmo contrato que aparece no JSON de
-``python -m asmx ... --json`` e nos testes.
+Why not use only ``ValueError``: whoever calls the library (the interface, the
+command line, a CI script) needs to tell "the file does not exist" from "the
+project is corrupted" without inspecting message text. Every class here carries
+a fixed ``code`` — the same contract that shows up in the JSON of
+``python -m asmx ... --json`` and in the tests.
 
-Todas as exceções também herdam do erro embutido equivalente
-(``FileNotFoundError``, ``ValueError``, ``KeyError``...). Assim o código que já
-existia continua funcionando com ``except ValueError`` e ganha,
-de graça, o código de erro e o contexto::
+All exceptions also inherit from the equivalent built-in error
+(``FileNotFoundError``, ``ValueError``, ``KeyError``...). That way code that
+already existed keeps working with ``except ValueError`` and gains, for free,
+the error code and the context::
 
     try:
-        projeto.load(caminho)
-    except ProjectFormatError as erro:
-        print(erro.code, erro.context["path"])
+        project.load(path)
+    except ProjectFormatError as error:
+        print(error.code, error.context["path"])
 
 Example:
     >>> from asmx.errors import BranchExistsError
-    >>> erro = BranchExistsError("teste")
-    >>> print(erro)
-    [ERR_BRANCH_EXISTS] já existe uma branch chamada teste
+    >>> error = BranchExistsError("test")
+    >>> print(error)
+    [ERR_BRANCH_EXISTS] already exists a branch named test
 """
 
 from __future__ import annotations
@@ -51,25 +51,25 @@ __all__ = [
 
 
 class AsmxError(Exception):
-    """Base de todos os erros do ASM X.
+    """Base of every ASM X error.
 
     Attributes:
-        code: Código estável no formato ``ERR_ALGO``, usado em relatórios e no
-            JSON da linha de comando.
-        message: Mensagem legível, em português, sem prefixo de código.
-        context: Dados extras do erro (caminho, linha, valor recebido) para
-            quem quiser montar um relatório estruturado.
+        code: Stable code in the ``ERR_SOMETHING`` format, used in reports and
+            in the command line JSON.
+        message: Readable message, in English, without the code prefix.
+        context: Extra data of the error (path, line, received value) for
+            whoever wants to build a structured report.
     """
 
     code: str = "ERR_ASMX"
 
     def __init__(self, message: str, code: Optional[str] = None, **context: Any) -> None:
-        """Inicializa o erro.
+        """Initializes the error.
 
         Args:
-            message: Descrição legível do problema.
-            code: Código que sobrepõe o padrão da classe (opcional).
-            **context: Pares chave/valor guardados em ``self.context``.
+            message: Readable description of the problem.
+            code: Code that overrides the class default (optional).
+            **context: Key/value pairs stored in ``self.context``.
         """
         super().__init__(message)
         self.message = message
@@ -78,27 +78,27 @@ class AsmxError(Exception):
         self.context: Dict[str, Any] = dict(context)
 
     def __str__(self) -> str:
-        """Devolve ``[CÓDIGO] mensagem``.
+        """Returns ``[CODE] message``.
 
         Returns:
-            A mensagem formatada com o código entre colchetes.
+            The message formatted with the code in brackets.
         """
         return "[%s] %s" % (self.code, self.message)
 
     def __repr__(self) -> str:
-        """Representação curta, útil em logs.
+        """Short representation, useful in logs.
 
         Returns:
-            Texto como ``SourceNotFoundError(code='ERR_...', message='...')``.
+            Text such as ``SourceNotFoundError(code='ERR_...', message='...')``.
         """
         return "%s(code=%r, message=%r)" % (type(self).__name__, self.code, self.message)
 
     def to_dict(self) -> Dict[str, Any]:
-        """Converte o erro em dicionário pronto para JSON.
+        """Converts the error into a dictionary ready for JSON.
 
         Returns:
-            Dicionário com ``error`` (nome da classe), ``code``, ``message`` e,
-            quando houver, ``context``.
+            Dictionary with ``error`` (class name), ``code``, ``message`` and,
+            when present, ``context``.
         """
         data: Dict[str, Any] = {
             "error": type(self).__name__,
@@ -110,74 +110,74 @@ class AsmxError(Exception):
         return data
 
 
-# ----------------------------------------------------------------- arquivos --
+# -------------------------------------------------------------------- files --
 class SourceNotFoundError(AsmxError, FileNotFoundError):
-    """O arquivo de código fonte indicado não existe."""
+    """The source file pointed to does not exist."""
 
     code = "ERR_SOURCE_NOT_FOUND"
 
     def __init__(self, path: str) -> None:
-        """Monta o erro a partir do caminho que faltou.
+        """Builds the error from the missing path.
 
         Args:
-            path: Caminho procurado.
+            path: Path that was searched for.
         """
-        super().__init__("arquivo não encontrado: %s" % path, path=path)
+        super().__init__("file not found: %s" % path, path=path)
         self.path = path
 
 
 class SourceReadError(AsmxError, OSError):
-    """O arquivo existe, mas não pôde ser lido (permissão, diretório, I/O)."""
+    """The file exists, but could not be read (permission, directory, I/O)."""
 
     code = "ERR_SOURCE_READ"
 
     def __init__(self, path: str, detail: str = "") -> None:
-        """Monta o erro a partir do caminho e do motivo.
+        """Builds the error from the path and the reason.
 
         Args:
-            path: Caminho que falhou.
-            detail: Mensagem original do sistema operacional.
+            path: Path that failed.
+            detail: Original message from the operating system.
         """
-        mensagem = "não consegui ler %s" % path
+        message = "could not read %s" % path
         if detail:
-            mensagem += ": %s" % detail
-        super().__init__(mensagem, path=path, detail=detail)
+            message += ": %s" % detail
+        super().__init__(message, path=path, detail=detail)
         self.path = path
 
 
 class SourceWriteError(AsmxError, OSError):
-    """Não foi possível gravar um arquivo (permissão, disco, diretório)."""
+    """It was not possible to write a file (permission, disk, directory)."""
 
     code = "ERR_SOURCE_WRITE"
 
     def __init__(self, path: str, detail: str = "") -> None:
-        """Monta o erro a partir do caminho e do motivo.
+        """Builds the error from the path and the reason.
 
         Args:
-            path: Caminho que não pôde ser gravado.
-            detail: Mensagem original do sistema operacional.
+            path: Path that could not be written.
+            detail: Original message from the operating system.
         """
-        mensagem = "não consegui gravar %s" % path
+        message = "could not write %s" % path
         if detail:
-            mensagem += ": %s" % detail
-        super().__init__(mensagem, path=path, detail=detail)
+            message += ": %s" % detail
+        super().__init__(message, path=path, detail=detail)
         self.path = path
 
 
 class UnsupportedSourceError(AsmxError, ValueError):
-    """A extensão do arquivo não é de um formato que o ASM X entenda."""
+    """The file extension is not one of the formats ASM X understands."""
 
     code = "ERR_UNSUPPORTED_SOURCE"
 
     def __init__(self, path: str, expected: str) -> None:
-        """Monta o erro com a lista de extensões aceitas.
+        """Builds the error with the list of accepted extensions.
 
         Args:
-            path: Caminho recusado.
-            expected: Texto descrevendo as extensões aceitas.
+            path: Path that was refused.
+            expected: Text describing the accepted extensions.
         """
         super().__init__(
-            "formato não suportado em %s (esperado: %s)" % (path, expected),
+            "unsupported format in %s (expected: %s)" % (path, expected),
             path=path,
             expected=expected,
         )
@@ -185,211 +185,211 @@ class UnsupportedSourceError(AsmxError, ValueError):
 
 
 class ParseError(AsmxError, ValueError):
-    """O texto não pôde ser interpretado como assembly."""
+    """The text could not be interpreted as assembly."""
 
     code = "ERR_PARSE"
 
     def __init__(self, message: str, line: Optional[int] = None) -> None:
-        """Monta o erro, opcionalmente com a linha problemática.
+        """Builds the error, optionally with the problematic line.
 
         Args:
-            message: Descrição do problema.
-            line: Número da linha (1-based) onde o problema foi visto.
+            message: Description of the problem.
+            line: Line number (1-based) where the problem was seen.
         """
         super().__init__(message, line=line)
         self.line = line
 
 
-# ---------------------------------------------------------------- projeto --
+# ------------------------------------------------------------------ project --
 class ProjectError(AsmxError, ValueError):
-    """Erro genérico de manipulação de projeto (branch, cenário, arquivo)."""
+    """Generic error of project handling (branch, scenario, file)."""
 
     code = "ERR_PROJECT"
 
 
 class ProjectFormatError(AsmxError, ValueError):
-    """O arquivo ``.asmproj`` existe mas não é um projeto válido do ASM X."""
+    """The ``.asmproj`` file exists but is not a valid ASM X project."""
 
     code = "ERR_PROJECT_FORMAT"
 
     def __init__(self, path: str, detail: str = "") -> None:
-        """Monta o erro a partir do caminho e do motivo.
+        """Builds the error from the path and the reason.
 
         Args:
-            path: Arquivo de projeto lido.
-            detail: Explicação curta da inconsistência.
+            path: Project file that was read.
+            detail: Short explanation of the inconsistency.
         """
-        mensagem = "projeto inválido em %s" % path
+        message = "invalid project at %s" % path
         if detail:
-            mensagem += ": %s" % detail
-        super().__init__(mensagem, path=path, detail=detail)
+            message += ": %s" % detail
+        super().__init__(message, path=path, detail=detail)
         self.path = path
 
 
 class BranchNotFoundError(AsmxError, KeyError):
-    """A branch pedida não existe no projeto."""
+    """The requested branch does not exist in the project."""
 
     code = "ERR_BRANCH_NOT_FOUND"
 
     def __init__(self, name: str) -> None:
-        """Monta o erro a partir do nome da branch.
+        """Builds the error from the branch name.
 
         Args:
-            name: Nome procurado.
+            name: Name that was searched for.
         """
-        super().__init__("branch inexistente: %s" % name, branch=name)
+        super().__init__("branch not found: %s" % name, branch=name)
         self.name = name
 
 
 class BranchExistsError(AsmxError, ValueError):
-    """Já existe uma branch com esse nome."""
+    """A branch with this name already exists."""
 
     code = "ERR_BRANCH_EXISTS"
 
     def __init__(self, name: str) -> None:
-        """Monta o erro a partir do nome repetido.
+        """Builds the error from the repeated name.
 
         Args:
-            name: Nome que já está em uso.
+            name: Name that is already in use.
         """
-        super().__init__("já existe uma branch chamada %s" % name, branch=name)
+        super().__init__("already exists a branch named %s" % name, branch=name)
         self.name = name
 
 
 class EmptyBranchNameError(AsmxError, ValueError):
-    """Tentaram criar uma branch sem nome."""
+    """Someone tried to create a branch without a name."""
 
     code = "ERR_BRANCH_EMPTY_NAME"
 
     def __init__(self) -> None:
-        """Monta o erro padrão de nome vazio."""
-        super().__init__("a branch precisa de um nome")
+        """Builds the default empty name error."""
+        super().__init__("the branch needs a name")
 
 
 class LastBranchError(AsmxError, ValueError):
-    """Tentaram apagar a única branch do projeto."""
+    """Someone tried to delete the only branch of the project."""
 
     code = "ERR_BRANCH_LAST"
 
     def __init__(self) -> None:
-        """Monta o erro padrão de última branch."""
-        super().__init__("o projeto precisa de pelo menos uma branch")
+        """Builds the default last branch error."""
+        super().__init__("the project needs at least one branch")
 
 
 class ScenarioError(AsmxError, ValueError):
-    """Cenário de teste inválido (rótulo inexistente, limite negativo...)."""
+    """Invalid test scenario (nonexistent label, negative limit...)."""
 
     code = "ERR_SCENARIO"
 
     def __init__(self, message: str, scenario: Optional[str] = None) -> None:
-        """Monta o erro.
+        """Builds the error.
 
         Args:
-            message: Descrição do problema.
-            scenario: Nome do cenário envolvido (opcional).
+            message: Description of the problem.
+            scenario: Name of the scenario involved (optional).
         """
         super().__init__(message, scenario=scenario)
         self.scenario = scenario
 
 
-# ---------------------------------------------------------- configuração --
+# ------------------------------------------------------------- configuration --
 class ConfigError(AsmxError, ValueError):
-    """Configuração ausente, ilegível ou com valor fora da faixa."""
+    """Configuration missing, unreadable or with a value out of range."""
 
     code = "ERR_CONFIG"
 
     def __init__(
         self, message: str, path: Optional[str] = None, field: Optional[str] = None
     ) -> None:
-        """Monta o erro.
+        """Builds the error.
 
         Args:
-            message: Descrição do problema.
-            path: Arquivo de configuração envolvido (opcional).
-            field: Campo rejeitado (opcional).
+            message: Description of the problem.
+            path: Configuration file involved (optional).
+            field: Field that was rejected (optional).
         """
         super().__init__(message, path=path, field=field)
         self.path = path
         self.field = field
 
 
-# ------------------------------------------------------------- execução --
+# --------------------------------------------------------------- execution --
 class EmulationError(AsmxError, RuntimeError):
-    """A máquina virtual não conseguiu começar ou continuar a execução."""
+    """The virtual machine could not start or continue the execution."""
 
     code = "ERR_EMULATION"
 
     def __init__(self, message: str, line: Optional[int] = None) -> None:
-        """Monta o erro, opcionalmente com a linha.
+        """Builds the error, optionally with the line.
 
         Args:
-            message: Descrição do problema.
-            line: Linha do código onde a execução parou.
+            message: Description of the problem.
+            line: Line of the code where the execution stopped.
         """
         super().__init__(message, line=line)
         self.line = line
 
 
 class AnalysisTimeoutError(AsmxError, TimeoutError):
-    """A execução passou do tempo limite configurado."""
+    """The run went past the configured time limit."""
 
     code = "ERR_TIMEOUT"
 
     def __init__(self, timeout: float, steps: int = 0) -> None:
-        """Monta o erro com o limite estourado.
+        """Builds the error with the limit that was exceeded.
 
         Args:
-            timeout: Tempo limite em segundos.
-            steps: Quantas instruções foram executadas até parar.
+            timeout: Time limit in seconds.
+            steps: How many instructions were executed before stopping.
         """
         super().__init__(
-            "a execução passou de %g s (timeout)" % timeout, timeout=timeout, steps=steps
+            "the run took longer than %g s (timeout)" % timeout, timeout=timeout, steps=steps
         )
         self.timeout = timeout
         self.steps = steps
 
 
-# ---------------------------------------------------------------- consulta --
+# ------------------------------------------------------------------ lookup --
 class UnknownMnemonicError(AsmxError, KeyError):
-    """Pediram documentação de uma instrução que não está no acervo."""
+    """Someone asked for documentation of an instruction that is not in the catalog."""
 
     code = "ERR_UNKNOWN_MNEMONIC"
 
     def __init__(self, mnemonic: str, known: int = 0) -> None:
-        """Monta o erro.
+        """Builds the error.
 
         Args:
-            mnemonic: Mnemônico procurado.
-            known: Quantas instruções o acervo tem, para dar noção do tamanho.
+            mnemonic: Mnemonic that was searched for.
+            known: How many instructions the catalog has, to give a sense of size.
         """
-        detalhe = " (%d instruções documentadas)" % known if known else ""
+        detail = " (%d documented instructions)" % known if known else ""
         super().__init__(
-            "não há documentação para %r%s" % (mnemonic, detalhe), mnemonic=mnemonic, known=known
+            "no documentation for %r%s" % (mnemonic, detail), mnemonic=mnemonic, known=known
         )
         self.mnemonic = mnemonic
 
 
 class LineNotFoundError(AsmxError, KeyError):
-    """A linha pedida não existe no arquivo analisado."""
+    """The requested line does not exist in the analyzed file."""
 
     code = "ERR_LINE_NOT_FOUND"
 
     def __init__(self, line: int, total: int = 0) -> None:
-        """Monta o erro.
+        """Builds the error.
 
         Args:
-            line: Linha procurada (1-based).
-            total: Quantas linhas o arquivo tem.
+            line: Line that was searched for (1-based).
+            total: How many lines the file has.
         """
-        detalhe = " (o arquivo tem %d linha(s))" % total if total else ""
-        super().__init__("não existe a linha %d%s" % (line, detalhe), line=line, total=total)
+        detail = " (the file has %d line(s))" % total if total else ""
+        super().__init__("there is no line %d%s" % (line, detail), line=line, total=total)
         self.line = line
 
 
-#: Índice ``código -> classe``, usado pela linha de comando e pela documentação.
+#: Index ``code -> class``, used by the command line and by the documentation.
 ERROR_CODES: Dict[str, type] = {
-    classe.code: classe
-    for classe in (
+    error_class.code: error_class
+    for error_class in (
         AsmxError,
         SourceNotFoundError,
         SourceReadError,

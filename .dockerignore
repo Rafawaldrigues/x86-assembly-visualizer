@@ -1,9 +1,11 @@
 # ---------------------------------------------------------------------------
 # ASM X — docker build context filter.
 #
-# Keep this file in sync with the Dockerfile: `asmx/`, `tests/`,
-# `requirements-dev.txt`, `pyproject.toml` and `README.md` MUST stay in the
-# context (the image installs the package and runs the suite inside).
+# Keep this file in sync with the Dockerfile: `asmx/`, `tests/`, `tools/`,
+# `examples/`, `docs/`, `requirements-dev.txt`, `pyproject.toml`, `README.md`,
+# `CITATION.cff` and `asmx.py` MUST stay in the context (the image installs the
+# package and runs the whole gate — tests, docstrings and the generated
+# reference — inside it).
 # ---------------------------------------------------------------------------
 
 # --- Version control and CI metadata ---
@@ -44,8 +46,10 @@ htmlcov/
 results/
 samples/
 
-# --- Local docs, notes and editor/OS junk ---
-docs/
+# --- Local notes and editor/OS junk ---
+# `docs/` stays in the context: the quality gate runs
+# `tools/build_reference.py --check`, which compares docs/REFERENCIA.md with the
+# instruction catalogue, and its tests read that file.
 .idea/
 .vscode/
 *.swp

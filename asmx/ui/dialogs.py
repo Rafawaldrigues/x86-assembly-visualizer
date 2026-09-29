@@ -1,4 +1,4 @@
-"""Janelas auxiliares da interface."""
+"""Auxiliary windows of the interface."""
 
 from __future__ import annotations
 
@@ -11,18 +11,18 @@ from . import theme
 
 
 class ModalDialog(tk.Toplevel):
-    """Base das janelas modais, com resultado em self.result."""
+    """Base of the modal windows, with the result in self.result."""
 
     def __init__(
         self, master: Union[tk.Tk, tk.Toplevel], title: str, width: int = 520, height: int = 420
     ) -> None:
-        """Monta a janela com corpo, botões e fechamento por Esc.
+        """Build the window with body, buttons and Esc to close.
 
         Args:
-            master: janela pai.
-            title: título da janela.
-            width: largura inicial em pixels.
-            height: altura inicial em pixels.
+            master: Parent window.
+            title: Window title.
+            width: Initial width in pixels.
+            height: Initial height in pixels.
         """
         super().__init__(master)
         self.result: Any = None
@@ -31,48 +31,48 @@ class ModalDialog(tk.Toplevel):
         self.transient(master)
         self.resizable(True, True)
         self.geometry("%dx%d" % (width, height))
+        self.buttons: ttk.Frame = ttk.Frame(self, padding=(12, 0, 12, 12))
+        self.buttons.pack(side="bottom", fill="x")
         self.body: ttk.Frame = ttk.Frame(self, padding=12)
         self.body.pack(fill="both", expand=True)
-        self.buttons: ttk.Frame = ttk.Frame(self, padding=(12, 0, 12, 12))
-        self.buttons.pack(fill="x")
         self.bind("<Escape>", lambda e: self.cancel())
         self.protocol("WM_DELETE_WINDOW", self.cancel)
 
-    def add_buttons(self, ok_text: str = "Salvar") -> None:
-        """Cria os botões Cancelar e confirmar.
+    def add_buttons(self, ok_text: str = "Save") -> None:
+        """Create the Cancel and confirm buttons.
 
         Args:
-            ok_text: rótulo do botão de confirmação.
+            ok_text: Label of the confirmation button.
         """
-        ttk.Button(self.buttons, text="Cancelar", command=self.cancel).pack(side="right")
+        ttk.Button(self.buttons, text="Cancel", command=self.cancel).pack(side="right")
         ttk.Button(self.buttons, text=ok_text, style="Accent.TButton", command=self.confirm).pack(
             side="right", padx=(0, 8)
         )
 
     def confirm(self) -> None:
-        """Guarda o que collect() devolveu e fecha a janela se houver resultado."""
+        """Store what collect() returned and close the window when there is a result."""
         self.result = self.collect()
         if self.result is not None:
             self.destroy()
 
     def cancel(self) -> None:
-        """Fecha a janela sem resultado."""
+        """Close the window without a result."""
         self.result = None
         self.destroy()
 
     def collect(self) -> Any:
-        """Devolve o resultado da janela; a base não coleta nada.
+        """Return the window result; the base collects nothing.
 
         Returns:
-            Sempre None nesta base; as subclasses devolvem o valor coletado.
+            Always None in this base; the subclasses return the collected value.
         """
         return None
 
     def show(self) -> Any:
-        """Mostra a janela, espera o usuário e devolve o resultado.
+        """Show the window, wait for the user and return the result.
 
         Returns:
-            O valor coletado, ou None quando a janela foi cancelada.
+            The collected value, or None when the window was cancelled.
         """
         self.grab_set()
         self.wait_window()
@@ -80,7 +80,7 @@ class ModalDialog(tk.Toplevel):
 
 
 class ScenarioDialog(ModalDialog):
-    """Cria ou edita um cenário de teste."""
+    """Create or edit a test scenario."""
 
     def __init__(
         self,
@@ -88,65 +88,65 @@ class ScenarioDialog(ModalDialog):
         labels: List[str],
         scenario: Optional[Scenario] = None,
     ) -> None:
-        """Monta o formulário do cenário, preenchido a partir de scenario.
+        """Build the scenario form, filled from scenario.
 
         Args:
-            master: janela pai.
-            labels: rótulos que podem ser usados como ponto de partida.
-            scenario: cenário a editar; None cria um cenário novo.
+            master: Parent window.
+            labels: Labels that can be used as the starting point.
+            scenario: Scenario to edit; None creates a new scenario.
         """
-        super().__init__(master, "Cenário de teste", 560, 470)
+        super().__init__(master, "Test scenario", 560, 470)
         s = scenario or Scenario(name="")
-        self.error: ttk.Label = ttk.Label(self.body, text="", foreground=theme.SEV_COLOR["erro"])
+        self.error: ttk.Label = ttk.Label(self.body, text="", foreground=theme.SEV_COLOR["error"])
 
-        campos = ttk.Frame(self.body)
-        campos.pack(fill="both", expand=True)
-        campos.columnconfigure(1, weight=1)
-        linha = 0
+        fields = ttk.Frame(self.body)
+        fields.pack(fill="both", expand=True)
+        fields.columnconfigure(1, weight=1)
+        row = 0
 
-        def add(label: str, widget: tk.Widget, dica: str = "") -> None:
-            """Posiciona um rótulo, o campo e a dica de ajuda na grade do formulário.
+        def add(label: str, widget: tk.Widget, hint: str = "") -> None:
+            """Place a label, the field and the hint on the form grid.
 
             Args:
-                label: texto do rótulo.
-                widget: campo a posicionar.
-                dica: ajuda mostrada abaixo do campo.
+                label: Label text.
+                widget: Field to place.
+                hint: Help shown below the field.
             """
-            nonlocal linha
-            ttk.Label(campos, text=label).grid(row=linha, column=0, sticky="w", pady=(6, 0))
-            widget.grid(row=linha, column=1, sticky="ew", pady=(6, 0))
-            linha += 1
-            if dica:
+            nonlocal row
+            ttk.Label(fields, text=label).grid(row=row, column=0, sticky="w", pady=(6, 0))
+            widget.grid(row=row, column=1, sticky="ew", pady=(6, 0))
+            row += 1
+            if hint:
                 ttk.Label(
-                    campos, text=dica, style="Dim.TLabel", wraplength=340, justify="left"
-                ).grid(row=linha, column=1, sticky="w")
-                linha += 1
+                    fields, text=hint, style="Dim.TLabel", wraplength=340, justify="left"
+                ).grid(row=row, column=1, sticky="w")
+                row += 1
 
-        self.nome: ttk.Entry = ttk.Entry(campos)
+        self.nome: ttk.Entry = ttk.Entry(fields)
         self.nome.insert(0, s.name)
-        add("Nome", self.nome)
+        add("Name", self.nome)
 
         self.entrada: ttk.Combobox = ttk.Combobox(
-            campos, values=[""] + list(labels), state="normal"
+            fields, values=[""] + list(labels), state="normal"
         )
         self.entrada.set(s.entry)
         add(
-            "Começar em",
+            "Start at",
             self.entrada,
-            "vazio = ponto de entrada do programa; ou escolha uma função para testá-la sozinha",
+            "empty = entry point; or a function to test alone",
         )
 
-        self.regs: ttk.Entry = ttk.Entry(campos)
+        self.regs: ttk.Entry = ttk.Entry(fields)
         self.regs.insert(0, ", ".join("%s=%s" % (k, v) for k, v in (s.regs or {}).items()))
-        add("Registradores iniciais", self.regs, "exemplo: rdi=1000000, rsi=0x20")
+        add("Initial registers", self.regs, "example: rdi=1000000, rsi=0x20")
 
-        self.stdin: ttk.Entry = ttk.Entry(campos)
+        self.stdin: ttk.Entry = ttk.Entry(fields)
         self.stdin.insert(0, s.stdin)
-        add("Entrada simulada (syscall read)", self.stdin)
+        add("Simulated input (syscall read)", self.stdin)
 
         self.saida: tk.Text = tk.Text(
-            campos,
-            height=4,
+            fields,
+            height=3,
             bg=theme.BG,
             fg=theme.FG,
             font=theme.mono(10),
@@ -157,70 +157,69 @@ class ScenarioDialog(ModalDialog):
         )
         if s.expect_output is not None:
             self.saida.insert("1.0", s.expect_output)
-        add("Saída esperada", self.saida, "deixe vazio para não verificar a saída")
+        add("Expected output", self.saida, "leave it empty to skip the output check")
 
-        self.exit_code: ttk.Entry = ttk.Entry(campos)
+        self.exit_code: ttk.Entry = ttk.Entry(fields)
         if s.expect_exit is not None:
             self.exit_code.insert(0, str(s.expect_exit))
-        add("Código de saída esperado", self.exit_code, "vazio = não verifica")
+        add("Expected exit code", self.exit_code, "empty = no check")
 
         self.espera_problema: tk.BooleanVar = tk.BooleanVar(value=s.expect_issue)
         ttk.Checkbutton(
-            campos,
-            text="O teste passa se a execução acusar algum problema "
-            "(estouro, laço infinito, divisão por zero...)",
+            fields,
+            text="Pass if the run reports a problem",
             variable=self.espera_problema,
-        ).grid(row=linha, column=1, sticky="w", pady=(8, 0))
-        linha += 1
+        ).grid(row=row, column=1, sticky="w", pady=(8, 0))
+        row += 1
 
-        self.max_steps: ttk.Entry = ttk.Entry(campos)
+        self.max_steps: ttk.Entry = ttk.Entry(fields)
         self.max_steps.insert(0, str(s.max_steps))
         add(
-            "Limite de instruções",
+            "Instruction limit",
             self.max_steps,
-            "protege contra laço infinito: ao estourar, a execução para e acusa o problema",
+            "stops an infinite loop and reports the problem",
         )
 
         self.error.pack(fill="x", pady=(8, 0))
-        self.add_buttons("Salvar cenário")
+        self.add_buttons("Save scenario")
         self.nome.focus_set()
 
     def collect(self) -> Optional[Scenario]:
-        """Valida os campos e monta o cenário digitado.
+        """Validate the fields and build the typed scenario.
 
         Returns:
-            O cenário pronto, ou None quando algum campo está inválido.
+            The ready scenario, or None when some field is invalid.
         """
-        nome = self.nome.get().strip()
-        if not nome:
-            self.error.configure(text="dê um nome ao cenário")
+        name = self.nome.get().strip()
+        if not name:
+            self.error.configure(text="give the scenario a name")
             return None
-        saida = self.saida.get("1.0", "end-1c")
+        output_text = self.saida.get("1.0", "end-1c")
         try:
-            passos = int(self.max_steps.get() or 200000)
+            steps = int(self.max_steps.get() or 200000)
         except ValueError:
-            self.error.configure(text="o limite de instruções precisa ser um número")
+            self.error.configure(text="the instruction limit must be a number")
             return None
-        exit_txt = self.exit_code.get().strip()
+        exit_text = self.exit_code.get().strip()
         try:
-            exit_code = int(exit_txt) if exit_txt else None
+            exit_code = int(exit_text) if exit_text else None
         except ValueError:
-            self.error.configure(text="o código de saída precisa ser um número")
+            self.error.configure(text="the exit code must be a number")
             return None
         return Scenario(
-            name=nome,
+            name=name,
             entry=self.entrada.get().strip(),
             regs={k: str(v) for k, v in parse_reg_values(self.regs.get()).items()},
             stdin=self.stdin.get(),
-            expect_output=saida if saida else None,
+            expect_output=output_text if output_text else None,
             expect_exit=exit_code,
             expect_issue=bool(self.espera_problema.get()),
-            max_steps=passos,
+            max_steps=steps,
         )
 
 
 class TextPromptDialog(ModalDialog):
-    """Pergunta um texto curto (nome de branch, anotação)."""
+    """Ask for a short text (branch name, note)."""
 
     def __init__(
         self,
@@ -231,15 +230,15 @@ class TextPromptDialog(ModalDialog):
         multiline: bool = False,
         hint: str = "",
     ) -> None:
-        """Monta a pergunta com campo de uma ou de várias linhas.
+        """Build the question with a single-line or multiline field.
 
         Args:
-            master: janela pai.
-            title: título da janela.
-            label: pergunta mostrada acima do campo.
-            value: valor inicial do campo.
-            multiline: usa um campo de várias linhas quando verdadeiro.
-            hint: ajuda opcional mostrada abaixo da pergunta.
+            master: Parent window.
+            title: Window title.
+            label: Question shown above the field.
+            value: Initial value of the field.
+            multiline: Use a multiline field when true.
+            hint: Optional help shown below the question.
         """
         super().__init__(master, title, 460, 240 if multiline else 190)
         ttk.Label(self.body, text=label).pack(anchor="w")
@@ -266,34 +265,34 @@ class TextPromptDialog(ModalDialog):
             self.entry.insert(0, value)
             self.entry.bind("<Return>", lambda e: self.confirm())
         self.entry.pack(fill="both", expand=True, pady=(4, 0))
-        self.error: ttk.Label = ttk.Label(self.body, text="", foreground=theme.SEV_COLOR["erro"])
+        self.error: ttk.Label = ttk.Label(self.body, text="", foreground=theme.SEV_COLOR["error"])
         self.error.pack(fill="x")
-        self.add_buttons("Confirmar")
+        self.add_buttons("Confirm")
         self.entry.focus_set()
 
     def collect(self) -> str:
-        """Devolve o texto digitado, sem o newline final quando é multilinha.
+        """Return the typed text, without the trailing newline when it is multiline.
 
         Returns:
-            O conteúdo do campo.
+            The field content.
         """
         value = self.entry.get("1.0", "end-1c") if self.multiline else self.entry.get()
         return value
 
 
 class DiffDialog(tk.Toplevel):
-    """Mostra a diferença entre duas branches."""
+    """Show the difference between two branches."""
 
-    def __init__(self, master: Union[tk.Tk, tk.Toplevel], titulo: str, diff_text: str) -> None:
-        """Monta a janela com o diff já colorido por tipo de linha.
+    def __init__(self, master: Union[tk.Tk, tk.Toplevel], title: str, diff_text: str) -> None:
+        """Build the window with the diff already colored by line type.
 
         Args:
-            master: janela pai.
-            titulo: título da janela.
-            diff_text: diff unificado entre as duas branches.
+            master: Parent window.
+            title: Window title.
+            diff_text: Unified diff between the two branches.
         """
         super().__init__(master)
-        self.title(titulo)
+        self.title(title)
         self.configure(bg=theme.PANEL)
         self.geometry("720x520")
         self.transient(master)
@@ -314,56 +313,55 @@ class DiffDialog(tk.Toplevel):
         txt.tag_configure("del", foreground=theme.CMP)
         txt.tag_configure("head", foreground=theme.ACCENT)
         if not diff_text.strip():
-            txt.insert("1.0", "As duas branches têm exatamente o mesmo código.")
+            txt.insert("1.0", "Both branches have exactly the same code.")
         else:
-            for linha in diff_text.split("\n"):
-                # O cabeçalho do diff (---, +++ e @@) precisa ser testado antes
-                # de "+" e "-", senão ele cairia nas cores de adição/remoção.
+            for line in diff_text.split("\n"):
+                # The diff header (---, +++ and @@) has to be tested before "+"
+                # and "-", otherwise it would fall into the add/remove colors.
                 tag = ""
-                if linha.startswith(("@@", "---", "+++")):
+                if line.startswith(("@@", "---", "+++")):
                     tag = "head"
-                elif linha.startswith("+"):
+                elif line.startswith("+"):
                     tag = "add"
-                elif linha.startswith("-"):
+                elif line.startswith("-"):
                     tag = "del"
-                txt.insert("end", linha + "\n", tag)
+                txt.insert("end", line + "\n", tag)
         txt.configure(state="disabled")
-        ttk.Button(self, text="Fechar", command=self.destroy).pack(pady=8)
+        ttk.Button(self, text="Close", command=self.destroy).pack(pady=8)
 
 
 class AboutDialog(ModalDialog):
-    """Janela "Sobre", com a versão e a lista de atalhos."""
+    """The "About" window, with the version and the shortcut list."""
 
-    def __init__(self, master: Union[tk.Tk, tk.Toplevel], versao: str) -> None:
-        """Monta a janela com a versão e os atalhos principais.
+    def __init__(self, master: Union[tk.Tk, tk.Toplevel], version: str) -> None:
+        """Build the window with the version and the main shortcuts.
 
         Args:
-            master: janela pai.
-            versao: versão do ASM X mostrada no texto.
+            master: Parent window.
+            version: ASM X version shown in the text.
         """
-        super().__init__(master, "Sobre", 520, 360)
+        super().__init__(master, "About", 520, 360)
         ttk.Label(self.body, text="ASM X", style="Head.TLabel", font=theme.ui(16, "bold")).pack(
             anchor="w"
         )
         ttk.Label(
             self.body,
-            text="Ambiente de estudo e depuração de assembly x86-64 — versão %s" % versao,
+            text="x86-64 assembly study and debugging environment — version %s" % version,
             style="Dim.TLabel",
         ).pack(anchor="w", pady=(0, 10))
-        texto = (
-            "Atalhos principais\n"
-            "  F5   validar o código\n"
-            "  F8   executar um passo\n"
-            "  F9   rodar até o fim ou até o breakpoint\n"
-            "  F10  reiniciar a máquina\n"
-            "  F11  rodar todos os cenários de teste\n"
-            "  Ctrl+/   comentar ou descomentar a seleção\n"
-            "  Ctrl+S   salvar o projeto\n"
-            "  Ctrl+B   nova branch a partir da atual\n"
-            "  Ctrl+F   procurar\n"
-            "  Ctrl+G   ir para a linha\n\n"
-            "Clique na calha de números para marcar um breakpoint.\n"
-            "Clique duas vezes num problema ou num item da estrutura para pular até a linha."
+        text = (
+            "Main shortcuts\n"
+            "  F5   validate the code\n"
+            "  F8   run one step\n"
+            "  F9   run to the end or to the breakpoint\n"
+            "  F10  reset the machine\n"
+            "  F11  run all test scenarios\n"
+            "  Ctrl+/   comment or uncomment the selection\n"
+            "  Ctrl+S   save the project\n"
+            "  Ctrl+B   new branch from the current one\n"
+            "  Ctrl+F   find\n"
+            "  Ctrl+G   go to line\n"
+            "Set a breakpoint in the number gutter; double-click to jump to the line."
         )
         box = tk.Text(
             self.body,
@@ -374,7 +372,7 @@ class AboutDialog(ModalDialog):
             highlightthickness=0,
             height=14,
         )
-        box.insert("1.0", texto)
+        box.insert("1.0", text)
         box.configure(state="disabled")
         box.pack(fill="both", expand=True)
-        ttk.Button(self.buttons, text="Fechar", command=self.cancel).pack(side="right")
+        ttk.Button(self.buttons, text="Close", command=self.cancel).pack(side="right")

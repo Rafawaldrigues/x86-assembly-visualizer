@@ -1,14 +1,15 @@
-"""Leitura de arquivos de código: texto, tamanho, codificação e impressão digital.
+"""Reading of source files: text, size, encoding and fingerprint.
 
-Toda entrada de código passa por aqui — a linha de comando, a importação de
-``.asm`` do projeto e os testes. Assim existe um único lugar que decide o que
-fazer quando o arquivo não existe, quando é um diretório, quando a extensão não
-é de assembly e quando os bytes não são UTF-8 (comentário em latin-1 acontece).
+Every code entry point goes through here — the command line, the ``.asm``
+import of the project and the tests. That way there is a single place that
+decides what to do when the file does not exist, when it is a directory, when
+the extension is not assembly and when the bytes are not UTF-8 (a latin-1
+comment happens).
 
 Example:
     >>> from asmx.source import read_source         # doctest: +SKIP
-    >>> fonte = read_source("examples/hello.asm")   # doctest: +SKIP
-    >>> print(fonte.name, fonte.lines, fonte.sha256[:8])  # doctest: +SKIP
+    >>> source = read_source("examples/hello.asm")  # doctest: +SKIP
+    >>> print(source.name, source.lines, source.sha256[:8])  # doctest: +SKIP
 """
 
 from __future__ import annotations
@@ -31,7 +32,7 @@ __all__ = [
     "fingerprint",
 ]
 
-#: Extensões aceitas como código de assembly.
+#: Extensions accepted as assembly source.
 SOURCE_SUFFIXES: Tuple[str, ...] = (
     ".asm",
     ".s",
@@ -43,59 +44,59 @@ SOURCE_SUFFIXES: Tuple[str, ...] = (
     ".src",
 )
 
-#: Extensões aceitas como projeto do ASM X.
+#: Extensions accepted as an ASM X project.
 PROJECT_SUFFIXES: Tuple[str, ...] = (".asmproj", ".json")
 
-#: Ordem de tentativa de decodificação: UTF-8 e, como rede, latin-1 (que aceita
-#: qualquer byte). O BOM do UTF-8 é tratado antes, em :func:`decode_text`.
+#: Decoding attempt order: UTF-8 and, as a safety net, latin-1 (which accepts
+#: any byte). The UTF-8 BOM is handled before that, in :func:`decode_text`.
 ENCODINGS: Tuple[str, ...] = ("utf-8", "latin-1")
 
 
 def decode_text(data: bytes, encodings: Iterable[str] = ENCODINGS) -> Tuple[str, str]:
-    """Decodifica bytes de código tolerando arquivos fora do UTF-8.
+    """Decodes source bytes, tolerating files that are not UTF-8.
 
-    Um BOM de UTF-8 no começo é removido (senão o ``\\ufeff`` ficaria colado no
-    primeiro mnemônico e o parser não reconheceria a instrução). Não havendo
-    BOM, tenta as codificações na ordem até uma funcionar.
+    A UTF-8 BOM at the start is removed (otherwise the ``\\ufeff`` would stick
+    to the first mnemonic and the parser would not recognize the instruction).
+    With no BOM, it tries the encodings in order until one works.
 
     Args:
-        data: Conteúdo bruto do arquivo.
-        encodings: Codificações tentadas na ordem (padrão UTF-8 e latin-1).
+        data: Raw content of the file.
+        encodings: Encodings tried in order (default UTF-8 and latin-1).
 
     Returns:
-        Tupla ``(texto, codificação)``. A última codificação da lista sempre
-        funciona, então a função não levanta exceção.
+        Tuple ``(text, encoding)``. The last encoding of the list always works,
+        so the function never raises.
 
     Example:
         >>> decode_text(b"mov rax, 1")
         ('mov rax, 1', 'utf-8')
-        >>> decode_text("; ação".encode("latin-1"))[1]
+        >>> decode_text("; temp: 20\\xb0C".encode("latin-1"))[1]
         'latin-1'
         >>> decode_text(b"\\xef\\xbb\\xbfnop")
         ('nop', 'utf-8-sig')
     """
-    com_bom = data.startswith(codecs.BOM_UTF8)
-    if com_bom:
+    with_bom = data.startswith(codecs.BOM_UTF8)
+    if with_bom:
         data = data[len(codecs.BOM_UTF8) :]
-    ultimo = "utf-8"
+    last = "utf-8"
     for encoding in encodings:
-        ultimo = encoding
+        last = encoding
         try:
-            texto = data.decode(encoding)
+            text = data.decode(encoding)
         except UnicodeDecodeError:
             continue
-        return texto, ("utf-8-sig" if com_bom else encoding)
-    return data.decode(ultimo, errors="replace"), ultimo
+        return text, ("utf-8-sig" if with_bom else encoding)
+    return data.decode(last, errors="replace"), last
 
 
 def sha256_of(data: bytes) -> str:
-    """Calcula o SHA-256 de um conteúdo.
+    """Computes the SHA-256 of a content.
 
     Args:
-        data: Bytes a resumir.
+        data: Bytes to digest.
 
     Returns:
-        Hexadecimal de 64 caracteres.
+        Hexadecimal string of 64 characters.
 
     Example:
         >>> sha256_of(b"")[:8]
@@ -105,40 +106,41 @@ def sha256_of(data: bytes) -> str:
 
 
 def fingerprint(text: str, size: int = 12) -> str:
-    """Cria um identificador curto e estável para um código.
+    """Creates a short, stable identifier for a piece of code.
 
-    Serve para nomear relatórios e comparar duas análises sem depender do
-    caminho do arquivo. Espaços no fim da linha e quebras de linha sobrando no
-    começo e no fim não mudam o resultado — só o código interessa.
+    It is used to name reports and to compare two analyses without depending on
+    the file path. Trailing spaces at the end of a line and leftover line
+    breaks at the start and at the end do not change the result — only the code
+    matters.
 
     Args:
-        text: Código fonte.
-        size: Quantidade de caracteres do identificador (padrão 12).
+        text: Assembly source.
+        size: Number of characters of the identifier (default 12).
 
     Returns:
-        Prefixo hexadecimal do SHA-256 do texto normalizado.
+        Hexadecimal prefix of the SHA-256 of the normalized text.
 
     Example:
         >>> fingerprint("mov rax, 1", 6)
         '851a74'
     """
-    linhas = [linha.rstrip() for linha in text.replace("\r\n", "\n").split("\n")]
-    normalizado = "\n".join(linhas).strip("\n")
-    return sha256_of(normalizado.encode("utf-8"))[:size]
+    lines = [line.rstrip() for line in text.replace("\r\n", "\n").split("\n")]
+    normalized = "\n".join(lines).strip("\n")
+    return sha256_of(normalized.encode("utf-8"))[:size]
 
 
 @dataclass(frozen=True)
 class SourceFile:
-    """Um arquivo de código já lido e resumido.
+    """A source file already read and summarized.
 
     Attributes:
-        path: Caminho absoluto do arquivo.
-        text: Conteúdo decodificado.
-        size: Tamanho em bytes no disco.
-        lines: Quantidade de linhas de ``text``.
-        sha256: Hash do conteúdo bruto.
-        encoding: Codificação que decodificou o arquivo sem erro.
-        fingerprint: Identificador curto derivado do texto.
+        path: Absolute path of the file.
+        text: Decoded content.
+        size: Size in bytes on disk.
+        lines: Number of lines of ``text``.
+        sha256: Hash of the raw content.
+        encoding: Encoding that decoded the file without error.
+        fingerprint: Short identifier derived from the text.
     """
 
     path: str
@@ -151,27 +153,27 @@ class SourceFile:
 
     @property
     def name(self) -> str:
-        """Nome do arquivo sem diretório.
+        """File name without the directory.
 
         Returns:
-            O basename do caminho.
+            The basename of the path.
         """
         return os.path.basename(self.path)
 
     @property
     def suffix(self) -> str:
-        """Extensão em minúsculas, incluindo o ponto.
+        """Extension in lowercase, including the dot.
 
         Returns:
-            Como ``".asm"``; string vazia quando não há extensão.
+            Such as ``".asm"``; empty string when there is no extension.
         """
         return os.path.splitext(self.path)[1].lower()
 
     def to_dict(self) -> Dict[str, Any]:
-        """Resume o arquivo para relatórios JSON.
+        """Summarizes the file for JSON reports.
 
         Returns:
-            Dicionário com nome, caminho, tamanho, linhas, hashes e codificação.
+            Dictionary with name, path, size, lines, hashes and encoding.
         """
         return {
             "name": self.name,
@@ -190,63 +192,63 @@ def read_source(
     suffixes: Optional[Iterable[str]] = None,
     max_bytes: Optional[int] = None,
 ) -> SourceFile:
-    """Lê um arquivo de código e devolve o texto com seus metadados.
+    """Reads a source file and returns the text with its metadata.
 
     Args:
-        path: Caminho do arquivo (``~`` é expandido).
-        suffixes: Extensões aceitas; ``None`` aceita qualquer arquivo. Arquivos
-            sem extensão também passam, o que cobre nomes temporários.
-        max_bytes: Tamanho máximo aceito, em bytes (padrão: sem limite).
+        path: Path of the file (``~`` is expanded).
+        suffixes: Accepted extensions; ``None`` accepts any file. Files without
+            an extension also pass, which covers temporary names.
+        max_bytes: Maximum accepted size, in bytes (default: no limit).
 
     Returns:
-        O :class:`SourceFile` preenchido.
+        The filled :class:`SourceFile`.
 
     Raises:
-        SourceNotFoundError: Se o caminho não existe.
-        SourceReadError: Se é um diretório ou a leitura falhou.
-        UnsupportedSourceError: Se a extensão está fora de ``suffixes``.
-        ParseError: Se o conteúdo tem bytes nulos, sinal de arquivo binário.
+        SourceNotFoundError: When the path does not exist.
+        SourceReadError: When it is a directory or the read failed.
+        UnsupportedSourceError: When the extension is outside ``suffixes``.
+        ParseError: When the content has null bytes, a sign of a binary file.
 
     Example:
-        >>> fonte = read_source("exemplo.asm")     # doctest: +SKIP
-        >>> fonte.lines > 0                        # doctest: +SKIP
+        >>> source = read_source("example.asm")    # doctest: +SKIP
+        >>> source.lines > 0                       # doctest: +SKIP
         True
     """
-    caminho = os.path.abspath(os.path.expanduser(str(path)))
-    if not os.path.exists(caminho):
-        raise SourceNotFoundError(caminho)
-    if os.path.isdir(caminho):
-        raise SourceReadError(caminho, "é um diretório, não um arquivo")
+    full_path = os.path.abspath(os.path.expanduser(str(path)))
+    if not os.path.exists(full_path):
+        raise SourceNotFoundError(full_path)
+    if os.path.isdir(full_path):
+        raise SourceReadError(full_path, "is a directory, not a file")
 
     if suffixes is not None:
-        aceitas = tuple(suffixes)
-        extensao = os.path.splitext(caminho)[1]
-        if extensao and extensao.lower() not in tuple(s.lower() for s in aceitas):
-            raise UnsupportedSourceError(caminho, ", ".join(aceitas))
+        accepted = tuple(suffixes)
+        extension = os.path.splitext(full_path)[1]
+        if extension and extension.lower() not in tuple(s.lower() for s in accepted):
+            raise UnsupportedSourceError(full_path, ", ".join(accepted))
 
     try:
-        with open(caminho, "rb") as arquivo:
-            dados = arquivo.read(max_bytes + 1 if max_bytes else -1)
-    except OSError as erro:
-        raise SourceReadError(caminho, str(erro)) from erro
+        with open(full_path, "rb") as file:
+            data = file.read(max_bytes + 1 if max_bytes else -1)
+    except OSError as error:
+        raise SourceReadError(full_path, str(error)) from error
 
-    if max_bytes is not None and len(dados) > max_bytes:
-        raise SourceReadError(caminho, "maior que o limite de %d bytes" % max_bytes)
+    if max_bytes is not None and len(data) > max_bytes:
+        raise SourceReadError(full_path, "bigger than the limit of %d bytes" % max_bytes)
 
-    if b"\x00" in dados:
+    if b"\x00" in data:
         raise ParseError(
-            "%s tem bytes nulos: isso é um arquivo binário, não um fonte de "
-            "assembly. O ASM X analisa texto (NASM/Intel, MASM ou GAS/AT&T) e "
-            "não faz engenharia reversa de binário." % caminho
+            "%s has null bytes: this is a binary file, not assembly source. "
+            "ASM X reads text (NASM/Intel, MASM or GAS/AT&T) and does not "
+            "reverse-engineer binaries." % full_path
         )
 
-    texto, encoding = decode_text(dados)
+    text, encoding = decode_text(data)
     return SourceFile(
-        path=caminho,
-        text=texto,
-        size=len(dados),
-        lines=texto.count("\n") + (0 if texto.endswith("\n") or not texto else 1),
-        sha256=sha256_of(dados),
+        path=full_path,
+        text=text,
+        size=len(data),
+        lines=text.count("\n") + (0 if text.endswith("\n") or not text else 1),
+        sha256=sha256_of(data),
         encoding=encoding,
-        fingerprint=fingerprint(texto),
+        fingerprint=fingerprint(text),
     )

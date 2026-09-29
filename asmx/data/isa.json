@@ -1,2073 +1,2073 @@
 {
- "CATEGORIES": {
-  "data": {
-   "label": "Movimentação de dados",
-   "color": "c-data",
-   "hint": "Copia valores entre registradores, memória e imediatos."
+  "CATEGORIES": {
+    "data": {
+      "label": "Data movement",
+      "color": "c-data",
+      "hint": "Copies values between registers, memory and immediates."
+    },
+    "stack": {
+      "label": "Stack",
+      "color": "c-stack",
+      "hint": "Pushes/pops values and maintains the function frame."
+    },
+    "arith": {
+      "label": "Arithmetic",
+      "color": "c-arith",
+      "hint": "Adds, subtracts, multiplies, divides."
+    },
+    "logic": {
+      "label": "Logic and bits",
+      "color": "c-logic",
+      "hint": "AND/OR/XOR/NOT and shifts."
+    },
+    "cmp": {
+      "label": "Comparison",
+      "color": "c-cmp",
+      "hint": "Computes and discards the result, keeping only the flags."
+    },
+    "branch": {
+      "label": "Branch",
+      "color": "c-branch",
+      "hint": "Changes the flow of execution."
+    },
+    "call": {
+      "label": "Call / return",
+      "color": "c-call",
+      "hint": "Enters and leaves functions."
+    },
+    "sys": {
+      "label": "System",
+      "color": "c-sys",
+      "hint": "Talks to the kernel or to the hardware."
+    },
+    "string": {
+      "label": "Memory blocks",
+      "color": "c-string",
+      "hint": "Copies, compares and fills whole regions."
+    },
+    "fpu": {
+      "label": "SSE / floating point",
+      "color": "c-fpu",
+      "hint": "Real numbers and XMM registers."
+    },
+    "misc": {
+      "label": "Miscellaneous",
+      "color": "c-misc",
+      "hint": "Conversions, synchronization, no-ops."
+    }
   },
-  "stack": {
-   "label": "Pilha",
-   "color": "c-stack",
-   "hint": "Empilha/desempilha e mantém o quadro de função."
+  "ISA": {
+    "mov": {
+      "cat": "data",
+      "name": "Move — copies a value",
+      "syntax": "MOV destination, source",
+      "desc": "Copies the contents of the source to the destination. The source does not change. There is no memory-to-memory MOV: one of the two sides must be a register (or the source an immediate).",
+      "ex": [
+        "MOV RAX, 10        ; puts the number 10 into RAX",
+        "MOV RBX, RAX       ; copies RAX into RBX",
+        "MOV [counter], EAX ; writes EAX to the variable counter"
+      ],
+      "flags": "Does not change flags."
+    },
+    "movzx": {
+      "cat": "data",
+      "name": "Move with Zero eXtend — copies filling with zeros",
+      "syntax": "MOVZX larger_destination, smaller_source",
+      "desc": "Copies a small value (8 or 16 bits) into a larger register, filling the rest with zeros. Use it for unsigned values.",
+      "ex": [
+        "MOVZX EAX, BYTE [buf]  ; 1 byte -> 32 bits, rest zeroed"
+      ],
+      "flags": "Does not change flags."
+    },
+    "movsx": {
+      "cat": "data",
+      "name": "Move with Sign eXtend — copies preserving the sign",
+      "syntax": "MOVSX larger_destination, smaller_source",
+      "desc": "Same as MOVZX, but replicates the sign bit. Use it for signed values, otherwise -1 in 8 bits becomes 255 in 32 bits.",
+      "ex": [
+        "MOVSX RAX, AL      ; -1 stays -1"
+      ],
+      "flags": "Does not change flags."
+    },
+    "movsxd": {
+      "cat": "data",
+      "name": "Move Sign-Extend Doubleword — 32 to 64 bits with sign",
+      "syntax": "MOVSXD destination64, source32",
+      "desc": "Sign-extends a 32-bit value to 64 bits. Very common when an int index is used as a pointer offset.",
+      "ex": [
+        "MOVSXD RCX, EDI"
+      ],
+      "flags": "Does not change flags."
+    },
+    "lea": {
+      "cat": "data",
+      "name": "Load Effective Address — computes an address",
+      "syntax": "LEA destination, [expression]",
+      "desc": "Computes the address of the expression inside the brackets and stores the number in the destination, WITHOUT reading memory. It is the normal way to take the address of a string, and also a fast way to do arithmetic (multiply by 2/4/8 and add).",
+      "ex": [
+        "LEA RSI, [msg]            ; RSI = address of the string",
+        "LEA RAX, [RBX+RCX*4+8]    ; RAX = RBX + RCX*4 + 8, without touching memory"
+      ],
+      "flags": "Does not change flags.",
+      "note": "MOV RSI, [msg] would read the contents. LEA takes the address."
+    },
+    "xchg": {
+      "cat": "data",
+      "name": "Exchange — swaps two values",
+      "syntax": "XCHG a, b",
+      "desc": "Swaps the contents of the two operands. When one of them is memory, the operation is atomic (it locks the bus).",
+      "ex": [
+        "XCHG RAX, RBX"
+      ],
+      "flags": "Does not change flags."
+    },
+    "cmov": {
+      "cat": "data",
+      "name": "Conditional Move — copies only when the condition is true",
+      "syntax": "CMOVcc destination, source",
+      "desc": "Copies the source to the destination only when the condition holds (the same suffix family as the jumps: E, NE, G, L, A, B...). It avoids a branch, which helps the processor not to mispredict.",
+      "ex": [
+        "CMP RAX, RBX",
+        "CMOVL RAX, RBX   ; RAX = min(RAX, RBX)"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "push": {
+      "cat": "stack",
+      "name": "Push — pushes a value onto the stack",
+      "syntax": "PUSH source",
+      "desc": "Subtracts 8 from RSP and writes the 64-bit value at that address. The stack grows toward LOWER addresses.",
+      "ex": [
+        "PUSH RAX        ; saves RAX on the stack",
+        "PUSH QWORD 42"
+      ],
+      "flags": "Does not change flags."
+    },
+    "pop": {
+      "cat": "stack",
+      "name": "Pop — pops a value off the stack",
+      "syntax": "POP destination",
+      "desc": "Reads 8 bytes from the top of the stack into the destination and adds 8 to RSP. Every PUSH needs a matching POP (or an RSP adjustment) before the RET.",
+      "ex": [
+        "POP RBX"
+      ],
+      "flags": "Does not change flags."
+    },
+    "enter": {
+      "cat": "stack",
+      "name": "Enter — builds the stack frame",
+      "syntax": "ENTER size, level",
+      "desc": "Equivalent to PUSH RBP / MOV RBP, RSP / SUB RSP, size. Rarely used today: the hand-written sequence is faster.",
+      "ex": [
+        "ENTER 32, 0"
+      ],
+      "flags": "Does not change flags."
+    },
+    "leave": {
+      "cat": "stack",
+      "name": "Leave — tears down the stack frame",
+      "syntax": "LEAVE",
+      "desc": "Equivalent to MOV RSP, RBP / POP RBP. It is the standard epilogue of a function that used RBP.",
+      "ex": [
+        "LEAVE",
+        "RET"
+      ],
+      "flags": "Does not change flags."
+    },
+    "add": {
+      "cat": "arith",
+      "name": "Add — adds",
+      "syntax": "ADD destination, source",
+      "desc": "destination = destination + source.",
+      "ex": [
+        "ADD RAX, 1",
+        "ADD RAX, RBX"
+      ],
+      "flags": "Changes CF, OF, SF, ZF, AF, PF."
+    },
+    "adc": {
+      "cat": "arith",
+      "name": "Add with Carry — adds with the carry-in",
+      "syntax": "ADC destination, source",
+      "desc": "destination = destination + source + CF. Used to add numbers wider than 64 bits in parts.",
+      "ex": [
+        "ADD RAX, RCX",
+        "ADC RDX, RBX"
+      ],
+      "flags": "Changes CF, OF, SF, ZF, AF, PF."
+    },
+    "sub": {
+      "cat": "arith",
+      "name": "Subtract — subtracts",
+      "syntax": "SUB destination, source",
+      "desc": "destination = destination - source. It is also how stack space is reserved: SUB RSP, 32.",
+      "ex": [
+        "SUB RAX, 5",
+        "SUB RSP, 32   ; opens 32 bytes of local space"
+      ],
+      "flags": "Changes CF, OF, SF, ZF, AF, PF."
+    },
+    "sbb": {
+      "cat": "arith",
+      "name": "Subtract with Borrow — subtracts with the borrow",
+      "syntax": "SBB destination, source",
+      "desc": "destination = destination - source - CF. The counterpart of ADC for long numbers.",
+      "ex": [
+        "SBB RDX, RBX"
+      ],
+      "flags": "Changes CF, OF, SF, ZF, AF, PF."
+    },
+    "inc": {
+      "cat": "arith",
+      "name": "Increment — adds 1",
+      "syntax": "INC destination",
+      "desc": "destination = destination + 1. It does not touch CF (unlike ADD x, 1).",
+      "ex": [
+        "INC RCX"
+      ],
+      "flags": "Changes OF, SF, ZF, AF, PF. Preserves CF."
+    },
+    "dec": {
+      "cat": "arith",
+      "name": "Decrement — subtracts 1",
+      "syntax": "DEC destination",
+      "desc": "destination = destination - 1. Widely used in loop counters together with JNZ.",
+      "ex": [
+        "DEC RCX",
+        "JNZ loop"
+      ],
+      "flags": "Changes OF, SF, ZF, AF, PF. Preserves CF."
+    },
+    "neg": {
+      "cat": "arith",
+      "name": "Negate — flips the sign",
+      "syntax": "NEG destination",
+      "desc": "destination = 0 - destination (two's complement).",
+      "ex": [
+        "NEG RAX"
+      ],
+      "flags": "Changes CF, OF, SF, ZF, AF, PF."
+    },
+    "mul": {
+      "cat": "arith",
+      "name": "Multiply (unsigned)",
+      "syntax": "MUL source",
+      "desc": "Multiplies RAX by the source. The 128-bit result lands in RDX:RAX. The implicit RAX operand is mandatory.",
+      "ex": [
+        "MOV RAX, 6",
+        "MOV RBX, 7",
+        "MUL RBX      ; RAX = 42"
+      ],
+      "flags": "Changes CF and OF (they tell whether the high part is nonzero)."
+    },
+    "imul": {
+      "cat": "arith",
+      "name": "Integer Multiply (signed)",
+      "syntax": "IMUL source  |  IMUL dest, source  |  IMUL dest, source, immediate",
+      "desc": "Signed multiplication. The two- or three-operand form is the one used day to day, because the destination is explicit.",
+      "ex": [
+        "IMUL RAX, RBX",
+        "IMUL RAX, RBX, 4"
+      ],
+      "flags": "Changes CF and OF."
+    },
+    "div": {
+      "cat": "arith",
+      "name": "Divide (unsigned)",
+      "syntax": "DIV divisor",
+      "desc": "Divides RDX:RAX by the divisor. The quotient goes to RAX and the remainder to RDX. WARNING: clear RDX first (XOR RDX, RDX), otherwise the result is garbage or the CPU raises an exception.",
+      "ex": [
+        "XOR RDX, RDX",
+        "MOV RAX, 100",
+        "MOV RBX, 7",
+        "DIV RBX      ; RAX=14, RDX=2"
+      ],
+      "flags": "Flags are undefined."
+    },
+    "idiv": {
+      "cat": "arith",
+      "name": "Integer Divide (signed)",
+      "syntax": "IDIV divisor",
+      "desc": "Same as DIV, but signed. Before it, use CQO (64 bits) or CDQ (32 bits) to sign-extend into RDX/EDX.",
+      "ex": [
+        "MOV RAX, -100",
+        "CQO",
+        "IDIV RBX"
+      ],
+      "flags": "Flags are undefined."
+    },
+    "and": {
+      "cat": "logic",
+      "name": "AND — bitwise AND",
+      "syntax": "AND destination, source",
+      "desc": "Keeps only the bits that are set in both operands. Used to mask (keep just part of the value).",
+      "ex": [
+        "AND RAX, 0x0F     ; keeps only the low 4 bits"
+      ],
+      "flags": "Clears CF and OF; changes SF, ZF, PF."
+    },
+    "or": {
+      "cat": "logic",
+      "name": "OR — bitwise OR",
+      "syntax": "OR destination, source",
+      "desc": "Turns on in the destination every bit that is set in the source. Used to set flags.",
+      "ex": [
+        "OR RAX, 1         ; sets bit 0"
+      ],
+      "flags": "Clears CF and OF; changes SF, ZF, PF."
+    },
+    "xor": {
+      "cat": "logic",
+      "name": "XOR — exclusive OR",
+      "syntax": "XOR destination, source",
+      "desc": "A bit is 1 when the two are different. XOR of a register with itself is the idiomatic (and shortest) way to zero it.",
+      "ex": [
+        "XOR RAX, RAX      ; RAX = 0"
+      ],
+      "flags": "Clears CF and OF; changes SF, ZF, PF."
+    },
+    "not": {
+      "cat": "logic",
+      "name": "NOT — inverts every bit",
+      "syntax": "NOT destination",
+      "desc": "One's complement: every 0 becomes 1 and vice versa.",
+      "ex": [
+        "NOT RAX"
+      ],
+      "flags": "Does not change flags."
+    },
+    "shl": {
+      "cat": "logic",
+      "name": "Shift Left — shifts bits to the left",
+      "syntax": "SHL destination, count",
+      "desc": "Each shift by 1 multiplies by 2. Zeros come in from the right.",
+      "ex": [
+        "SHL RAX, 3        ; RAX = RAX * 8"
+      ],
+      "flags": "Changes CF (the last bit shifted out), OF, SF, ZF, PF."
+    },
+    "sal": {
+      "cat": "logic",
+      "name": "Shift Arithmetic Left — identical to SHL",
+      "syntax": "SAL destination, count",
+      "desc": "The same instruction as SHL; it exists only for symmetry with SAR.",
+      "ex": [
+        "SAL RAX, 1"
+      ],
+      "flags": "Same as SHL."
+    },
+    "shr": {
+      "cat": "logic",
+      "name": "Shift Right (unsigned)",
+      "syntax": "SHR destination, count",
+      "desc": "Shifts right bringing in zeros. It is the same as dividing unsigned values by 2^n.",
+      "ex": [
+        "SHR RAX, 1        ; RAX = RAX / 2 (unsigned)"
+      ],
+      "flags": "Changes CF, OF, SF, ZF, PF."
+    },
+    "sar": {
+      "cat": "logic",
+      "name": "Shift Arithmetic Right (signed)",
+      "syntax": "SAR destination, count",
+      "desc": "Shifts right repeating the sign bit, so negative numbers stay negative.",
+      "ex": [
+        "SAR RAX, 2"
+      ],
+      "flags": "Changes CF, OF, SF, ZF, PF."
+    },
+    "rol": {
+      "cat": "logic",
+      "name": "Rotate Left — rotates to the left",
+      "syntax": "ROL destination, count",
+      "desc": "The bits that leave one side enter the other. Nothing is lost.",
+      "ex": [
+        "ROL AL, 4"
+      ],
+      "flags": "Changes CF and OF."
+    },
+    "ror": {
+      "cat": "logic",
+      "name": "Rotate Right — rotates to the right",
+      "syntax": "ROR destination, count",
+      "desc": "Rotation in the opposite direction of ROL.",
+      "ex": [
+        "ROR AL, 4"
+      ],
+      "flags": "Changes CF and OF."
+    },
+    "bt": {
+      "cat": "logic",
+      "name": "Bit Test — tests a bit",
+      "syntax": "BT value, index",
+      "desc": "Copies the selected bit into CF without changing the value.",
+      "ex": [
+        "BT RAX, 5",
+        "JC enabled"
+      ],
+      "flags": "Changes CF."
+    },
+    "cmp": {
+      "cat": "cmp",
+      "name": "Compare — compares two values",
+      "syntax": "CMP a, b",
+      "desc": "Computes a - b, throws the result away and keeps only the flags. It is always read together with the following branch: CMP RAX, 10 + JG means \"if RAX > 10\".",
+      "ex": [
+        "CMP RAX, 10",
+        "JG bigger"
+      ],
+      "flags": "Changes CF, OF, SF, ZF, AF, PF."
+    },
+    "test": {
+      "cat": "cmp",
+      "name": "Test — an AND that only produces flags",
+      "syntax": "TEST a, b",
+      "desc": "Computes a AND b and keeps only the flags. TEST RAX, RAX is the idiomatic way to ask \"is RAX zero?\" — shorter than CMP RAX, 0.",
+      "ex": [
+        "TEST RAX, RAX",
+        "JZ was_zero"
+      ],
+      "flags": "Clears CF and OF; changes SF, ZF, PF."
+    },
+    "set": {
+      "cat": "cmp",
+      "name": "Set on condition — becomes 0 or 1 according to the condition",
+      "syntax": "SETcc destination8",
+      "desc": "Writes 1 into the destination byte if the condition is true, otherwise 0. This is how compilers produce a bool.",
+      "ex": [
+        "CMP RAX, RBX",
+        "SETE AL     ; AL = (RAX == RBX)"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "jmp": {
+      "cat": "branch",
+      "name": "Jump — unconditional branch",
+      "syntax": "JMP destination",
+      "desc": "Continues execution at the given label (or address), with no condition and no return address saved.",
+      "ex": [
+        "JMP done"
+      ],
+      "flags": "Does not change flags."
+    },
+    "loop": {
+      "cat": "branch",
+      "name": "Loop — repeats using RCX as the counter",
+      "syntax": "LOOP label",
+      "desc": "Decrements RCX and branches if RCX != 0. Equivalent to DEC RCX / JNZ, but it is usually slower than writing the two.",
+      "ex": [
+        "MOV RCX, 5",
+        "body:",
+        "  LOOP body"
+      ],
+      "flags": "Does not change flags."
+    },
+    "call": {
+      "cat": "call",
+      "name": "Call — calls a function",
+      "syntax": "CALL destination",
+      "desc": "Pushes the address of the next instruction (the return address) and branches to the function. The RET afterwards uses that value to come back.",
+      "ex": [
+        "CALL sum_values",
+        "CALL printf"
+      ],
+      "flags": "Does not change flags."
+    },
+    "ret": {
+      "cat": "call",
+      "name": "Return — returns from the function",
+      "syntax": "RET  |  RET n",
+      "desc": "Pops the return address and continues from there. The stack must be exactly as it was on entry, or the return goes to the wrong address.",
+      "ex": [
+        "RET"
+      ],
+      "flags": "Does not change flags."
+    },
+    "syscall": {
+      "cat": "sys",
+      "name": "Syscall — calls the kernel (Linux x86-64)",
+      "syntax": "SYSCALL",
+      "desc": "Hands control to the kernel. The service number goes in RAX and the arguments in RDI, RSI, RDX, R10, R8, R9. The return value comes back in RAX. RCX and R11 are destroyed.",
+      "ex": [
+        "MOV RAX, 1   ; write",
+        "MOV RDI, 1   ; stdout",
+        "MOV RSI, msg",
+        "MOV RDX, 13",
+        "SYSCALL"
+      ],
+      "flags": "Does not change flags (RCX and R11 are overwritten)."
+    },
+    "int": {
+      "cat": "sys",
+      "name": "Interrupt — raises a software interrupt",
+      "syntax": "INT number",
+      "desc": "INT 0x80 is the old 32-bit Linux system call — in 64-bit code the normal choice is SYSCALL. INT 3 is the breakpoint used by debuggers.",
+      "ex": [
+        "INT 0x80",
+        "INT 3"
+      ],
+      "flags": "Depends on the handler."
+    },
+    "sysenter": {
+      "cat": "sys",
+      "name": "Sysenter — fast kernel entry (32 bits)",
+      "syntax": "SYSENTER",
+      "desc": "Kernel entry mechanism on 32-bit systems. On x86-64 it was replaced by SYSCALL.",
+      "ex": [
+        "SYSENTER"
+      ],
+      "flags": "—"
+    },
+    "cpuid": {
+      "cat": "sys",
+      "name": "CPUID — identifies the processor",
+      "syntax": "CPUID",
+      "desc": "Returns CPU information in EAX/EBX/ECX/EDX according to the value previously placed in EAX.",
+      "ex": [
+        "XOR EAX, EAX",
+        "CPUID"
+      ],
+      "flags": "Does not change flags."
+    },
+    "rdtsc": {
+      "cat": "sys",
+      "name": "RDTSC — reads the cycle counter",
+      "syntax": "RDTSC",
+      "desc": "Places the number of cycles since reset in EDX:EAX. Used to measure time with high resolution.",
+      "ex": [
+        "RDTSC"
+      ],
+      "flags": "Does not change flags."
+    },
+    "hlt": {
+      "cat": "sys",
+      "name": "Halt — stops the processor",
+      "syntax": "HLT",
+      "desc": "Only makes sense in kernel/bare-metal code. In a user program it causes a protection fault.",
+      "ex": [
+        "HLT"
+      ],
+      "flags": "—"
+    },
+    "movsb": {
+      "cat": "string",
+      "name": "Move String byte",
+      "syntax": "MOVSB  (usually REP MOVSB)",
+      "desc": "Copies one byte from [RSI] to [RDI] and advances both. With REP and RCX it is a one-line memcpy.",
+      "ex": [
+        "MOV RCX, 100",
+        "REP MOVSB"
+      ],
+      "flags": "Does not change flags. Direction controlled by DF (CLD/STD)."
+    },
+    "stosb": {
+      "cat": "string",
+      "name": "Store String Byte — fills memory with AL",
+      "syntax": "STOSB  (usually REP STOSB)",
+      "desc": "Stores AL at [RDI] and advances RDI. With REP it becomes a memset.",
+      "ex": [
+        "XOR AL, AL",
+        "MOV RCX, 64",
+        "REP STOSB"
+      ],
+      "flags": "Does not change flags."
+    },
+    "lodsb": {
+      "cat": "string",
+      "name": "Load String Byte — loads a byte from [RSI] into AL",
+      "syntax": "LODSB",
+      "desc": "Loads one byte from [RSI] into AL and advances RSI. The basis for walking through strings.",
+      "ex": [
+        "LODSB",
+        "TEST AL, AL",
+        "JZ done"
+      ],
+      "flags": "Does not change flags."
+    },
+    "scasb": {
+      "cat": "string",
+      "name": "Scan String Byte — searches for a byte",
+      "syntax": "SCASB  (usually REPNE SCASB)",
+      "desc": "Compares AL with [RDI] and advances. With REPNE it finds a byte inside a buffer (the basis of strlen).",
+      "ex": [
+        "REPNE SCASB"
+      ],
+      "flags": "Changes the comparison flags."
+    },
+    "cmpsb": {
+      "cat": "string",
+      "name": "Compare String Byte — compares two regions",
+      "syntax": "CMPSB  (usually REPE CMPSB)",
+      "desc": "Compares [RSI] with [RDI] and advances both. With REPE it is a memcmp.",
+      "ex": [
+        "REPE CMPSB"
+      ],
+      "flags": "Changes the comparison flags."
+    },
+    "rep": {
+      "cat": "string",
+      "name": "REP — repetition prefix",
+      "syntax": "REP / REPE / REPNE instruction",
+      "desc": "Repeats the string instruction RCX times. REPE stops when ZF=0; REPNE stops when ZF=1.",
+      "ex": [
+        "REP MOVSB"
+      ],
+      "flags": "Depends on the repeated instruction."
+    },
+    "cld": {
+      "cat": "string",
+      "name": "Clear Direction Flag — walk forward",
+      "syntax": "CLD",
+      "desc": "Clears DF: string instructions move forward (RSI/RDI increase). It is the state the ABI expects.",
+      "ex": [
+        "CLD"
+      ],
+      "flags": "Clears DF."
+    },
+    "std": {
+      "cat": "string",
+      "name": "Set Direction Flag — walk backward",
+      "syntax": "STD",
+      "desc": "Sets DF: string instructions move backward. Always restore it with CLD afterwards.",
+      "ex": [
+        "STD"
+      ],
+      "flags": "Sets DF."
+    },
+    "movss": {
+      "cat": "fpu",
+      "name": "Move Scalar Single — 32-bit float",
+      "syntax": "MOVSS xmm, source",
+      "desc": "Moves a single-precision float between XMM registers and memory.",
+      "ex": [
+        "MOVSS XMM0, [value]"
+      ],
+      "flags": "Does not change flags."
+    },
+    "movsd_sse": {
+      "cat": "fpu",
+      "name": "Move Scalar Double — 64-bit double",
+      "syntax": "MOVSD xmm, source",
+      "desc": "Moves a double. Careful: the same MOVSD mnemonic also exists as a string instruction — the assembler decides from the operand.",
+      "ex": [
+        "MOVSD XMM0, [value]"
+      ],
+      "flags": "Does not change flags."
+    },
+    "addsd": {
+      "cat": "fpu",
+      "name": "Add Scalar Double — double addition",
+      "syntax": "ADDSD xmm, source",
+      "desc": "Adds two doubles in XMM registers.",
+      "ex": [
+        "ADDSD XMM0, XMM1"
+      ],
+      "flags": "Does not change the integer flags."
+    },
+    "mulsd": {
+      "cat": "fpu",
+      "name": "Multiply Scalar Double",
+      "syntax": "MULSD xmm, source",
+      "desc": "Multiplies two doubles.",
+      "ex": [
+        "MULSD XMM0, XMM1"
+      ],
+      "flags": "—"
+    },
+    "cvtsi2sd": {
+      "cat": "fpu",
+      "name": "Convert Integer to Double",
+      "syntax": "CVTSI2SD xmm, reg/mem",
+      "desc": "Converts an integer to a double.",
+      "ex": [
+        "CVTSI2SD XMM0, RAX"
+      ],
+      "flags": "—"
+    },
+    "nop": {
+      "cat": "misc",
+      "name": "No Operation — does nothing",
+      "syntax": "NOP",
+      "desc": "Burns one cycle. It is used to align code in memory and as placeholder space for patches.",
+      "ex": [
+        "NOP"
+      ],
+      "flags": "Does not change flags."
+    },
+    "cdq": {
+      "cat": "misc",
+      "name": "Convert Doubleword to Quadword — extends EAX into EDX",
+      "syntax": "CDQ",
+      "desc": "Replicates the sign bit of EAX across EDX. Mandatory before a 32-bit IDIV.",
+      "ex": [
+        "CDQ",
+        "IDIV EBX"
+      ],
+      "flags": "Does not change flags."
+    },
+    "cqo": {
+      "cat": "misc",
+      "name": "Convert Quadword to Octoword — extends RAX into RDX",
+      "syntax": "CQO",
+      "desc": "The 64-bit version of CDQ. Use it before IDIV with 64-bit operands.",
+      "ex": [
+        "CQO",
+        "IDIV RBX"
+      ],
+      "flags": "Does not change flags."
+    },
+    "cwde": {
+      "cat": "misc",
+      "name": "Convert Word to Doubleword",
+      "syntax": "CWDE",
+      "desc": "Sign-extends AX into EAX.",
+      "ex": [
+        "CWDE"
+      ],
+      "flags": "Does not change flags."
+    },
+    "bswap": {
+      "cat": "misc",
+      "name": "Byte Swap — reverses the byte order",
+      "syntax": "BSWAP register",
+      "desc": "Converts between little-endian and big-endian (network byte order).",
+      "ex": [
+        "BSWAP EAX"
+      ],
+      "flags": "Does not change flags."
+    },
+    "xadd": {
+      "cat": "misc",
+      "name": "Exchange and Add — swaps and adds (atomic with LOCK)",
+      "syntax": "XADD destination, source",
+      "desc": "Swaps the operands and stores the sum in the destination. The basis of atomic counters.",
+      "ex": [
+        "LOCK XADD [counter], RAX"
+      ],
+      "flags": "Changes the arithmetic flags."
+    },
+    "cmpxchg": {
+      "cat": "misc",
+      "name": "Compare and Exchange — the x86 CAS",
+      "syntax": "CMPXCHG destination, source",
+      "desc": "If destination == RAX, stores the source in the destination; otherwise loads the destination into RAX. The basis of locks and lock-free structures.",
+      "ex": [
+        "LOCK CMPXCHG [ptr], RBX"
+      ],
+      "flags": "Changes ZF and the other arithmetic flags."
+    },
+    "lock": {
+      "cat": "misc",
+      "name": "LOCK — atomicity prefix",
+      "syntax": "LOCK instruction",
+      "desc": "Ensures the memory operation is atomic across cores.",
+      "ex": [
+        "LOCK INC [counter]"
+      ],
+      "flags": "Depends on the instruction."
+    },
+    "endbr64": {
+      "cat": "misc",
+      "name": "ENDBR64 — marks a valid indirect branch target",
+      "syntax": "ENDBR64",
+      "desc": "Part of the CET/IBT protection. It marks that this address may be the target of an indirect call/jmp. Modern compilers place it at the start of every function.",
+      "ex": [
+        "ENDBR64"
+      ],
+      "flags": "Does not change flags."
+    },
+    "ud2": {
+      "cat": "misc",
+      "name": "UD2 — deliberate invalid instruction",
+      "syntax": "UD2",
+      "desc": "Raises an invalid opcode exception. Compilers use it to mark unreachable code.",
+      "ex": [
+        "UD2"
+      ],
+      "flags": "—"
+    },
+    "je": {
+      "cat": "branch",
+      "name": "Jump if E — branches when equal",
+      "syntax": "JE label",
+      "desc": "Branches to the label when the last comparison indicated equal. Flag condition: ZF = 1. When the condition is false, execution simply falls through to the next line.",
+      "ex": [
+        "CMP RAX, RBX",
+        "JE target"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "sete": {
+      "cat": "cmp",
+      "name": "Set if E — 1 when equal",
+      "syntax": "SETE destination8",
+      "desc": "Puts 1 in the destination byte when equal (ZF = 1), otherwise 0.",
+      "ex": [
+        "CMP RAX, RBX",
+        "SETE AL"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "cmove": {
+      "cat": "data",
+      "name": "Conditional Move if E",
+      "syntax": "CMOVE destination, source",
+      "desc": "Copies the source to the destination only when equal (ZF = 1). No branch, so there is no risk of a misprediction.",
+      "ex": [
+        "CMP RAX, RBX",
+        "CMOVE RAX, RBX"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "jz": {
+      "cat": "branch",
+      "name": "Jump if Z — branches when zero",
+      "syntax": "JZ label",
+      "desc": "Branches to the label when the last comparison indicated zero. Flag condition: ZF = 1. When the condition is false, execution simply falls through to the next line.",
+      "ex": [
+        "CMP RAX, RBX",
+        "JZ target"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "setz": {
+      "cat": "cmp",
+      "name": "Set if Z — 1 when zero",
+      "syntax": "SETZ destination8",
+      "desc": "Puts 1 in the destination byte when zero (ZF = 1), otherwise 0.",
+      "ex": [
+        "CMP RAX, RBX",
+        "SETZ AL"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "cmovz": {
+      "cat": "data",
+      "name": "Conditional Move if Z",
+      "syntax": "CMOVZ destination, source",
+      "desc": "Copies the source to the destination only when zero (ZF = 1). No branch, so there is no risk of a misprediction.",
+      "ex": [
+        "CMP RAX, RBX",
+        "CMOVZ RAX, RBX"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "jne": {
+      "cat": "branch",
+      "name": "Jump if NE — branches when not equal",
+      "syntax": "JNE label",
+      "desc": "Branches to the label when the last comparison indicated not equal. Flag condition: ZF = 0. When the condition is false, execution simply falls through to the next line.",
+      "ex": [
+        "CMP RAX, RBX",
+        "JNE target"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "setne": {
+      "cat": "cmp",
+      "name": "Set if NE — 1 when not equal",
+      "syntax": "SETNE destination8",
+      "desc": "Puts 1 in the destination byte when not equal (ZF = 0), otherwise 0.",
+      "ex": [
+        "CMP RAX, RBX",
+        "SETNE AL"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "cmovne": {
+      "cat": "data",
+      "name": "Conditional Move if NE",
+      "syntax": "CMOVNE destination, source",
+      "desc": "Copies the source to the destination only when not equal (ZF = 0). No branch, so there is no risk of a misprediction.",
+      "ex": [
+        "CMP RAX, RBX",
+        "CMOVNE RAX, RBX"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "jnz": {
+      "cat": "branch",
+      "name": "Jump if NZ — branches when not zero",
+      "syntax": "JNZ label",
+      "desc": "Branches to the label when the last comparison indicated not zero. Flag condition: ZF = 0. When the condition is false, execution simply falls through to the next line.",
+      "ex": [
+        "CMP RAX, RBX",
+        "JNZ target"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "setnz": {
+      "cat": "cmp",
+      "name": "Set if NZ — 1 when not zero",
+      "syntax": "SETNZ destination8",
+      "desc": "Puts 1 in the destination byte when not zero (ZF = 0), otherwise 0.",
+      "ex": [
+        "CMP RAX, RBX",
+        "SETNZ AL"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "cmovnz": {
+      "cat": "data",
+      "name": "Conditional Move if NZ",
+      "syntax": "CMOVNZ destination, source",
+      "desc": "Copies the source to the destination only when not zero (ZF = 0). No branch, so there is no risk of a misprediction.",
+      "ex": [
+        "CMP RAX, RBX",
+        "CMOVNZ RAX, RBX"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "jg": {
+      "cat": "branch",
+      "name": "Jump if G — branches when greater (signed)",
+      "syntax": "JG label",
+      "desc": "Branches to the label when the last comparison indicated greater (signed). Flag condition: ZF = 0 and SF = OF. When the condition is false, execution simply falls through to the next line.",
+      "ex": [
+        "CMP RAX, RBX",
+        "JG target"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "setg": {
+      "cat": "cmp",
+      "name": "Set if G — 1 when greater (signed)",
+      "syntax": "SETG destination8",
+      "desc": "Puts 1 in the destination byte when greater (signed) (ZF = 0 and SF = OF), otherwise 0.",
+      "ex": [
+        "CMP RAX, RBX",
+        "SETG AL"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "cmovg": {
+      "cat": "data",
+      "name": "Conditional Move if G",
+      "syntax": "CMOVG destination, source",
+      "desc": "Copies the source to the destination only when greater (signed) (ZF = 0 and SF = OF). No branch, so there is no risk of a misprediction.",
+      "ex": [
+        "CMP RAX, RBX",
+        "CMOVG RAX, RBX"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "jge": {
+      "cat": "branch",
+      "name": "Jump if GE — branches when greater or equal (signed)",
+      "syntax": "JGE label",
+      "desc": "Branches to the label when the last comparison indicated greater or equal (signed). Flag condition: SF = OF. When the condition is false, execution simply falls through to the next line.",
+      "ex": [
+        "CMP RAX, RBX",
+        "JGE target"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "setge": {
+      "cat": "cmp",
+      "name": "Set if GE — 1 when greater or equal (signed)",
+      "syntax": "SETGE destination8",
+      "desc": "Puts 1 in the destination byte when greater or equal (signed) (SF = OF), otherwise 0.",
+      "ex": [
+        "CMP RAX, RBX",
+        "SETGE AL"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "cmovge": {
+      "cat": "data",
+      "name": "Conditional Move if GE",
+      "syntax": "CMOVGE destination, source",
+      "desc": "Copies the source to the destination only when greater or equal (signed) (SF = OF). No branch, so there is no risk of a misprediction.",
+      "ex": [
+        "CMP RAX, RBX",
+        "CMOVGE RAX, RBX"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "jl": {
+      "cat": "branch",
+      "name": "Jump if L — branches when less (signed)",
+      "syntax": "JL label",
+      "desc": "Branches to the label when the last comparison indicated less (signed). Flag condition: SF ≠ OF. When the condition is false, execution simply falls through to the next line.",
+      "ex": [
+        "CMP RAX, RBX",
+        "JL target"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "setl": {
+      "cat": "cmp",
+      "name": "Set if L — 1 when less (signed)",
+      "syntax": "SETL destination8",
+      "desc": "Puts 1 in the destination byte when less (signed) (SF ≠ OF), otherwise 0.",
+      "ex": [
+        "CMP RAX, RBX",
+        "SETL AL"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "cmovl": {
+      "cat": "data",
+      "name": "Conditional Move if L",
+      "syntax": "CMOVL destination, source",
+      "desc": "Copies the source to the destination only when less (signed) (SF ≠ OF). No branch, so there is no risk of a misprediction.",
+      "ex": [
+        "CMP RAX, RBX",
+        "CMOVL RAX, RBX"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "jle": {
+      "cat": "branch",
+      "name": "Jump if LE — branches when less or equal (signed)",
+      "syntax": "JLE label",
+      "desc": "Branches to the label when the last comparison indicated less or equal (signed). Flag condition: ZF = 1 or SF ≠ OF. When the condition is false, execution simply falls through to the next line.",
+      "ex": [
+        "CMP RAX, RBX",
+        "JLE target"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "setle": {
+      "cat": "cmp",
+      "name": "Set if LE — 1 when less or equal (signed)",
+      "syntax": "SETLE destination8",
+      "desc": "Puts 1 in the destination byte when less or equal (signed) (ZF = 1 or SF ≠ OF), otherwise 0.",
+      "ex": [
+        "CMP RAX, RBX",
+        "SETLE AL"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "cmovle": {
+      "cat": "data",
+      "name": "Conditional Move if LE",
+      "syntax": "CMOVLE destination, source",
+      "desc": "Copies the source to the destination only when less or equal (signed) (ZF = 1 or SF ≠ OF). No branch, so there is no risk of a misprediction.",
+      "ex": [
+        "CMP RAX, RBX",
+        "CMOVLE RAX, RBX"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "ja": {
+      "cat": "branch",
+      "name": "Jump if A — branches when above (unsigned)",
+      "syntax": "JA label",
+      "desc": "Branches to the label when the last comparison indicated above (unsigned). Flag condition: CF = 0 and ZF = 0. When the condition is false, execution simply falls through to the next line.",
+      "ex": [
+        "CMP RAX, RBX",
+        "JA target"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "seta": {
+      "cat": "cmp",
+      "name": "Set if A — 1 when above (unsigned)",
+      "syntax": "SETA destination8",
+      "desc": "Puts 1 in the destination byte when above (unsigned) (CF = 0 and ZF = 0), otherwise 0.",
+      "ex": [
+        "CMP RAX, RBX",
+        "SETA AL"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "cmova": {
+      "cat": "data",
+      "name": "Conditional Move if A",
+      "syntax": "CMOVA destination, source",
+      "desc": "Copies the source to the destination only when above (unsigned) (CF = 0 and ZF = 0). No branch, so there is no risk of a misprediction.",
+      "ex": [
+        "CMP RAX, RBX",
+        "CMOVA RAX, RBX"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "jae": {
+      "cat": "branch",
+      "name": "Jump if AE — branches when above or equal (unsigned)",
+      "syntax": "JAE label",
+      "desc": "Branches to the label when the last comparison indicated above or equal (unsigned). Flag condition: CF = 0. When the condition is false, execution simply falls through to the next line.",
+      "ex": [
+        "CMP RAX, RBX",
+        "JAE target"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "setae": {
+      "cat": "cmp",
+      "name": "Set if AE — 1 when above or equal (unsigned)",
+      "syntax": "SETAE destination8",
+      "desc": "Puts 1 in the destination byte when above or equal (unsigned) (CF = 0), otherwise 0.",
+      "ex": [
+        "CMP RAX, RBX",
+        "SETAE AL"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "cmovae": {
+      "cat": "data",
+      "name": "Conditional Move if AE",
+      "syntax": "CMOVAE destination, source",
+      "desc": "Copies the source to the destination only when above or equal (unsigned) (CF = 0). No branch, so there is no risk of a misprediction.",
+      "ex": [
+        "CMP RAX, RBX",
+        "CMOVAE RAX, RBX"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "jb": {
+      "cat": "branch",
+      "name": "Jump if B — branches when below (unsigned)",
+      "syntax": "JB label",
+      "desc": "Branches to the label when the last comparison indicated below (unsigned). Flag condition: CF = 1. When the condition is false, execution simply falls through to the next line.",
+      "ex": [
+        "CMP RAX, RBX",
+        "JB target"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "setb": {
+      "cat": "cmp",
+      "name": "Set if B — 1 when below (unsigned)",
+      "syntax": "SETB destination8",
+      "desc": "Puts 1 in the destination byte when below (unsigned) (CF = 1), otherwise 0.",
+      "ex": [
+        "CMP RAX, RBX",
+        "SETB AL"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "cmovb": {
+      "cat": "data",
+      "name": "Conditional Move if B",
+      "syntax": "CMOVB destination, source",
+      "desc": "Copies the source to the destination only when below (unsigned) (CF = 1). No branch, so there is no risk of a misprediction.",
+      "ex": [
+        "CMP RAX, RBX",
+        "CMOVB RAX, RBX"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "jbe": {
+      "cat": "branch",
+      "name": "Jump if BE — branches when below or equal (unsigned)",
+      "syntax": "JBE label",
+      "desc": "Branches to the label when the last comparison indicated below or equal (unsigned). Flag condition: CF = 1 or ZF = 1. When the condition is false, execution simply falls through to the next line.",
+      "ex": [
+        "CMP RAX, RBX",
+        "JBE target"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "setbe": {
+      "cat": "cmp",
+      "name": "Set if BE — 1 when below or equal (unsigned)",
+      "syntax": "SETBE destination8",
+      "desc": "Puts 1 in the destination byte when below or equal (unsigned) (CF = 1 or ZF = 1), otherwise 0.",
+      "ex": [
+        "CMP RAX, RBX",
+        "SETBE AL"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "cmovbe": {
+      "cat": "data",
+      "name": "Conditional Move if BE",
+      "syntax": "CMOVBE destination, source",
+      "desc": "Copies the source to the destination only when below or equal (unsigned) (CF = 1 or ZF = 1). No branch, so there is no risk of a misprediction.",
+      "ex": [
+        "CMP RAX, RBX",
+        "CMOVBE RAX, RBX"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "js": {
+      "cat": "branch",
+      "name": "Jump if S — branches when negative",
+      "syntax": "JS label",
+      "desc": "Branches to the label when the last comparison indicated negative. Flag condition: SF = 1. When the condition is false, execution simply falls through to the next line.",
+      "ex": [
+        "CMP RAX, RBX",
+        "JS target"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "sets": {
+      "cat": "cmp",
+      "name": "Set if S — 1 when negative",
+      "syntax": "SETS destination8",
+      "desc": "Puts 1 in the destination byte when negative (SF = 1), otherwise 0.",
+      "ex": [
+        "CMP RAX, RBX",
+        "SETS AL"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "cmovs": {
+      "cat": "data",
+      "name": "Conditional Move if S",
+      "syntax": "CMOVS destination, source",
+      "desc": "Copies the source to the destination only when negative (SF = 1). No branch, so there is no risk of a misprediction.",
+      "ex": [
+        "CMP RAX, RBX",
+        "CMOVS RAX, RBX"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "jns": {
+      "cat": "branch",
+      "name": "Jump if NS — branches when non-negative",
+      "syntax": "JNS label",
+      "desc": "Branches to the label when the last comparison indicated non-negative. Flag condition: SF = 0. When the condition is false, execution simply falls through to the next line.",
+      "ex": [
+        "CMP RAX, RBX",
+        "JNS target"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "setns": {
+      "cat": "cmp",
+      "name": "Set if NS — 1 when non-negative",
+      "syntax": "SETNS destination8",
+      "desc": "Puts 1 in the destination byte when non-negative (SF = 0), otherwise 0.",
+      "ex": [
+        "CMP RAX, RBX",
+        "SETNS AL"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "cmovns": {
+      "cat": "data",
+      "name": "Conditional Move if NS",
+      "syntax": "CMOVNS destination, source",
+      "desc": "Copies the source to the destination only when non-negative (SF = 0). No branch, so there is no risk of a misprediction.",
+      "ex": [
+        "CMP RAX, RBX",
+        "CMOVNS RAX, RBX"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "jc": {
+      "cat": "branch",
+      "name": "Jump if C — branches when carry set",
+      "syntax": "JC label",
+      "desc": "Branches to the label when the last comparison indicated carry set. Flag condition: CF = 1. When the condition is false, execution simply falls through to the next line.",
+      "ex": [
+        "CMP RAX, RBX",
+        "JC target"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "setc": {
+      "cat": "cmp",
+      "name": "Set if C — 1 when carry set",
+      "syntax": "SETC destination8",
+      "desc": "Puts 1 in the destination byte when carry set (CF = 1), otherwise 0.",
+      "ex": [
+        "CMP RAX, RBX",
+        "SETC AL"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "cmovc": {
+      "cat": "data",
+      "name": "Conditional Move if C",
+      "syntax": "CMOVC destination, source",
+      "desc": "Copies the source to the destination only when carry set (CF = 1). No branch, so there is no risk of a misprediction.",
+      "ex": [
+        "CMP RAX, RBX",
+        "CMOVC RAX, RBX"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "jnc": {
+      "cat": "branch",
+      "name": "Jump if NC — branches when carry clear",
+      "syntax": "JNC label",
+      "desc": "Branches to the label when the last comparison indicated carry clear. Flag condition: CF = 0. When the condition is false, execution simply falls through to the next line.",
+      "ex": [
+        "CMP RAX, RBX",
+        "JNC target"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "setnc": {
+      "cat": "cmp",
+      "name": "Set if NC — 1 when carry clear",
+      "syntax": "SETNC destination8",
+      "desc": "Puts 1 in the destination byte when carry clear (CF = 0), otherwise 0.",
+      "ex": [
+        "CMP RAX, RBX",
+        "SETNC AL"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "cmovnc": {
+      "cat": "data",
+      "name": "Conditional Move if NC",
+      "syntax": "CMOVNC destination, source",
+      "desc": "Copies the source to the destination only when carry clear (CF = 0). No branch, so there is no risk of a misprediction.",
+      "ex": [
+        "CMP RAX, RBX",
+        "CMOVNC RAX, RBX"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "jo": {
+      "cat": "branch",
+      "name": "Jump if O — branches when overflow set",
+      "syntax": "JO label",
+      "desc": "Branches to the label when the last comparison indicated overflow set. Flag condition: OF = 1. When the condition is false, execution simply falls through to the next line.",
+      "ex": [
+        "CMP RAX, RBX",
+        "JO target"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "seto": {
+      "cat": "cmp",
+      "name": "Set if O — 1 when overflow set",
+      "syntax": "SETO destination8",
+      "desc": "Puts 1 in the destination byte when overflow set (OF = 1), otherwise 0.",
+      "ex": [
+        "CMP RAX, RBX",
+        "SETO AL"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "cmovo": {
+      "cat": "data",
+      "name": "Conditional Move if O",
+      "syntax": "CMOVO destination, source",
+      "desc": "Copies the source to the destination only when overflow set (OF = 1). No branch, so there is no risk of a misprediction.",
+      "ex": [
+        "CMP RAX, RBX",
+        "CMOVO RAX, RBX"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "jno": {
+      "cat": "branch",
+      "name": "Jump if NO — branches when overflow clear",
+      "syntax": "JNO label",
+      "desc": "Branches to the label when the last comparison indicated overflow clear. Flag condition: OF = 0. When the condition is false, execution simply falls through to the next line.",
+      "ex": [
+        "CMP RAX, RBX",
+        "JNO target"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "setno": {
+      "cat": "cmp",
+      "name": "Set if NO — 1 when overflow clear",
+      "syntax": "SETNO destination8",
+      "desc": "Puts 1 in the destination byte when overflow clear (OF = 0), otherwise 0.",
+      "ex": [
+        "CMP RAX, RBX",
+        "SETNO AL"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "cmovno": {
+      "cat": "data",
+      "name": "Conditional Move if NO",
+      "syntax": "CMOVNO destination, source",
+      "desc": "Copies the source to the destination only when overflow clear (OF = 0). No branch, so there is no risk of a misprediction.",
+      "ex": [
+        "CMP RAX, RBX",
+        "CMOVNO RAX, RBX"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "jp": {
+      "cat": "branch",
+      "name": "Jump if P — branches when parity even",
+      "syntax": "JP label",
+      "desc": "Branches to the label when the last comparison indicated parity even. Flag condition: PF = 1. When the condition is false, execution simply falls through to the next line.",
+      "ex": [
+        "CMP RAX, RBX",
+        "JP target"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "setp": {
+      "cat": "cmp",
+      "name": "Set if P — 1 when parity even",
+      "syntax": "SETP destination8",
+      "desc": "Puts 1 in the destination byte when parity even (PF = 1), otherwise 0.",
+      "ex": [
+        "CMP RAX, RBX",
+        "SETP AL"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "cmovp": {
+      "cat": "data",
+      "name": "Conditional Move if P",
+      "syntax": "CMOVP destination, source",
+      "desc": "Copies the source to the destination only when parity even (PF = 1). No branch, so there is no risk of a misprediction.",
+      "ex": [
+        "CMP RAX, RBX",
+        "CMOVP RAX, RBX"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "jnp": {
+      "cat": "branch",
+      "name": "Jump if NP — branches when parity odd",
+      "syntax": "JNP label",
+      "desc": "Branches to the label when the last comparison indicated parity odd. Flag condition: PF = 0. When the condition is false, execution simply falls through to the next line.",
+      "ex": [
+        "CMP RAX, RBX",
+        "JNP target"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "setnp": {
+      "cat": "cmp",
+      "name": "Set if NP — 1 when parity odd",
+      "syntax": "SETNP destination8",
+      "desc": "Puts 1 in the destination byte when parity odd (PF = 0), otherwise 0.",
+      "ex": [
+        "CMP RAX, RBX",
+        "SETNP AL"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "cmovnp": {
+      "cat": "data",
+      "name": "Conditional Move if NP",
+      "syntax": "CMOVNP destination, source",
+      "desc": "Copies the source to the destination only when parity odd (PF = 0). No branch, so there is no risk of a misprediction.",
+      "ex": [
+        "CMP RAX, RBX",
+        "CMOVNP RAX, RBX"
+      ],
+      "flags": "Reads the flags, does not change them."
+    },
+    "movsw": {
+      "cat": "string",
+      "name": "Move String word",
+      "syntax": "MOVSW  (usually REP MOVSW)",
+      "desc": "Copies one word (2 bytes) from the address in RSI to the address in RDI, then advances both registers by 2 (backwards when the direction flag is set). With the REP prefix it copies RCX words in one instruction — the fastest way to move a buffer, and the usual shape of a memory-copy payload.",
+      "ex": [
+        "MOV RCX, 100",
+        "REP MOVSB"
+      ],
+      "flags": "Does not change flags. Direction controlled by DF (CLD/STD)."
+    },
+    "movsd": {
+      "cat": "string",
+      "name": "Move String dword",
+      "syntax": "MOVSD  (usually REP MOVSD)",
+      "desc": "Copies one dword (4 bytes) from the address in RSI to the address in RDI, then advances both registers by 4 (backwards when the direction flag is set). With the REP prefix it copies RCX dwords in one instruction — the fastest way to move a buffer, and the usual shape of a memory-copy payload.",
+      "ex": [
+        "MOV RCX, 100",
+        "REP MOVSB"
+      ],
+      "flags": "Does not change flags. Direction controlled by DF (CLD/STD)."
+    },
+    "movsq": {
+      "cat": "string",
+      "name": "Move String qword",
+      "syntax": "MOVSQ  (usually REP MOVSQ)",
+      "desc": "Copies one qword (8 bytes) from the address in RSI to the address in RDI, then advances both registers by 8 (backwards when the direction flag is set). With the REP prefix it copies RCX qwords in one instruction — the fastest way to move a buffer, and the usual shape of a memory-copy payload.",
+      "ex": [
+        "MOV RCX, 100",
+        "REP MOVSB"
+      ],
+      "flags": "Does not change flags. Direction controlled by DF (CLD/STD)."
+    },
+    "stosw": {
+      "cat": "string",
+      "name": "Store String word",
+      "syntax": "STOSW  (usually REP STOSW)",
+      "desc": "Stores AX at the address in RDI and advances RDI by 2 (backwards when the direction flag is set). With REP it fills RCX words — how a buffer gets zeroed or filled in one go.",
+      "ex": [
+        "XOR AL, AL",
+        "MOV RCX, 64",
+        "REP STOSB"
+      ],
+      "flags": "Does not change flags."
+    },
+    "stosd": {
+      "cat": "string",
+      "name": "Store String dword",
+      "syntax": "STOSD  (usually REP STOSD)",
+      "desc": "Stores EAX at the address in RDI and advances RDI by 4 (backwards when the direction flag is set). With REP it fills RCX dwords — how a buffer gets zeroed or filled in one go.",
+      "ex": [
+        "XOR AL, AL",
+        "MOV RCX, 64",
+        "REP STOSB"
+      ],
+      "flags": "Does not change flags."
+    },
+    "stosq": {
+      "cat": "string",
+      "name": "Store String qword",
+      "syntax": "STOSQ  (usually REP STOSQ)",
+      "desc": "Stores RAX at the address in RDI and advances RDI by 8 (backwards when the direction flag is set). With REP it fills RCX qwords — how a buffer gets zeroed or filled in one go.",
+      "ex": [
+        "XOR AL, AL",
+        "MOV RCX, 64",
+        "REP STOSB"
+      ],
+      "flags": "Does not change flags."
+    },
+    "lodsw": {
+      "cat": "string",
+      "name": "Load String word",
+      "syntax": "LODSW",
+      "desc": "Loads one word (2 bytes) from the address in RSI into AX and advances RSI by 2 (backwards when the direction flag is set). Rarely useful with REP: each iteration would overwrite the previous value.",
+      "ex": [
+        "LODSB",
+        "TEST AL, AL",
+        "JZ done"
+      ],
+      "flags": "Does not change flags."
+    },
+    "lodsd": {
+      "cat": "string",
+      "name": "Load String dword",
+      "syntax": "LODSD",
+      "desc": "Loads one dword (4 bytes) from the address in RSI into EAX and advances RSI by 4 (backwards when the direction flag is set). Rarely useful with REP: each iteration would overwrite the previous value.",
+      "ex": [
+        "LODSB",
+        "TEST AL, AL",
+        "JZ done"
+      ],
+      "flags": "Does not change flags."
+    },
+    "lodsq": {
+      "cat": "string",
+      "name": "Load String qword",
+      "syntax": "LODSQ",
+      "desc": "Loads one qword (8 bytes) from the address in RSI into RAX and advances RSI by 8 (backwards when the direction flag is set). Rarely useful with REP: each iteration would overwrite the previous value.",
+      "ex": [
+        "LODSB",
+        "TEST AL, AL",
+        "JZ done"
+      ],
+      "flags": "Does not change flags."
+    },
+    "scasw": {
+      "cat": "string",
+      "name": "Scan String word",
+      "syntax": "SCASW  (usually REPNE SCASW)",
+      "desc": "Compares AX with the word at the address in RDI, sets the flags and advances RDI by 2 (backwards when the direction flag is set). With REPNE it is the classic strlen/strchr loop: it scans until the byte matches or RCX runs out.",
+      "ex": [
+        "REPNE SCASB"
+      ],
+      "flags": "Changes the comparison flags."
+    },
+    "scasd": {
+      "cat": "string",
+      "name": "Scan String dword",
+      "syntax": "SCASD  (usually REPNE SCASD)",
+      "desc": "Compares EAX with the dword at the address in RDI, sets the flags and advances RDI by 4 (backwards when the direction flag is set). With REPNE it is the classic strlen/strchr loop: it scans until the byte matches or RCX runs out.",
+      "ex": [
+        "REPNE SCASB"
+      ],
+      "flags": "Changes the comparison flags."
+    },
+    "scasq": {
+      "cat": "string",
+      "name": "Scan String qword",
+      "syntax": "SCASQ  (usually REPNE SCASQ)",
+      "desc": "Compares RAX with the qword at the address in RDI, sets the flags and advances RDI by 8 (backwards when the direction flag is set). With REPNE it is the classic strlen/strchr loop: it scans until the byte matches or RCX runs out.",
+      "ex": [
+        "REPNE SCASB"
+      ],
+      "flags": "Changes the comparison flags."
+    },
+    "cmpsw": {
+      "cat": "string",
+      "name": "Compare String word",
+      "syntax": "CMPSW  (usually REPE CMPSW)",
+      "desc": "Compares the word at [RSI] with the word at [RDI], sets the flags and advances both registers by 2 (backwards when the direction flag is set). With REPE it compares RCX words — memcmp in one instruction.",
+      "ex": [
+        "REPE CMPSB"
+      ],
+      "flags": "Changes the comparison flags."
+    },
+    "cmpsd": {
+      "cat": "string",
+      "name": "Compare String dword",
+      "syntax": "CMPSD  (usually REPE CMPSD)",
+      "desc": "Compares the dword at [RSI] with the dword at [RDI], sets the flags and advances both registers by 4 (backwards when the direction flag is set). With REPE it compares RCX dwords — memcmp in one instruction.",
+      "ex": [
+        "REPE CMPSB"
+      ],
+      "flags": "Changes the comparison flags."
+    },
+    "cmpsq": {
+      "cat": "string",
+      "name": "Compare String qword",
+      "syntax": "CMPSQ  (usually REPE CMPSQ)",
+      "desc": "Compares the qword at [RSI] with the qword at [RDI], sets the flags and advances both registers by 8 (backwards when the direction flag is set). With REPE it compares RCX qwords — memcmp in one instruction.",
+      "ex": [
+        "REPE CMPSB"
+      ],
+      "flags": "Changes the comparison flags."
+    },
+    "repnz": {
+      "cat": "string",
+      "name": "REP — repetition prefix",
+      "syntax": "REP / REPE / REPNE instruction",
+      "desc": "Repeats the string instruction RCX times. REPE stops when ZF=0; REPNE stops when ZF=1.",
+      "ex": [
+        "REP MOVSB"
+      ],
+      "flags": "Depends on the repeated instruction."
+    },
+    "repz": {
+      "cat": "string",
+      "name": "REP — repetition prefix",
+      "syntax": "REP / REPE / REPNE instruction",
+      "desc": "Repeats the string instruction RCX times. REPE stops when ZF=0; REPNE stops when ZF=1.",
+      "ex": [
+        "REP MOVSB"
+      ],
+      "flags": "Depends on the repeated instruction."
+    },
+    "repne": {
+      "cat": "string",
+      "name": "REP — repetition prefix",
+      "syntax": "REP / REPE / REPNE instruction",
+      "desc": "Repeats the string instruction RCX times. REPE stops when ZF=0; REPNE stops when ZF=1.",
+      "ex": [
+        "REP MOVSB"
+      ],
+      "flags": "Depends on the repeated instruction."
+    },
+    "repe": {
+      "cat": "string",
+      "name": "REP — repetition prefix",
+      "syntax": "REP / REPE / REPNE instruction",
+      "desc": "Repeats the string instruction RCX times. REPE stops when ZF=0; REPNE stops when ZF=1.",
+      "ex": [
+        "REP MOVSB"
+      ],
+      "flags": "Depends on the repeated instruction."
+    }
   },
-  "arith": {
-   "label": "Aritmética",
-   "color": "c-arith",
-   "hint": "Soma, subtrai, multiplica, divide."
+  "CONDITIONS": {
+    "e": [
+      "equal",
+      "ZF = 1"
+    ],
+    "z": [
+      "zero",
+      "ZF = 1"
+    ],
+    "ne": [
+      "not equal",
+      "ZF = 0"
+    ],
+    "nz": [
+      "not zero",
+      "ZF = 0"
+    ],
+    "g": [
+      "greater (signed)",
+      "ZF = 0 and SF = OF"
+    ],
+    "ge": [
+      "greater or equal (signed)",
+      "SF = OF"
+    ],
+    "l": [
+      "less (signed)",
+      "SF ≠ OF"
+    ],
+    "le": [
+      "less or equal (signed)",
+      "ZF = 1 or SF ≠ OF"
+    ],
+    "a": [
+      "above (unsigned)",
+      "CF = 0 and ZF = 0"
+    ],
+    "ae": [
+      "above or equal (unsigned)",
+      "CF = 0"
+    ],
+    "b": [
+      "below (unsigned)",
+      "CF = 1"
+    ],
+    "be": [
+      "below or equal (unsigned)",
+      "CF = 1 or ZF = 1"
+    ],
+    "s": [
+      "negative",
+      "SF = 1"
+    ],
+    "ns": [
+      "non-negative",
+      "SF = 0"
+    ],
+    "c": [
+      "carry set",
+      "CF = 1"
+    ],
+    "nc": [
+      "carry clear",
+      "CF = 0"
+    ],
+    "o": [
+      "overflow set",
+      "OF = 1"
+    ],
+    "no": [
+      "overflow clear",
+      "OF = 0"
+    ],
+    "p": [
+      "parity even",
+      "PF = 1"
+    ],
+    "np": [
+      "parity odd",
+      "PF = 0"
+    ]
   },
-  "logic": {
-   "label": "Lógica e bits",
-   "color": "c-logic",
-   "hint": "AND/OR/XOR/NOT e deslocamentos."
+  "REG_DOC": {
+    "rax": "Accumulator. Function return value and system call number on Linux.",
+    "rbx": "Base. Preserved across calls (callee-saved).",
+    "rcx": "Loop counter; 1st argument on Windows, 4th on Linux. Clobbered by SYSCALL.",
+    "rdx": "3rd argument (Linux) / 2nd (Windows). High half in MUL and DIV.",
+    "rsi": "Source in string operations; 2nd argument on Linux.",
+    "rdi": "Destination in string operations; 1st argument on Linux.",
+    "rsp": "Top-of-stack pointer. Never touch it unless you know what you are doing.",
+    "rbp": "Base of the current stack frame; anchors the local variables.",
+    "r8": "5th argument (Linux) / 3rd (Windows).",
+    "r9": "6th argument (Linux) / 4th (Windows).",
+    "r10": "4th argument of Linux system calls (in place of RCX).",
+    "r11": "Scratch register. Clobbered by SYSCALL.",
+    "r12": "Scratch register preserved across calls.",
+    "r13": "Scratch register preserved across calls.",
+    "r14": "Scratch register preserved across calls.",
+    "r15": "Scratch register preserved across calls.",
+    "rip": "Pointer to the next instruction. Only branches change it; [rel x] addressing is relative to it."
   },
-  "cmp": {
-   "label": "Comparação",
-   "color": "c-cmp",
-   "hint": "Calcula e descarta o resultado, guardando só as flags."
+  "FLAG_DOC": {
+    "ZF": "Zero — the result was exactly zero (or the compared values were equal).",
+    "SF": "Sign — the highest bit of the result is 1 (negative number in signed interpretation).",
+    "CF": "Carry — a carry-out or borrow happened. It is the flag used by unsigned branches (JA/JB).",
+    "OF": "Overflow — the result went past the signed range. It is the flag used by signed branches (JG/JL).",
+    "PF": "Parity — the low byte of the result has an even number of 1 bits.",
+    "DF": "Direction — defines whether string instructions walk forward (0) or backward (1)."
   },
-  "branch": {
-   "label": "Desvio",
-   "color": "c-branch",
-   "hint": "Muda o fluxo de execução."
+  "LINUX_SYSCALLS": {
+    "0": [
+      "read",
+      "reads from a file descriptor",
+      "fd, buf, count"
+    ],
+    "1": [
+      "write",
+      "writes to a file descriptor",
+      "fd, buf, count"
+    ],
+    "2": [
+      "open",
+      "opens a file",
+      "path, flags, mode"
+    ],
+    "3": [
+      "close",
+      "closes a file descriptor",
+      "fd"
+    ],
+    "4": [
+      "stat",
+      "file information",
+      "path, statbuf"
+    ],
+    "5": [
+      "fstat",
+      "information by descriptor",
+      "fd, statbuf"
+    ],
+    "8": [
+      "lseek",
+      "seeks inside the file",
+      "fd, offset, whence"
+    ],
+    "9": [
+      "mmap",
+      "maps memory",
+      "addr, len, prot, flags, fd, off"
+    ],
+    "10": [
+      "mprotect",
+      "changes memory permissions",
+      "addr, len, prot"
+    ],
+    "11": [
+      "munmap",
+      "removes the mapping",
+      "addr, len"
+    ],
+    "12": [
+      "brk",
+      "adjusts the end of the heap",
+      "addr"
+    ],
+    "13": [
+      "rt_sigaction",
+      "installs a signal handler",
+      "sig, act, oldact"
+    ],
+    "16": [
+      "ioctl",
+      "device control",
+      "fd, request, arg"
+    ],
+    "22": [
+      "pipe",
+      "creates a pair of descriptors",
+      "pipefd"
+    ],
+    "32": [
+      "dup",
+      "duplicates a descriptor",
+      "fd"
+    ],
+    "33": [
+      "dup2",
+      "duplicates into a specific number",
+      "old, new"
+    ],
+    "34": [
+      "pause",
+      "waits for a signal",
+      ""
+    ],
+    "35": [
+      "nanosleep",
+      "sleeps",
+      "req, rem"
+    ],
+    "39": [
+      "getpid",
+      "PID of the process",
+      ""
+    ],
+    "41": [
+      "socket",
+      "creates a socket",
+      "domain, type, protocol"
+    ],
+    "42": [
+      "connect",
+      "connects a socket",
+      "fd, addr, addrlen"
+    ],
+    "43": [
+      "accept",
+      "accepts a connection",
+      "fd, addr, addrlen"
+    ],
+    "44": [
+      "sendto",
+      "sends data",
+      "fd, buf, len, flags, addr, alen"
+    ],
+    "45": [
+      "recvfrom",
+      "receives data",
+      "fd, buf, len, flags, addr, alen"
+    ],
+    "49": [
+      "bind",
+      "binds an address to the socket",
+      "fd, addr, addrlen"
+    ],
+    "50": [
+      "listen",
+      "puts the socket in listening mode",
+      "fd, backlog"
+    ],
+    "57": [
+      "fork",
+      "duplicates the process",
+      ""
+    ],
+    "59": [
+      "execve",
+      "replaces the current program",
+      "path, argv, envp"
+    ],
+    "60": [
+      "exit",
+      "terminates the thread",
+      "code"
+    ],
+    "61": [
+      "wait4",
+      "waits for a child process",
+      "pid, status, options, rusage"
+    ],
+    "62": [
+      "kill",
+      "sends a signal",
+      "pid, sig"
+    ],
+    "79": [
+      "getcwd",
+      "current directory",
+      "buf, size"
+    ],
+    "83": [
+      "mkdir",
+      "creates a directory",
+      "path, mode"
+    ],
+    "87": [
+      "unlink",
+      "deletes a file",
+      "path"
+    ],
+    "89": [
+      "readlink",
+      "reads a symbolic link",
+      "path, buf, size"
+    ],
+    "96": [
+      "gettimeofday",
+      "current time",
+      "tv, tz"
+    ],
+    "101": [
+      "ptrace",
+      "process debugging",
+      "request, pid, addr, data"
+    ],
+    "186": [
+      "gettid",
+      "thread ID",
+      ""
+    ],
+    "201": [
+      "time",
+      "time in seconds",
+      "tloc"
+    ],
+    "202": [
+      "futex",
+      "waits for/wakes a thread",
+      "uaddr, op, val, ..."
+    ],
+    "231": [
+      "exit_group",
+      "terminates the whole process",
+      "code"
+    ],
+    "257": [
+      "openat",
+      "opens relative to a directory",
+      "dirfd, path, flags, mode"
+    ],
+    "318": [
+      "getrandom",
+      "random bytes",
+      "buf, buflen, flags"
+    ]
   },
-  "call": {
-   "label": "Chamada / retorno",
-   "color": "c-call",
-   "hint": "Entra e sai de funções."
-  },
-  "sys": {
-   "label": "Sistema",
-   "color": "c-sys",
-   "hint": "Fala com o kernel ou com o hardware."
-  },
-  "string": {
-   "label": "Blocos de memória",
-   "color": "c-string",
-   "hint": "Copia/compara/preenche regiões inteiras."
-  },
-  "fpu": {
-   "label": "SSE / ponto flutuante",
-   "color": "c-fpu",
-   "hint": "Números reais e registradores XMM."
-  },
-  "misc": {
-   "label": "Diversos",
-   "color": "c-misc",
-   "hint": "Conversões, sincronização, nada-a-fazer."
+  "WIN_APIS": {
+    "exitprocess": [
+      "ExitProcess",
+      "terminates the process",
+      "uExitCode (RCX)"
+    ],
+    "messageboxa": [
+      "MessageBoxA",
+      "opens a message box",
+      "hWnd, text, caption, type"
+    ],
+    "messageboxw": [
+      "MessageBoxW",
+      "message box (Unicode)",
+      "hWnd, text, caption, type"
+    ],
+    "getstdhandle": [
+      "GetStdHandle",
+      "gets the handle of stdin/stdout/stderr",
+      "nStdHandle (-11 = stdout)"
+    ],
+    "writeconsolea": [
+      "WriteConsoleA",
+      "writes to the console",
+      "handle, buffer, size, written, reserved"
+    ],
+    "readconsolea": [
+      "ReadConsoleA",
+      "reads from the console",
+      "handle, buffer, size, read, reserved"
+    ],
+    "writefile": [
+      "WriteFile",
+      "writes to a file/handle",
+      "handle, buffer, size, written, overlapped"
+    ],
+    "readfile": [
+      "ReadFile",
+      "reads from a file/handle",
+      "handle, buffer, size, read, overlapped"
+    ],
+    "createfilea": [
+      "CreateFileA",
+      "opens or creates a file",
+      "name, access, sharing, ..."
+    ],
+    "closehandle": [
+      "CloseHandle",
+      "releases a handle",
+      "handle"
+    ],
+    "getprocaddress": [
+      "GetProcAddress",
+      "address of a function in a DLL",
+      "hModule, name"
+    ],
+    "loadlibrarya": [
+      "LoadLibraryA",
+      "loads a DLL",
+      "name"
+    ],
+    "virtualalloc": [
+      "VirtualAlloc",
+      "reserves memory",
+      "addr, size, type, protection"
+    ],
+    "virtualprotect": [
+      "VirtualProtect",
+      "changes memory protection",
+      "addr, size, new, old"
+    ],
+    "getlasterror": [
+      "GetLastError",
+      "code of the last error",
+      ""
+    ],
+    "sleep": [
+      "Sleep",
+      "pauses the thread",
+      "milliseconds"
+    ],
+    "createprocessa": [
+      "CreateProcessA",
+      "creates a process",
+      "..."
+    ],
+    "getmodulehandlea": [
+      "GetModuleHandleA",
+      "handle of the loaded module",
+      "name"
+    ]
   }
- },
- "ISA": {
-  "mov": {
-   "cat": "data",
-   "name": "Move — copia um valor",
-   "syntax": "MOV destino, origem",
-   "desc": "Copia o conteúdo da origem para o destino. A origem não muda. Não existe MOV de memória para memória: um dos dois lados precisa ser registrador (ou a origem um imediato).",
-   "ex": [
-    "MOV RAX, 10        ; coloca o número 10 em RAX",
-    "MOV RBX, RAX       ; copia RAX para RBX",
-    "MOV [contador], EAX ; escreve EAX na variável contador"
-   ],
-   "flags": "Não altera flags."
-  },
-  "movzx": {
-   "cat": "data",
-   "name": "Move with Zero eXtend — copia preenchendo com zeros",
-   "syntax": "MOVZX destino_maior, origem_menor",
-   "desc": "Copia um valor pequeno (8 ou 16 bits) para um registrador maior preenchendo o resto com zeros. Use para valores sem sinal (unsigned).",
-   "ex": [
-    "MOVZX EAX, BYTE [buf]  ; 1 byte -> 32 bits, resto zerado"
-   ],
-   "flags": "Não altera flags."
-  },
-  "movsx": {
-   "cat": "data",
-   "name": "Move with Sign eXtend — copia preservando o sinal",
-   "syntax": "MOVSX destino_maior, origem_menor",
-   "desc": "Igual ao MOVZX, mas replica o bit de sinal. Use para valores com sinal (signed), senão -1 em 8 bits vira 255 em 32 bits.",
-   "ex": [
-    "MOVSX RAX, AL      ; -1 continua sendo -1"
-   ],
-   "flags": "Não altera flags."
-  },
-  "movsxd": {
-   "cat": "data",
-   "name": "Move Sign-Extend Doubleword — 32 para 64 bits com sinal",
-   "syntax": "MOVSXD destino64, origem32",
-   "desc": "Estende um valor de 32 bits com sinal para 64 bits. Muito comum ao usar um índice int como offset de ponteiro.",
-   "ex": [
-    "MOVSXD RCX, EDI"
-   ],
-   "flags": "Não altera flags."
-  },
-  "lea": {
-   "cat": "data",
-   "name": "Load Effective Address — calcula um endereço",
-   "syntax": "LEA destino, [expressão]",
-   "desc": "Calcula o endereço da expressão entre colchetes e guarda o número no destino, SEM ler a memória. É a forma normal de pegar o endereço de uma string, e também um jeito rápido de fazer contas (multiplicar por 2/4/8 e somar).",
-   "ex": [
-    "LEA RSI, [msg]            ; RSI = endereço da string",
-    "LEA RAX, [RBX+RCX*4+8]    ; RAX = RBX + RCX*4 + 8, sem acessar memória"
-   ],
-   "flags": "Não altera flags.",
-   "note": "MOV RSI, [msg] leria o conteúdo. LEA pega o endereço."
-  },
-  "xchg": {
-   "cat": "data",
-   "name": "Exchange — troca dois valores",
-   "syntax": "XCHG a, b",
-   "desc": "Troca o conteúdo dos dois operandos. Quando um deles é memória, a operação é atômica (trava o barramento).",
-   "ex": [
-    "XCHG RAX, RBX"
-   ],
-   "flags": "Não altera flags."
-  },
-  "cmov": {
-   "cat": "data",
-   "name": "Conditional Move — copia só se a condição for verdadeira",
-   "syntax": "CMOVcc destino, origem",
-   "desc": "Copia a origem para o destino apenas se a condição (a mesma família de sufixos dos jumps: E, NE, G, L, A, B...) estiver satisfeita. Evita um desvio, o que ajuda o processador a não errar previsão.",
-   "ex": [
-    "CMP RAX, RBX",
-    "CMOVL RAX, RBX   ; RAX = min(RAX, RBX)"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "push": {
-   "cat": "stack",
-   "name": "Push — empilha um valor",
-   "syntax": "PUSH origem",
-   "desc": "Subtrai 8 de RSP e grava o valor de 64 bits nesse endereço. A pilha cresce para endereços MENORES.",
-   "ex": [
-    "PUSH RAX        ; salva RAX na pilha",
-    "PUSH QWORD 42"
-   ],
-   "flags": "Não altera flags."
-  },
-  "pop": {
-   "cat": "stack",
-   "name": "Pop — desempilha um valor",
-   "syntax": "POP destino",
-   "desc": "Lê 8 bytes do topo da pilha para o destino e soma 8 em RSP. Todo PUSH precisa de um POP correspondente (ou de um ajuste em RSP) antes do RET.",
-   "ex": [
-    "POP RBX"
-   ],
-   "flags": "Não altera flags."
-  },
-  "enter": {
-   "cat": "stack",
-   "name": "Enter — monta o quadro de pilha",
-   "syntax": "ENTER tamanho, nível",
-   "desc": "Equivale a PUSH RBP / MOV RBP, RSP / SUB RSP, tamanho. Pouco usado hoje: a sequência manual é mais rápida.",
-   "ex": [
-    "ENTER 32, 0"
-   ],
-   "flags": "Não altera flags."
-  },
-  "leave": {
-   "cat": "stack",
-   "name": "Leave — desmonta o quadro de pilha",
-   "syntax": "LEAVE",
-   "desc": "Equivale a MOV RSP, RBP / POP RBP. É o epílogo padrão de uma função que usou RBP.",
-   "ex": [
-    "LEAVE",
-    "RET"
-   ],
-   "flags": "Não altera flags."
-  },
-  "add": {
-   "cat": "arith",
-   "name": "Add — soma",
-   "syntax": "ADD destino, origem",
-   "desc": "destino = destino + origem.",
-   "ex": [
-    "ADD RAX, 1",
-    "ADD RAX, RBX"
-   ],
-   "flags": "Altera CF, OF, SF, ZF, AF, PF."
-  },
-  "adc": {
-   "cat": "arith",
-   "name": "Add with Carry — soma com o vai-um",
-   "syntax": "ADC destino, origem",
-   "desc": "destino = destino + origem + CF. Serve para somar números maiores que 64 bits em partes.",
-   "ex": [
-    "ADD RAX, RCX",
-    "ADC RDX, RBX"
-   ],
-   "flags": "Altera CF, OF, SF, ZF, AF, PF."
-  },
-  "sub": {
-   "cat": "arith",
-   "name": "Subtract — subtrai",
-   "syntax": "SUB destino, origem",
-   "desc": "destino = destino - origem. Também é como se reserva espaço na pilha: SUB RSP, 32.",
-   "ex": [
-    "SUB RAX, 5",
-    "SUB RSP, 32   ; abre 32 bytes de espaço local"
-   ],
-   "flags": "Altera CF, OF, SF, ZF, AF, PF."
-  },
-  "sbb": {
-   "cat": "arith",
-   "name": "Subtract with Borrow — subtrai com empréstimo",
-   "syntax": "SBB destino, origem",
-   "desc": "destino = destino - origem - CF. Par do ADC para números longos.",
-   "ex": [
-    "SBB RDX, RBX"
-   ],
-   "flags": "Altera CF, OF, SF, ZF, AF, PF."
-  },
-  "inc": {
-   "cat": "arith",
-   "name": "Increment — soma 1",
-   "syntax": "INC destino",
-   "desc": "destino = destino + 1. Não mexe em CF (diferente de ADD x, 1).",
-   "ex": [
-    "INC RCX"
-   ],
-   "flags": "Altera OF, SF, ZF, AF, PF. Preserva CF."
-  },
-  "dec": {
-   "cat": "arith",
-   "name": "Decrement — subtrai 1",
-   "syntax": "DEC destino",
-   "desc": "destino = destino - 1. Muito usado em contadores de laço junto com JNZ.",
-   "ex": [
-    "DEC RCX",
-    "JNZ loop"
-   ],
-   "flags": "Altera OF, SF, ZF, AF, PF. Preserva CF."
-  },
-  "neg": {
-   "cat": "arith",
-   "name": "Negate — troca o sinal",
-   "syntax": "NEG destino",
-   "desc": "destino = 0 - destino (complemento de dois).",
-   "ex": [
-    "NEG RAX"
-   ],
-   "flags": "Altera CF, OF, SF, ZF, AF, PF."
-  },
-  "mul": {
-   "cat": "arith",
-   "name": "Multiply (sem sinal)",
-   "syntax": "MUL origem",
-   "desc": "Multiplica RAX pela origem. O resultado de 128 bits fica em RDX:RAX. O operando implícito RAX é obrigatório.",
-   "ex": [
-    "MOV RAX, 6",
-    "MOV RBX, 7",
-    "MUL RBX      ; RAX = 42"
-   ],
-   "flags": "Altera CF e OF (indicam se a parte alta é diferente de zero)."
-  },
-  "imul": {
-   "cat": "arith",
-   "name": "Integer Multiply (com sinal)",
-   "syntax": "IMUL origem  |  IMUL dest, origem  |  IMUL dest, origem, imediato",
-   "desc": "Multiplicação com sinal. A forma de dois ou três operandos é a usada no dia a dia porque o destino é explícito.",
-   "ex": [
-    "IMUL RAX, RBX",
-    "IMUL RAX, RBX, 4"
-   ],
-   "flags": "Altera CF e OF."
-  },
-  "div": {
-   "cat": "arith",
-   "name": "Divide (sem sinal)",
-   "syntax": "DIV divisor",
-   "desc": "Divide RDX:RAX pelo divisor. Quociente vai para RAX, resto para RDX. ATENÇÃO: zere RDX antes (XOR RDX, RDX), senão o resultado é lixo ou a CPU dispara exceção.",
-   "ex": [
-    "XOR RDX, RDX",
-    "MOV RAX, 100",
-    "MOV RBX, 7",
-    "DIV RBX      ; RAX=14, RDX=2"
-   ],
-   "flags": "Flags ficam indefinidas."
-  },
-  "idiv": {
-   "cat": "arith",
-   "name": "Integer Divide (com sinal)",
-   "syntax": "IDIV divisor",
-   "desc": "Igual ao DIV, mas com sinal. Antes dele use CQO (64 bits) ou CDQ (32 bits) para estender o sinal em RDX/EDX.",
-   "ex": [
-    "MOV RAX, -100",
-    "CQO",
-    "IDIV RBX"
-   ],
-   "flags": "Flags ficam indefinidas."
-  },
-  "and": {
-   "cat": "logic",
-   "name": "AND — E bit a bit",
-   "syntax": "AND destino, origem",
-   "desc": "Mantém apenas os bits que estão ligados nos dois operandos. Usado para mascarar (ficar só com parte do valor).",
-   "ex": [
-    "AND RAX, 0x0F     ; fica só com os 4 bits baixos"
-   ],
-   "flags": "Zera CF e OF; altera SF, ZF, PF."
-  },
-  "or": {
-   "cat": "logic",
-   "name": "OR — OU bit a bit",
-   "syntax": "OR destino, origem",
-   "desc": "Liga no destino todo bit que esteja ligado na origem. Usado para ativar flags.",
-   "ex": [
-    "OR RAX, 1         ; liga o bit 0"
-   ],
-   "flags": "Zera CF e OF; altera SF, ZF, PF."
-  },
-  "xor": {
-   "cat": "logic",
-   "name": "XOR — OU exclusivo",
-   "syntax": "XOR destino, origem",
-   "desc": "Bit fica 1 quando os dois são diferentes. XOR de um registrador com ele mesmo é a forma idiomática (e mais curta) de zerar.",
-   "ex": [
-    "XOR RAX, RAX      ; RAX = 0"
-   ],
-   "flags": "Zera CF e OF; altera SF, ZF, PF."
-  },
-  "not": {
-   "cat": "logic",
-   "name": "NOT — inverte todos os bits",
-   "syntax": "NOT destino",
-   "desc": "Complemento de um: cada 0 vira 1 e vice-versa.",
-   "ex": [
-    "NOT RAX"
-   ],
-   "flags": "Não altera flags."
-  },
-  "shl": {
-   "cat": "logic",
-   "name": "Shift Left — desloca bits para a esquerda",
-   "syntax": "SHL destino, contagem",
-   "desc": "Cada deslocamento de 1 multiplica por 2. Entram zeros pela direita.",
-   "ex": [
-    "SHL RAX, 3        ; RAX = RAX * 8"
-   ],
-   "flags": "Altera CF (último bit que saiu), OF, SF, ZF, PF."
-  },
-  "sal": {
-   "cat": "logic",
-   "name": "Shift Arithmetic Left — idêntico ao SHL",
-   "syntax": "SAL destino, contagem",
-   "desc": "Mesma instrução do SHL; existe só por simetria com o SAR.",
-   "ex": [
-    "SAL RAX, 1"
-   ],
-   "flags": "Igual ao SHL."
-  },
-  "shr": {
-   "cat": "logic",
-   "name": "Shift Right (sem sinal)",
-   "syntax": "SHR destino, contagem",
-   "desc": "Desloca para a direita entrando zeros. Equivale a dividir por 2^n valores sem sinal.",
-   "ex": [
-    "SHR RAX, 1        ; RAX = RAX / 2 (unsigned)"
-   ],
-   "flags": "Altera CF, OF, SF, ZF, PF."
-  },
-  "sar": {
-   "cat": "logic",
-   "name": "Shift Arithmetic Right (com sinal)",
-   "syntax": "SAR destino, contagem",
-   "desc": "Desloca para a direita repetindo o bit de sinal, então números negativos continuam negativos.",
-   "ex": [
-    "SAR RAX, 2"
-   ],
-   "flags": "Altera CF, OF, SF, ZF, PF."
-  },
-  "rol": {
-   "cat": "logic",
-   "name": "Rotate Left — rotaciona à esquerda",
-   "syntax": "ROL destino, contagem",
-   "desc": "Os bits que saem de um lado entram do outro. Nada é perdido.",
-   "ex": [
-    "ROL AL, 4"
-   ],
-   "flags": "Altera CF e OF."
-  },
-  "ror": {
-   "cat": "logic",
-   "name": "Rotate Right — rotaciona à direita",
-   "syntax": "ROR destino, contagem",
-   "desc": "Rotação no sentido contrário ao ROL.",
-   "ex": [
-    "ROR AL, 4"
-   ],
-   "flags": "Altera CF e OF."
-  },
-  "bt": {
-   "cat": "logic",
-   "name": "Bit Test — testa um bit",
-   "syntax": "BT valor, índice",
-   "desc": "Copia o bit indicado para CF, sem alterar o valor.",
-   "ex": [
-    "BT RAX, 5",
-    "JC ligado"
-   ],
-   "flags": "Altera CF."
-  },
-  "cmp": {
-   "cat": "cmp",
-   "name": "Compare — compara dois valores",
-   "syntax": "CMP a, b",
-   "desc": "Faz a - b, joga o resultado fora e guarda só as flags. É sempre lido junto com o desvio seguinte: CMP RAX, 10 + JG significa \"se RAX > 10\".",
-   "ex": [
-    "CMP RAX, 10",
-    "JG maior"
-   ],
-   "flags": "Altera CF, OF, SF, ZF, AF, PF."
-  },
-  "test": {
-   "cat": "cmp",
-   "name": "Test — AND que só produz flags",
-   "syntax": "TEST a, b",
-   "desc": "Faz a AND b e guarda só as flags. TEST RAX, RAX é o jeito idiomático de perguntar \"RAX é zero?\" — mais curto que CMP RAX, 0.",
-   "ex": [
-    "TEST RAX, RAX",
-    "JZ era_zero"
-   ],
-   "flags": "Zera CF e OF; altera SF, ZF, PF."
-  },
-  "set": {
-   "cat": "cmp",
-   "name": "Set on condition — vira 0 ou 1 conforme a condição",
-   "syntax": "SETcc destino8",
-   "desc": "Grava 1 no byte de destino se a condição for verdadeira, senão 0. É como compiladores geram um bool.",
-   "ex": [
-    "CMP RAX, RBX",
-    "SETE AL     ; AL = (RAX == RBX)"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "jmp": {
-   "cat": "branch",
-   "name": "Jump — desvio incondicional",
-   "syntax": "JMP destino",
-   "desc": "Continua a execução no rótulo (ou endereço) indicado, sem condição e sem guardar volta.",
-   "ex": [
-    "JMP fim"
-   ],
-   "flags": "Não altera flags."
-  },
-  "loop": {
-   "cat": "branch",
-   "name": "Loop — repete usando RCX como contador",
-   "syntax": "LOOP rótulo",
-   "desc": "Decrementa RCX e desvia se RCX != 0. Equivale a DEC RCX / JNZ, mas costuma ser mais lento que escrever os dois.",
-   "ex": [
-    "MOV RCX, 5",
-    "corpo:",
-    "  LOOP corpo"
-   ],
-   "flags": "Não altera flags."
-  },
-  "call": {
-   "cat": "call",
-   "name": "Call — chama uma função",
-   "syntax": "CALL destino",
-   "desc": "Empilha o endereço da instrução seguinte (endereço de retorno) e desvia para a função. O RET depois usa esse valor para voltar.",
-   "ex": [
-    "CALL soma",
-    "CALL printf"
-   ],
-   "flags": "Não altera flags."
-  },
-  "ret": {
-   "cat": "call",
-   "name": "Return — volta da função",
-   "syntax": "RET  |  RET n",
-   "desc": "Desempilha o endereço de retorno e continua dali. A pilha precisa estar exatamente como estava na entrada, ou o retorno vai para um endereço errado.",
-   "ex": [
-    "RET"
-   ],
-   "flags": "Não altera flags."
-  },
-  "syscall": {
-   "cat": "sys",
-   "name": "Syscall — chama o kernel (Linux x86-64)",
-   "syntax": "SYSCALL",
-   "desc": "Entrega o controle ao kernel. O número do serviço vai em RAX e os argumentos em RDI, RSI, RDX, R10, R8, R9. O retorno vem em RAX. RCX e R11 são destruídos.",
-   "ex": [
-    "MOV RAX, 1   ; write",
-    "MOV RDI, 1   ; stdout",
-    "MOV RSI, msg",
-    "MOV RDX, 13",
-    "SYSCALL"
-   ],
-   "flags": "Não altera flags (RCX e R11 são sobrescritos)."
-  },
-  "int": {
-   "cat": "sys",
-   "name": "Interrupt — dispara uma interrupção de software",
-   "syntax": "INT número",
-   "desc": "INT 0x80 é a chamada de sistema antiga de 32 bits do Linux — em código 64 bits o normal é SYSCALL. INT 3 é o breakpoint usado por depuradores.",
-   "ex": [
-    "INT 0x80",
-    "INT 3"
-   ],
-   "flags": "Depende do handler."
-  },
-  "sysenter": {
-   "cat": "sys",
-   "name": "Sysenter — entrada rápida em modo kernel (32 bits)",
-   "syntax": "SYSENTER",
-   "desc": "Mecanismo de entrada no kernel em sistemas 32 bits. Em x86-64 foi substituído por SYSCALL.",
-   "ex": [
-    "SYSENTER"
-   ],
-   "flags": "—"
-  },
-  "cpuid": {
-   "cat": "sys",
-   "name": "CPUID — identifica o processador",
-   "syntax": "CPUID",
-   "desc": "Retorna informações da CPU em EAX/EBX/ECX/EDX conforme o valor colocado antes em EAX.",
-   "ex": [
-    "XOR EAX, EAX",
-    "CPUID"
-   ],
-   "flags": "Não altera flags."
-  },
-  "rdtsc": {
-   "cat": "sys",
-   "name": "RDTSC — lê o contador de ciclos",
-   "syntax": "RDTSC",
-   "desc": "Coloca em EDX:EAX o número de ciclos desde a inicialização. Usado para medir tempo com alta resolução.",
-   "ex": [
-    "RDTSC"
-   ],
-   "flags": "Não altera flags."
-  },
-  "hlt": {
-   "cat": "sys",
-   "name": "Halt — para o processador",
-   "syntax": "HLT",
-   "desc": "Só faz sentido em código de kernel/bare metal. Em programa de usuário causa falha de proteção.",
-   "ex": [
-    "HLT"
-   ],
-   "flags": "—"
-  },
-  "movsb": {
-   "cat": "string",
-   "name": "Move String Byte — copia bytes de RSI para RDI",
-   "syntax": "MOVSB  (normalmente REP MOVSB)",
-   "desc": "Copia um byte de [RSI] para [RDI] e avança os dois. Com REP e RCX, é um memcpy em uma linha.",
-   "ex": [
-    "MOV RCX, 100",
-    "REP MOVSB"
-   ],
-   "flags": "Não altera flags. Direção controlada por DF (CLD/STD)."
-  },
-  "stosb": {
-   "cat": "string",
-   "name": "Store String Byte — preenche memória com AL",
-   "syntax": "STOSB  (normalmente REP STOSB)",
-   "desc": "Grava AL em [RDI] e avança RDI. Com REP vira um memset.",
-   "ex": [
-    "XOR AL, AL",
-    "MOV RCX, 64",
-    "REP STOSB"
-   ],
-   "flags": "Não altera flags."
-  },
-  "lodsb": {
-   "cat": "string",
-   "name": "Load String Byte — lê byte de [RSI] para AL",
-   "syntax": "LODSB",
-   "desc": "Carrega um byte de [RSI] em AL e avança RSI. Base para percorrer strings.",
-   "ex": [
-    "LODSB",
-    "TEST AL, AL",
-    "JZ fim"
-   ],
-   "flags": "Não altera flags."
-  },
-  "scasb": {
-   "cat": "string",
-   "name": "Scan String Byte — procura um byte",
-   "syntax": "SCASB  (normalmente REPNE SCASB)",
-   "desc": "Compara AL com [RDI] e avança. Com REPNE, encontra um byte dentro de um buffer (base do strlen).",
-   "ex": [
-    "REPNE SCASB"
-   ],
-   "flags": "Altera as flags da comparação."
-  },
-  "cmpsb": {
-   "cat": "string",
-   "name": "Compare String Byte — compara duas regiões",
-   "syntax": "CMPSB  (normalmente REPE CMPSB)",
-   "desc": "Compara [RSI] com [RDI] e avança os dois. Com REPE, é um memcmp.",
-   "ex": [
-    "REPE CMPSB"
-   ],
-   "flags": "Altera as flags da comparação."
-  },
-  "rep": {
-   "cat": "string",
-   "name": "REP — prefixo de repetição",
-   "syntax": "REP / REPE / REPNE instrução",
-   "desc": "Repete a instrução de string RCX vezes. REPE para quando ZF=0; REPNE para quando ZF=1.",
-   "ex": [
-    "REP MOVSB"
-   ],
-   "flags": "Depende da instrução repetida."
-  },
-  "cld": {
-   "cat": "string",
-   "name": "Clear Direction Flag — percorrer para frente",
-   "syntax": "CLD",
-   "desc": "Zera DF: as instruções de string avançam (RSI/RDI crescem). É o estado esperado pela ABI.",
-   "ex": [
-    "CLD"
-   ],
-   "flags": "Zera DF."
-  },
-  "std": {
-   "cat": "string",
-   "name": "Set Direction Flag — percorrer para trás",
-   "syntax": "STD",
-   "desc": "Liga DF: as instruções de string andam para trás. Sempre restaure com CLD depois.",
-   "ex": [
-    "STD"
-   ],
-   "flags": "Liga DF."
-  },
-  "movss": {
-   "cat": "fpu",
-   "name": "Move Scalar Single — float de 32 bits",
-   "syntax": "MOVSS xmm, origem",
-   "desc": "Move um float de precisão simples entre registradores XMM e memória.",
-   "ex": [
-    "MOVSS XMM0, [valor]"
-   ],
-   "flags": "Não altera flags."
-  },
-  "movsd_sse": {
-   "cat": "fpu",
-   "name": "Move Scalar Double — double de 64 bits",
-   "syntax": "MOVSD xmm, origem",
-   "desc": "Move um double. Cuidado: o mesmo mnemônico MOVSD também existe como instrução de string — o assembler decide pelo operando.",
-   "ex": [
-    "MOVSD XMM0, [valor]"
-   ],
-   "flags": "Não altera flags."
-  },
-  "addsd": {
-   "cat": "fpu",
-   "name": "Add Scalar Double — soma de doubles",
-   "syntax": "ADDSD xmm, origem",
-   "desc": "Soma dois doubles em registradores XMM.",
-   "ex": [
-    "ADDSD XMM0, XMM1"
-   ],
-   "flags": "Não altera as flags inteiras."
-  },
-  "mulsd": {
-   "cat": "fpu",
-   "name": "Multiply Scalar Double",
-   "syntax": "MULSD xmm, origem",
-   "desc": "Multiplica dois doubles.",
-   "ex": [
-    "MULSD XMM0, XMM1"
-   ],
-   "flags": "—"
-  },
-  "cvtsi2sd": {
-   "cat": "fpu",
-   "name": "Convert Integer to Double",
-   "syntax": "CVTSI2SD xmm, reg/mem",
-   "desc": "Converte inteiro para double.",
-   "ex": [
-    "CVTSI2SD XMM0, RAX"
-   ],
-   "flags": "—"
-  },
-  "nop": {
-   "cat": "misc",
-   "name": "No Operation — não faz nada",
-   "syntax": "NOP",
-   "desc": "Gasta um ciclo. Serve para alinhar código na memória e como espaço reservado para patches.",
-   "ex": [
-    "NOP"
-   ],
-   "flags": "Não altera flags."
-  },
-  "cdq": {
-   "cat": "misc",
-   "name": "Convert Doubleword to Quadword — estende EAX em EDX",
-   "syntax": "CDQ",
-   "desc": "Replica o bit de sinal de EAX em todo o EDX. Obrigatório antes de IDIV em 32 bits.",
-   "ex": [
-    "CDQ",
-    "IDIV EBX"
-   ],
-   "flags": "Não altera flags."
-  },
-  "cqo": {
-   "cat": "misc",
-   "name": "Convert Quadword to Octoword — estende RAX em RDX",
-   "syntax": "CQO",
-   "desc": "Versão 64 bits do CDQ. Use antes de IDIV com operandos de 64 bits.",
-   "ex": [
-    "CQO",
-    "IDIV RBX"
-   ],
-   "flags": "Não altera flags."
-  },
-  "cwde": {
-   "cat": "misc",
-   "name": "Convert Word to Doubleword",
-   "syntax": "CWDE",
-   "desc": "Estende AX com sinal para EAX.",
-   "ex": [
-    "CWDE"
-   ],
-   "flags": "Não altera flags."
-  },
-  "bswap": {
-   "cat": "misc",
-   "name": "Byte Swap — inverte a ordem dos bytes",
-   "syntax": "BSWAP registrador",
-   "desc": "Converte entre little-endian e big-endian (ordem de rede).",
-   "ex": [
-    "BSWAP EAX"
-   ],
-   "flags": "Não altera flags."
-  },
-  "xadd": {
-   "cat": "misc",
-   "name": "Exchange and Add — troca e soma (atômico com LOCK)",
-   "syntax": "XADD destino, origem",
-   "desc": "Troca os operandos e guarda a soma no destino. Base de contadores atômicos.",
-   "ex": [
-    "LOCK XADD [contador], RAX"
-   ],
-   "flags": "Altera as flags aritméticas."
-  },
-  "cmpxchg": {
-   "cat": "misc",
-   "name": "Compare and Exchange — o CAS do x86",
-   "syntax": "CMPXCHG destino, origem",
-   "desc": "Se destino == RAX, grava origem no destino; senão carrega destino em RAX. Base de locks e estruturas sem travas.",
-   "ex": [
-    "LOCK CMPXCHG [ptr], RBX"
-   ],
-   "flags": "Altera ZF e as demais flags aritméticas."
-  },
-  "lock": {
-   "cat": "misc",
-   "name": "LOCK — prefixo de atomicidade",
-   "syntax": "LOCK instrução",
-   "desc": "Garante que a operação de memória seja atômica entre núcleos.",
-   "ex": [
-    "LOCK INC [contador]"
-   ],
-   "flags": "Depende da instrução."
-  },
-  "endbr64": {
-   "cat": "misc",
-   "name": "ENDBR64 — marca alvo válido de desvio indireto",
-   "syntax": "ENDBR64",
-   "desc": "Parte da proteção CET/IBT. Marca que aquele endereço pode ser alvo de um call/jmp indireto. Compiladores modernos colocam no início de cada função.",
-   "ex": [
-    "ENDBR64"
-   ],
-   "flags": "Não altera flags."
-  },
-  "ud2": {
-   "cat": "misc",
-   "name": "UD2 — instrução inválida proposital",
-   "syntax": "UD2",
-   "desc": "Gera exceção de opcode inválido. Compiladores usam para marcar código inalcançável.",
-   "ex": [
-    "UD2"
-   ],
-   "flags": "—"
-  },
-  "je": {
-   "cat": "branch",
-   "name": "Jump if E — desvia se igual",
-   "syntax": "JE rótulo",
-   "desc": "Desvia para o rótulo quando a última comparação indicou igual. Condição nas flags: ZF = 1. Se a condição for falsa, a execução simplesmente segue para a linha de baixo.",
-   "ex": [
-    "CMP RAX, RBX",
-    "JE destino"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "sete": {
-   "cat": "cmp",
-   "name": "Set if E — 1 se igual",
-   "syntax": "SETE destino8",
-   "desc": "Coloca 1 no byte de destino se igual (ZF = 1), senão 0.",
-   "ex": [
-    "CMP RAX, RBX",
-    "SETE AL"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "cmove": {
-   "cat": "data",
-   "name": "Conditional Move if E",
-   "syntax": "CMOVE destino, origem",
-   "desc": "Copia a origem para o destino apenas se igual (ZF = 1). Sem desvio, sem risco de erro de previsão.",
-   "ex": [
-    "CMP RAX, RBX",
-    "CMOVE RAX, RBX"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "jz": {
-   "cat": "branch",
-   "name": "Jump if Z — desvia se zero",
-   "syntax": "JZ rótulo",
-   "desc": "Desvia para o rótulo quando a última comparação indicou zero. Condição nas flags: ZF = 1. Se a condição for falsa, a execução simplesmente segue para a linha de baixo.",
-   "ex": [
-    "CMP RAX, RBX",
-    "JZ destino"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "setz": {
-   "cat": "cmp",
-   "name": "Set if Z — 1 se zero",
-   "syntax": "SETZ destino8",
-   "desc": "Coloca 1 no byte de destino se zero (ZF = 1), senão 0.",
-   "ex": [
-    "CMP RAX, RBX",
-    "SETZ AL"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "cmovz": {
-   "cat": "data",
-   "name": "Conditional Move if Z",
-   "syntax": "CMOVZ destino, origem",
-   "desc": "Copia a origem para o destino apenas se zero (ZF = 1). Sem desvio, sem risco de erro de previsão.",
-   "ex": [
-    "CMP RAX, RBX",
-    "CMOVZ RAX, RBX"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "jne": {
-   "cat": "branch",
-   "name": "Jump if NE — desvia se diferente",
-   "syntax": "JNE rótulo",
-   "desc": "Desvia para o rótulo quando a última comparação indicou diferente. Condição nas flags: ZF = 0. Se a condição for falsa, a execução simplesmente segue para a linha de baixo.",
-   "ex": [
-    "CMP RAX, RBX",
-    "JNE destino"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "setne": {
-   "cat": "cmp",
-   "name": "Set if NE — 1 se diferente",
-   "syntax": "SETNE destino8",
-   "desc": "Coloca 1 no byte de destino se diferente (ZF = 0), senão 0.",
-   "ex": [
-    "CMP RAX, RBX",
-    "SETNE AL"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "cmovne": {
-   "cat": "data",
-   "name": "Conditional Move if NE",
-   "syntax": "CMOVNE destino, origem",
-   "desc": "Copia a origem para o destino apenas se diferente (ZF = 0). Sem desvio, sem risco de erro de previsão.",
-   "ex": [
-    "CMP RAX, RBX",
-    "CMOVNE RAX, RBX"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "jnz": {
-   "cat": "branch",
-   "name": "Jump if NZ — desvia se não zero",
-   "syntax": "JNZ rótulo",
-   "desc": "Desvia para o rótulo quando a última comparação indicou não zero. Condição nas flags: ZF = 0. Se a condição for falsa, a execução simplesmente segue para a linha de baixo.",
-   "ex": [
-    "CMP RAX, RBX",
-    "JNZ destino"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "setnz": {
-   "cat": "cmp",
-   "name": "Set if NZ — 1 se não zero",
-   "syntax": "SETNZ destino8",
-   "desc": "Coloca 1 no byte de destino se não zero (ZF = 0), senão 0.",
-   "ex": [
-    "CMP RAX, RBX",
-    "SETNZ AL"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "cmovnz": {
-   "cat": "data",
-   "name": "Conditional Move if NZ",
-   "syntax": "CMOVNZ destino, origem",
-   "desc": "Copia a origem para o destino apenas se não zero (ZF = 0). Sem desvio, sem risco de erro de previsão.",
-   "ex": [
-    "CMP RAX, RBX",
-    "CMOVNZ RAX, RBX"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "jg": {
-   "cat": "branch",
-   "name": "Jump if G — desvia se maior (com sinal)",
-   "syntax": "JG rótulo",
-   "desc": "Desvia para o rótulo quando a última comparação indicou maior (com sinal). Condição nas flags: ZF = 0 e SF = OF. Se a condição for falsa, a execução simplesmente segue para a linha de baixo.",
-   "ex": [
-    "CMP RAX, RBX",
-    "JG destino"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "setg": {
-   "cat": "cmp",
-   "name": "Set if G — 1 se maior (com sinal)",
-   "syntax": "SETG destino8",
-   "desc": "Coloca 1 no byte de destino se maior (com sinal) (ZF = 0 e SF = OF), senão 0.",
-   "ex": [
-    "CMP RAX, RBX",
-    "SETG AL"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "cmovg": {
-   "cat": "data",
-   "name": "Conditional Move if G",
-   "syntax": "CMOVG destino, origem",
-   "desc": "Copia a origem para o destino apenas se maior (com sinal) (ZF = 0 e SF = OF). Sem desvio, sem risco de erro de previsão.",
-   "ex": [
-    "CMP RAX, RBX",
-    "CMOVG RAX, RBX"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "jge": {
-   "cat": "branch",
-   "name": "Jump if GE — desvia se maior ou igual (com sinal)",
-   "syntax": "JGE rótulo",
-   "desc": "Desvia para o rótulo quando a última comparação indicou maior ou igual (com sinal). Condição nas flags: SF = OF. Se a condição for falsa, a execução simplesmente segue para a linha de baixo.",
-   "ex": [
-    "CMP RAX, RBX",
-    "JGE destino"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "setge": {
-   "cat": "cmp",
-   "name": "Set if GE — 1 se maior ou igual (com sinal)",
-   "syntax": "SETGE destino8",
-   "desc": "Coloca 1 no byte de destino se maior ou igual (com sinal) (SF = OF), senão 0.",
-   "ex": [
-    "CMP RAX, RBX",
-    "SETGE AL"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "cmovge": {
-   "cat": "data",
-   "name": "Conditional Move if GE",
-   "syntax": "CMOVGE destino, origem",
-   "desc": "Copia a origem para o destino apenas se maior ou igual (com sinal) (SF = OF). Sem desvio, sem risco de erro de previsão.",
-   "ex": [
-    "CMP RAX, RBX",
-    "CMOVGE RAX, RBX"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "jl": {
-   "cat": "branch",
-   "name": "Jump if L — desvia se menor (com sinal)",
-   "syntax": "JL rótulo",
-   "desc": "Desvia para o rótulo quando a última comparação indicou menor (com sinal). Condição nas flags: SF ≠ OF. Se a condição for falsa, a execução simplesmente segue para a linha de baixo.",
-   "ex": [
-    "CMP RAX, RBX",
-    "JL destino"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "setl": {
-   "cat": "cmp",
-   "name": "Set if L — 1 se menor (com sinal)",
-   "syntax": "SETL destino8",
-   "desc": "Coloca 1 no byte de destino se menor (com sinal) (SF ≠ OF), senão 0.",
-   "ex": [
-    "CMP RAX, RBX",
-    "SETL AL"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "cmovl": {
-   "cat": "data",
-   "name": "Conditional Move if L",
-   "syntax": "CMOVL destino, origem",
-   "desc": "Copia a origem para o destino apenas se menor (com sinal) (SF ≠ OF). Sem desvio, sem risco de erro de previsão.",
-   "ex": [
-    "CMP RAX, RBX",
-    "CMOVL RAX, RBX"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "jle": {
-   "cat": "branch",
-   "name": "Jump if LE — desvia se menor ou igual (com sinal)",
-   "syntax": "JLE rótulo",
-   "desc": "Desvia para o rótulo quando a última comparação indicou menor ou igual (com sinal). Condição nas flags: ZF = 1 ou SF ≠ OF. Se a condição for falsa, a execução simplesmente segue para a linha de baixo.",
-   "ex": [
-    "CMP RAX, RBX",
-    "JLE destino"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "setle": {
-   "cat": "cmp",
-   "name": "Set if LE — 1 se menor ou igual (com sinal)",
-   "syntax": "SETLE destino8",
-   "desc": "Coloca 1 no byte de destino se menor ou igual (com sinal) (ZF = 1 ou SF ≠ OF), senão 0.",
-   "ex": [
-    "CMP RAX, RBX",
-    "SETLE AL"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "cmovle": {
-   "cat": "data",
-   "name": "Conditional Move if LE",
-   "syntax": "CMOVLE destino, origem",
-   "desc": "Copia a origem para o destino apenas se menor ou igual (com sinal) (ZF = 1 ou SF ≠ OF). Sem desvio, sem risco de erro de previsão.",
-   "ex": [
-    "CMP RAX, RBX",
-    "CMOVLE RAX, RBX"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "ja": {
-   "cat": "branch",
-   "name": "Jump if A — desvia se acima (sem sinal)",
-   "syntax": "JA rótulo",
-   "desc": "Desvia para o rótulo quando a última comparação indicou acima (sem sinal). Condição nas flags: CF = 0 e ZF = 0. Se a condição for falsa, a execução simplesmente segue para a linha de baixo.",
-   "ex": [
-    "CMP RAX, RBX",
-    "JA destino"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "seta": {
-   "cat": "cmp",
-   "name": "Set if A — 1 se acima (sem sinal)",
-   "syntax": "SETA destino8",
-   "desc": "Coloca 1 no byte de destino se acima (sem sinal) (CF = 0 e ZF = 0), senão 0.",
-   "ex": [
-    "CMP RAX, RBX",
-    "SETA AL"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "cmova": {
-   "cat": "data",
-   "name": "Conditional Move if A",
-   "syntax": "CMOVA destino, origem",
-   "desc": "Copia a origem para o destino apenas se acima (sem sinal) (CF = 0 e ZF = 0). Sem desvio, sem risco de erro de previsão.",
-   "ex": [
-    "CMP RAX, RBX",
-    "CMOVA RAX, RBX"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "jae": {
-   "cat": "branch",
-   "name": "Jump if AE — desvia se acima ou igual (sem sinal)",
-   "syntax": "JAE rótulo",
-   "desc": "Desvia para o rótulo quando a última comparação indicou acima ou igual (sem sinal). Condição nas flags: CF = 0. Se a condição for falsa, a execução simplesmente segue para a linha de baixo.",
-   "ex": [
-    "CMP RAX, RBX",
-    "JAE destino"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "setae": {
-   "cat": "cmp",
-   "name": "Set if AE — 1 se acima ou igual (sem sinal)",
-   "syntax": "SETAE destino8",
-   "desc": "Coloca 1 no byte de destino se acima ou igual (sem sinal) (CF = 0), senão 0.",
-   "ex": [
-    "CMP RAX, RBX",
-    "SETAE AL"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "cmovae": {
-   "cat": "data",
-   "name": "Conditional Move if AE",
-   "syntax": "CMOVAE destino, origem",
-   "desc": "Copia a origem para o destino apenas se acima ou igual (sem sinal) (CF = 0). Sem desvio, sem risco de erro de previsão.",
-   "ex": [
-    "CMP RAX, RBX",
-    "CMOVAE RAX, RBX"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "jb": {
-   "cat": "branch",
-   "name": "Jump if B — desvia se abaixo (sem sinal)",
-   "syntax": "JB rótulo",
-   "desc": "Desvia para o rótulo quando a última comparação indicou abaixo (sem sinal). Condição nas flags: CF = 1. Se a condição for falsa, a execução simplesmente segue para a linha de baixo.",
-   "ex": [
-    "CMP RAX, RBX",
-    "JB destino"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "setb": {
-   "cat": "cmp",
-   "name": "Set if B — 1 se abaixo (sem sinal)",
-   "syntax": "SETB destino8",
-   "desc": "Coloca 1 no byte de destino se abaixo (sem sinal) (CF = 1), senão 0.",
-   "ex": [
-    "CMP RAX, RBX",
-    "SETB AL"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "cmovb": {
-   "cat": "data",
-   "name": "Conditional Move if B",
-   "syntax": "CMOVB destino, origem",
-   "desc": "Copia a origem para o destino apenas se abaixo (sem sinal) (CF = 1). Sem desvio, sem risco de erro de previsão.",
-   "ex": [
-    "CMP RAX, RBX",
-    "CMOVB RAX, RBX"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "jbe": {
-   "cat": "branch",
-   "name": "Jump if BE — desvia se abaixo ou igual (sem sinal)",
-   "syntax": "JBE rótulo",
-   "desc": "Desvia para o rótulo quando a última comparação indicou abaixo ou igual (sem sinal). Condição nas flags: CF = 1 ou ZF = 1. Se a condição for falsa, a execução simplesmente segue para a linha de baixo.",
-   "ex": [
-    "CMP RAX, RBX",
-    "JBE destino"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "setbe": {
-   "cat": "cmp",
-   "name": "Set if BE — 1 se abaixo ou igual (sem sinal)",
-   "syntax": "SETBE destino8",
-   "desc": "Coloca 1 no byte de destino se abaixo ou igual (sem sinal) (CF = 1 ou ZF = 1), senão 0.",
-   "ex": [
-    "CMP RAX, RBX",
-    "SETBE AL"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "cmovbe": {
-   "cat": "data",
-   "name": "Conditional Move if BE",
-   "syntax": "CMOVBE destino, origem",
-   "desc": "Copia a origem para o destino apenas se abaixo ou igual (sem sinal) (CF = 1 ou ZF = 1). Sem desvio, sem risco de erro de previsão.",
-   "ex": [
-    "CMP RAX, RBX",
-    "CMOVBE RAX, RBX"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "js": {
-   "cat": "branch",
-   "name": "Jump if S — desvia se negativo",
-   "syntax": "JS rótulo",
-   "desc": "Desvia para o rótulo quando a última comparação indicou negativo. Condição nas flags: SF = 1. Se a condição for falsa, a execução simplesmente segue para a linha de baixo.",
-   "ex": [
-    "CMP RAX, RBX",
-    "JS destino"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "sets": {
-   "cat": "cmp",
-   "name": "Set if S — 1 se negativo",
-   "syntax": "SETS destino8",
-   "desc": "Coloca 1 no byte de destino se negativo (SF = 1), senão 0.",
-   "ex": [
-    "CMP RAX, RBX",
-    "SETS AL"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "cmovs": {
-   "cat": "data",
-   "name": "Conditional Move if S",
-   "syntax": "CMOVS destino, origem",
-   "desc": "Copia a origem para o destino apenas se negativo (SF = 1). Sem desvio, sem risco de erro de previsão.",
-   "ex": [
-    "CMP RAX, RBX",
-    "CMOVS RAX, RBX"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "jns": {
-   "cat": "branch",
-   "name": "Jump if NS — desvia se não negativo",
-   "syntax": "JNS rótulo",
-   "desc": "Desvia para o rótulo quando a última comparação indicou não negativo. Condição nas flags: SF = 0. Se a condição for falsa, a execução simplesmente segue para a linha de baixo.",
-   "ex": [
-    "CMP RAX, RBX",
-    "JNS destino"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "setns": {
-   "cat": "cmp",
-   "name": "Set if NS — 1 se não negativo",
-   "syntax": "SETNS destino8",
-   "desc": "Coloca 1 no byte de destino se não negativo (SF = 0), senão 0.",
-   "ex": [
-    "CMP RAX, RBX",
-    "SETNS AL"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "cmovns": {
-   "cat": "data",
-   "name": "Conditional Move if NS",
-   "syntax": "CMOVNS destino, origem",
-   "desc": "Copia a origem para o destino apenas se não negativo (SF = 0). Sem desvio, sem risco de erro de previsão.",
-   "ex": [
-    "CMP RAX, RBX",
-    "CMOVNS RAX, RBX"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "jc": {
-   "cat": "branch",
-   "name": "Jump if C — desvia se houve carry",
-   "syntax": "JC rótulo",
-   "desc": "Desvia para o rótulo quando a última comparação indicou houve carry. Condição nas flags: CF = 1. Se a condição for falsa, a execução simplesmente segue para a linha de baixo.",
-   "ex": [
-    "CMP RAX, RBX",
-    "JC destino"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "setc": {
-   "cat": "cmp",
-   "name": "Set if C — 1 se houve carry",
-   "syntax": "SETC destino8",
-   "desc": "Coloca 1 no byte de destino se houve carry (CF = 1), senão 0.",
-   "ex": [
-    "CMP RAX, RBX",
-    "SETC AL"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "cmovc": {
-   "cat": "data",
-   "name": "Conditional Move if C",
-   "syntax": "CMOVC destino, origem",
-   "desc": "Copia a origem para o destino apenas se houve carry (CF = 1). Sem desvio, sem risco de erro de previsão.",
-   "ex": [
-    "CMP RAX, RBX",
-    "CMOVC RAX, RBX"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "jnc": {
-   "cat": "branch",
-   "name": "Jump if NC — desvia se não houve carry",
-   "syntax": "JNC rótulo",
-   "desc": "Desvia para o rótulo quando a última comparação indicou não houve carry. Condição nas flags: CF = 0. Se a condição for falsa, a execução simplesmente segue para a linha de baixo.",
-   "ex": [
-    "CMP RAX, RBX",
-    "JNC destino"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "setnc": {
-   "cat": "cmp",
-   "name": "Set if NC — 1 se não houve carry",
-   "syntax": "SETNC destino8",
-   "desc": "Coloca 1 no byte de destino se não houve carry (CF = 0), senão 0.",
-   "ex": [
-    "CMP RAX, RBX",
-    "SETNC AL"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "cmovnc": {
-   "cat": "data",
-   "name": "Conditional Move if NC",
-   "syntax": "CMOVNC destino, origem",
-   "desc": "Copia a origem para o destino apenas se não houve carry (CF = 0). Sem desvio, sem risco de erro de previsão.",
-   "ex": [
-    "CMP RAX, RBX",
-    "CMOVNC RAX, RBX"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "jo": {
-   "cat": "branch",
-   "name": "Jump if O — desvia se houve overflow",
-   "syntax": "JO rótulo",
-   "desc": "Desvia para o rótulo quando a última comparação indicou houve overflow. Condição nas flags: OF = 1. Se a condição for falsa, a execução simplesmente segue para a linha de baixo.",
-   "ex": [
-    "CMP RAX, RBX",
-    "JO destino"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "seto": {
-   "cat": "cmp",
-   "name": "Set if O — 1 se houve overflow",
-   "syntax": "SETO destino8",
-   "desc": "Coloca 1 no byte de destino se houve overflow (OF = 1), senão 0.",
-   "ex": [
-    "CMP RAX, RBX",
-    "SETO AL"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "cmovo": {
-   "cat": "data",
-   "name": "Conditional Move if O",
-   "syntax": "CMOVO destino, origem",
-   "desc": "Copia a origem para o destino apenas se houve overflow (OF = 1). Sem desvio, sem risco de erro de previsão.",
-   "ex": [
-    "CMP RAX, RBX",
-    "CMOVO RAX, RBX"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "jno": {
-   "cat": "branch",
-   "name": "Jump if NO — desvia se não houve overflow",
-   "syntax": "JNO rótulo",
-   "desc": "Desvia para o rótulo quando a última comparação indicou não houve overflow. Condição nas flags: OF = 0. Se a condição for falsa, a execução simplesmente segue para a linha de baixo.",
-   "ex": [
-    "CMP RAX, RBX",
-    "JNO destino"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "setno": {
-   "cat": "cmp",
-   "name": "Set if NO — 1 se não houve overflow",
-   "syntax": "SETNO destino8",
-   "desc": "Coloca 1 no byte de destino se não houve overflow (OF = 0), senão 0.",
-   "ex": [
-    "CMP RAX, RBX",
-    "SETNO AL"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "cmovno": {
-   "cat": "data",
-   "name": "Conditional Move if NO",
-   "syntax": "CMOVNO destino, origem",
-   "desc": "Copia a origem para o destino apenas se não houve overflow (OF = 0). Sem desvio, sem risco de erro de previsão.",
-   "ex": [
-    "CMP RAX, RBX",
-    "CMOVNO RAX, RBX"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "jp": {
-   "cat": "branch",
-   "name": "Jump if P — desvia se paridade par",
-   "syntax": "JP rótulo",
-   "desc": "Desvia para o rótulo quando a última comparação indicou paridade par. Condição nas flags: PF = 1. Se a condição for falsa, a execução simplesmente segue para a linha de baixo.",
-   "ex": [
-    "CMP RAX, RBX",
-    "JP destino"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "setp": {
-   "cat": "cmp",
-   "name": "Set if P — 1 se paridade par",
-   "syntax": "SETP destino8",
-   "desc": "Coloca 1 no byte de destino se paridade par (PF = 1), senão 0.",
-   "ex": [
-    "CMP RAX, RBX",
-    "SETP AL"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "cmovp": {
-   "cat": "data",
-   "name": "Conditional Move if P",
-   "syntax": "CMOVP destino, origem",
-   "desc": "Copia a origem para o destino apenas se paridade par (PF = 1). Sem desvio, sem risco de erro de previsão.",
-   "ex": [
-    "CMP RAX, RBX",
-    "CMOVP RAX, RBX"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "jnp": {
-   "cat": "branch",
-   "name": "Jump if NP — desvia se paridade ímpar",
-   "syntax": "JNP rótulo",
-   "desc": "Desvia para o rótulo quando a última comparação indicou paridade ímpar. Condição nas flags: PF = 0. Se a condição for falsa, a execução simplesmente segue para a linha de baixo.",
-   "ex": [
-    "CMP RAX, RBX",
-    "JNP destino"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "setnp": {
-   "cat": "cmp",
-   "name": "Set if NP — 1 se paridade ímpar",
-   "syntax": "SETNP destino8",
-   "desc": "Coloca 1 no byte de destino se paridade ímpar (PF = 0), senão 0.",
-   "ex": [
-    "CMP RAX, RBX",
-    "SETNP AL"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "cmovnp": {
-   "cat": "data",
-   "name": "Conditional Move if NP",
-   "syntax": "CMOVNP destino, origem",
-   "desc": "Copia a origem para o destino apenas se paridade ímpar (PF = 0). Sem desvio, sem risco de erro de previsão.",
-   "ex": [
-    "CMP RAX, RBX",
-    "CMOVNP RAX, RBX"
-   ],
-   "flags": "Lê as flags, não altera."
-  },
-  "movsw": {
-   "cat": "string",
-   "name": "Move String Byte — copia bytes de RSI para RDI",
-   "syntax": "MOVSB  (normalmente REP MOVSB)",
-   "desc": "Copia um byte de [RSI] para [RDI] e avança os dois. Com REP e RCX, é um memcpy em uma linha.",
-   "ex": [
-    "MOV RCX, 100",
-    "REP MOVSB"
-   ],
-   "flags": "Não altera flags. Direção controlada por DF (CLD/STD)."
-  },
-  "movsd": {
-   "cat": "string",
-   "name": "Move String Byte — copia bytes de RSI para RDI",
-   "syntax": "MOVSB  (normalmente REP MOVSB)",
-   "desc": "Copia um byte de [RSI] para [RDI] e avança os dois. Com REP e RCX, é um memcpy em uma linha.",
-   "ex": [
-    "MOV RCX, 100",
-    "REP MOVSB"
-   ],
-   "flags": "Não altera flags. Direção controlada por DF (CLD/STD)."
-  },
-  "movsq": {
-   "cat": "string",
-   "name": "Move String Byte — copia bytes de RSI para RDI",
-   "syntax": "MOVSB  (normalmente REP MOVSB)",
-   "desc": "Copia um byte de [RSI] para [RDI] e avança os dois. Com REP e RCX, é um memcpy em uma linha.",
-   "ex": [
-    "MOV RCX, 100",
-    "REP MOVSB"
-   ],
-   "flags": "Não altera flags. Direção controlada por DF (CLD/STD)."
-  },
-  "stosw": {
-   "cat": "string",
-   "name": "Store String Byte — preenche memória com AL",
-   "syntax": "STOSB  (normalmente REP STOSB)",
-   "desc": "Grava AL em [RDI] e avança RDI. Com REP vira um memset.",
-   "ex": [
-    "XOR AL, AL",
-    "MOV RCX, 64",
-    "REP STOSB"
-   ],
-   "flags": "Não altera flags."
-  },
-  "stosd": {
-   "cat": "string",
-   "name": "Store String Byte — preenche memória com AL",
-   "syntax": "STOSB  (normalmente REP STOSB)",
-   "desc": "Grava AL em [RDI] e avança RDI. Com REP vira um memset.",
-   "ex": [
-    "XOR AL, AL",
-    "MOV RCX, 64",
-    "REP STOSB"
-   ],
-   "flags": "Não altera flags."
-  },
-  "stosq": {
-   "cat": "string",
-   "name": "Store String Byte — preenche memória com AL",
-   "syntax": "STOSB  (normalmente REP STOSB)",
-   "desc": "Grava AL em [RDI] e avança RDI. Com REP vira um memset.",
-   "ex": [
-    "XOR AL, AL",
-    "MOV RCX, 64",
-    "REP STOSB"
-   ],
-   "flags": "Não altera flags."
-  },
-  "lodsw": {
-   "cat": "string",
-   "name": "Load String Byte — lê byte de [RSI] para AL",
-   "syntax": "LODSB",
-   "desc": "Carrega um byte de [RSI] em AL e avança RSI. Base para percorrer strings.",
-   "ex": [
-    "LODSB",
-    "TEST AL, AL",
-    "JZ fim"
-   ],
-   "flags": "Não altera flags."
-  },
-  "lodsd": {
-   "cat": "string",
-   "name": "Load String Byte — lê byte de [RSI] para AL",
-   "syntax": "LODSB",
-   "desc": "Carrega um byte de [RSI] em AL e avança RSI. Base para percorrer strings.",
-   "ex": [
-    "LODSB",
-    "TEST AL, AL",
-    "JZ fim"
-   ],
-   "flags": "Não altera flags."
-  },
-  "lodsq": {
-   "cat": "string",
-   "name": "Load String Byte — lê byte de [RSI] para AL",
-   "syntax": "LODSB",
-   "desc": "Carrega um byte de [RSI] em AL e avança RSI. Base para percorrer strings.",
-   "ex": [
-    "LODSB",
-    "TEST AL, AL",
-    "JZ fim"
-   ],
-   "flags": "Não altera flags."
-  },
-  "scasw": {
-   "cat": "string",
-   "name": "Scan String Byte — procura um byte",
-   "syntax": "SCASB  (normalmente REPNE SCASB)",
-   "desc": "Compara AL com [RDI] e avança. Com REPNE, encontra um byte dentro de um buffer (base do strlen).",
-   "ex": [
-    "REPNE SCASB"
-   ],
-   "flags": "Altera as flags da comparação."
-  },
-  "scasd": {
-   "cat": "string",
-   "name": "Scan String Byte — procura um byte",
-   "syntax": "SCASB  (normalmente REPNE SCASB)",
-   "desc": "Compara AL com [RDI] e avança. Com REPNE, encontra um byte dentro de um buffer (base do strlen).",
-   "ex": [
-    "REPNE SCASB"
-   ],
-   "flags": "Altera as flags da comparação."
-  },
-  "scasq": {
-   "cat": "string",
-   "name": "Scan String Byte — procura um byte",
-   "syntax": "SCASB  (normalmente REPNE SCASB)",
-   "desc": "Compara AL com [RDI] e avança. Com REPNE, encontra um byte dentro de um buffer (base do strlen).",
-   "ex": [
-    "REPNE SCASB"
-   ],
-   "flags": "Altera as flags da comparação."
-  },
-  "cmpsw": {
-   "cat": "string",
-   "name": "Compare String Byte — compara duas regiões",
-   "syntax": "CMPSB  (normalmente REPE CMPSB)",
-   "desc": "Compara [RSI] com [RDI] e avança os dois. Com REPE, é um memcmp.",
-   "ex": [
-    "REPE CMPSB"
-   ],
-   "flags": "Altera as flags da comparação."
-  },
-  "cmpsd": {
-   "cat": "string",
-   "name": "Compare String Byte — compara duas regiões",
-   "syntax": "CMPSB  (normalmente REPE CMPSB)",
-   "desc": "Compara [RSI] com [RDI] e avança os dois. Com REPE, é um memcmp.",
-   "ex": [
-    "REPE CMPSB"
-   ],
-   "flags": "Altera as flags da comparação."
-  },
-  "cmpsq": {
-   "cat": "string",
-   "name": "Compare String Byte — compara duas regiões",
-   "syntax": "CMPSB  (normalmente REPE CMPSB)",
-   "desc": "Compara [RSI] com [RDI] e avança os dois. Com REPE, é um memcmp.",
-   "ex": [
-    "REPE CMPSB"
-   ],
-   "flags": "Altera as flags da comparação."
-  },
-  "repnz": {
-   "cat": "string",
-   "name": "REP — prefixo de repetição",
-   "syntax": "REP / REPE / REPNE instrução",
-   "desc": "Repete a instrução de string RCX vezes. REPE para quando ZF=0; REPNE para quando ZF=1.",
-   "ex": [
-    "REP MOVSB"
-   ],
-   "flags": "Depende da instrução repetida."
-  },
-  "repz": {
-   "cat": "string",
-   "name": "REP — prefixo de repetição",
-   "syntax": "REP / REPE / REPNE instrução",
-   "desc": "Repete a instrução de string RCX vezes. REPE para quando ZF=0; REPNE para quando ZF=1.",
-   "ex": [
-    "REP MOVSB"
-   ],
-   "flags": "Depende da instrução repetida."
-  },
-  "repne": {
-   "cat": "string",
-   "name": "REP — prefixo de repetição",
-   "syntax": "REP / REPE / REPNE instrução",
-   "desc": "Repete a instrução de string RCX vezes. REPE para quando ZF=0; REPNE para quando ZF=1.",
-   "ex": [
-    "REP MOVSB"
-   ],
-   "flags": "Depende da instrução repetida."
-  },
-  "repe": {
-   "cat": "string",
-   "name": "REP — prefixo de repetição",
-   "syntax": "REP / REPE / REPNE instrução",
-   "desc": "Repete a instrução de string RCX vezes. REPE para quando ZF=0; REPNE para quando ZF=1.",
-   "ex": [
-    "REP MOVSB"
-   ],
-   "flags": "Depende da instrução repetida."
-  }
- },
- "CONDITIONS": {
-  "e": [
-   "igual",
-   "ZF = 1"
-  ],
-  "z": [
-   "zero",
-   "ZF = 1"
-  ],
-  "ne": [
-   "diferente",
-   "ZF = 0"
-  ],
-  "nz": [
-   "não zero",
-   "ZF = 0"
-  ],
-  "g": [
-   "maior (com sinal)",
-   "ZF = 0 e SF = OF"
-  ],
-  "ge": [
-   "maior ou igual (com sinal)",
-   "SF = OF"
-  ],
-  "l": [
-   "menor (com sinal)",
-   "SF ≠ OF"
-  ],
-  "le": [
-   "menor ou igual (com sinal)",
-   "ZF = 1 ou SF ≠ OF"
-  ],
-  "a": [
-   "acima (sem sinal)",
-   "CF = 0 e ZF = 0"
-  ],
-  "ae": [
-   "acima ou igual (sem sinal)",
-   "CF = 0"
-  ],
-  "b": [
-   "abaixo (sem sinal)",
-   "CF = 1"
-  ],
-  "be": [
-   "abaixo ou igual (sem sinal)",
-   "CF = 1 ou ZF = 1"
-  ],
-  "s": [
-   "negativo",
-   "SF = 1"
-  ],
-  "ns": [
-   "não negativo",
-   "SF = 0"
-  ],
-  "c": [
-   "houve carry",
-   "CF = 1"
-  ],
-  "nc": [
-   "não houve carry",
-   "CF = 0"
-  ],
-  "o": [
-   "houve overflow",
-   "OF = 1"
-  ],
-  "no": [
-   "não houve overflow",
-   "OF = 0"
-  ],
-  "p": [
-   "paridade par",
-   "PF = 1"
-  ],
-  "np": [
-   "paridade ímpar",
-   "PF = 0"
-  ]
- },
- "REG_DOC": {
-  "rax": "Acumulador. Valor de retorno das funções e número da syscall no Linux.",
-  "rbx": "Base. Preservado entre chamadas (callee-saved).",
-  "rcx": "Contador de laços; 1º argumento no Windows, 4º no Linux. Destruído pelo SYSCALL.",
-  "rdx": "3º argumento (Linux) / 2º (Windows). Parte alta em MUL e DIV.",
-  "rsi": "Origem em operações de string; 2º argumento no Linux.",
-  "rdi": "Destino em operações de string; 1º argumento no Linux.",
-  "rsp": "Ponteiro do topo da pilha. Nunca mexa nele sem saber o que está fazendo.",
-  "rbp": "Base do quadro de pilha atual; ancora as variáveis locais.",
-  "r8": "5º argumento (Linux) / 3º (Windows).",
-  "r9": "6º argumento (Linux) / 4º (Windows).",
-  "r10": "4º argumento das syscalls do Linux (no lugar de RCX).",
-  "r11": "Registrador temporário. Destruído pelo SYSCALL.",
-  "r12": "Temporário preservado entre chamadas.",
-  "r13": "Temporário preservado entre chamadas.",
-  "r14": "Temporário preservado entre chamadas.",
-  "r15": "Temporário preservado entre chamadas.",
-  "rip": "Ponteiro da próxima instrução. Só é alterado por desvios; endereçamento [rel x] é relativo a ele."
- },
- "FLAG_DOC": {
-  "ZF": "Zero — o resultado deu exatamente zero (ou os valores comparados eram iguais).",
-  "SF": "Sign — o bit mais alto do resultado é 1 (número negativo com sinal).",
-  "CF": "Carry — houve vai-um/empréstimo. É a flag dos desvios sem sinal (JA/JB).",
-  "OF": "Overflow — o resultado estourou a faixa com sinal. É a flag dos desvios com sinal (JG/JL).",
-  "PF": "Parity — o byte baixo do resultado tem quantidade par de bits 1.",
-  "DF": "Direction — define se as instruções de string andam para frente (0) ou para trás (1)."
- },
- "LINUX_SYSCALLS": {
-  "0": [
-   "read",
-   "lê de um descritor",
-   "fd, buf, count"
-  ],
-  "1": [
-   "write",
-   "escreve em um descritor",
-   "fd, buf, count"
-  ],
-  "2": [
-   "open",
-   "abre arquivo",
-   "path, flags, mode"
-  ],
-  "3": [
-   "close",
-   "fecha descritor",
-   "fd"
-  ],
-  "4": [
-   "stat",
-   "informações do arquivo",
-   "path, statbuf"
-  ],
-  "5": [
-   "fstat",
-   "informações pelo descritor",
-   "fd, statbuf"
-  ],
-  "8": [
-   "lseek",
-   "posiciona no arquivo",
-   "fd, offset, whence"
-  ],
-  "9": [
-   "mmap",
-   "mapeia memória",
-   "addr, len, prot, flags, fd, off"
-  ],
-  "10": [
-   "mprotect",
-   "muda permissões de memória",
-   "addr, len, prot"
-  ],
-  "11": [
-   "munmap",
-   "desfaz o mapeamento",
-   "addr, len"
-  ],
-  "12": [
-   "brk",
-   "ajusta o fim do heap",
-   "addr"
-  ],
-  "13": [
-   "rt_sigaction",
-   "instala tratador de sinal",
-   "sig, act, oldact"
-  ],
-  "16": [
-   "ioctl",
-   "controle de dispositivo",
-   "fd, request, arg"
-  ],
-  "22": [
-   "pipe",
-   "cria um par de descritores",
-   "pipefd"
-  ],
-  "32": [
-   "dup",
-   "duplica descritor",
-   "fd"
-  ],
-  "33": [
-   "dup2",
-   "duplica em um número específico",
-   "old, new"
-  ],
-  "34": [
-   "pause",
-   "espera por sinal",
-   ""
-  ],
-  "35": [
-   "nanosleep",
-   "dorme",
-   "req, rem"
-  ],
-  "39": [
-   "getpid",
-   "PID do processo",
-   ""
-  ],
-  "41": [
-   "socket",
-   "cria socket",
-   "domain, type, protocol"
-  ],
-  "42": [
-   "connect",
-   "conecta socket",
-   "fd, addr, addrlen"
-  ],
-  "43": [
-   "accept",
-   "aceita conexão",
-   "fd, addr, addrlen"
-  ],
-  "44": [
-   "sendto",
-   "envia dados",
-   "fd, buf, len, flags, addr, alen"
-  ],
-  "45": [
-   "recvfrom",
-   "recebe dados",
-   "fd, buf, len, flags, addr, alen"
-  ],
-  "49": [
-   "bind",
-   "associa endereço ao socket",
-   "fd, addr, addrlen"
-  ],
-  "50": [
-   "listen",
-   "coloca o socket em escuta",
-   "fd, backlog"
-  ],
-  "57": [
-   "fork",
-   "duplica o processo",
-   ""
-  ],
-  "59": [
-   "execve",
-   "substitui o programa atual",
-   "path, argv, envp"
-  ],
-  "60": [
-   "exit",
-   "encerra a thread",
-   "código"
-  ],
-  "61": [
-   "wait4",
-   "espera processo filho",
-   "pid, status, options, rusage"
-  ],
-  "62": [
-   "kill",
-   "envia sinal",
-   "pid, sig"
-  ],
-  "79": [
-   "getcwd",
-   "diretório atual",
-   "buf, size"
-  ],
-  "83": [
-   "mkdir",
-   "cria diretório",
-   "path, mode"
-  ],
-  "87": [
-   "unlink",
-   "apaga arquivo",
-   "path"
-  ],
-  "89": [
-   "readlink",
-   "lê link simbólico",
-   "path, buf, size"
-  ],
-  "96": [
-   "gettimeofday",
-   "hora atual",
-   "tv, tz"
-  ],
-  "101": [
-   "ptrace",
-   "depuração de processo",
-   "request, pid, addr, data"
-  ],
-  "186": [
-   "gettid",
-   "ID da thread",
-   ""
-  ],
-  "201": [
-   "time",
-   "hora em segundos",
-   "tloc"
-  ],
-  "202": [
-   "futex",
-   "espera/acorda thread",
-   "uaddr, op, val, ..."
-  ],
-  "231": [
-   "exit_group",
-   "encerra o processo inteiro",
-   "código"
-  ],
-  "257": [
-   "openat",
-   "abre relativo a um diretório",
-   "dirfd, path, flags, mode"
-  ],
-  "318": [
-   "getrandom",
-   "bytes aleatórios",
-   "buf, buflen, flags"
-  ]
- },
- "WIN_APIS": {
-  "exitprocess": [
-   "ExitProcess",
-   "encerra o processo",
-   "uExitCode (RCX)"
-  ],
-  "messageboxa": [
-   "MessageBoxA",
-   "abre uma caixa de mensagem",
-   "hWnd, texto, título, tipo"
-  ],
-  "messageboxw": [
-   "MessageBoxW",
-   "caixa de mensagem (Unicode)",
-   "hWnd, texto, título, tipo"
-  ],
-  "getstdhandle": [
-   "GetStdHandle",
-   "pega o handle de stdin/stdout/stderr",
-   "nStdHandle (-11 = stdout)"
-  ],
-  "writeconsolea": [
-   "WriteConsoleA",
-   "escreve no console",
-   "handle, buffer, tamanho, escritos, reservado"
-  ],
-  "readconsolea": [
-   "ReadConsoleA",
-   "lê do console",
-   "handle, buffer, tamanho, lidos, reservado"
-  ],
-  "writefile": [
-   "WriteFile",
-   "escreve em arquivo/handle",
-   "handle, buffer, tamanho, escritos, overlapped"
-  ],
-  "readfile": [
-   "ReadFile",
-   "lê de arquivo/handle",
-   "handle, buffer, tamanho, lidos, overlapped"
-  ],
-  "createfilea": [
-   "CreateFileA",
-   "abre ou cria arquivo",
-   "nome, acesso, compartilhamento, ..."
-  ],
-  "closehandle": [
-   "CloseHandle",
-   "libera um handle",
-   "handle"
-  ],
-  "getprocaddress": [
-   "GetProcAddress",
-   "endereço de uma função da DLL",
-   "hModule, nome"
-  ],
-  "loadlibrarya": [
-   "LoadLibraryA",
-   "carrega uma DLL",
-   "nome"
-  ],
-  "virtualalloc": [
-   "VirtualAlloc",
-   "reserva memória",
-   "addr, tamanho, tipo, proteção"
-  ],
-  "virtualprotect": [
-   "VirtualProtect",
-   "muda proteção de memória",
-   "addr, tamanho, nova, antiga"
-  ],
-  "getlasterror": [
-   "GetLastError",
-   "código do último erro",
-   ""
-  ],
-  "sleep": [
-   "Sleep",
-   "pausa a thread",
-   "milissegundos"
-  ],
-  "createprocessa": [
-   "CreateProcessA",
-   "cria um processo",
-   "..."
-  ],
-  "getmodulehandlea": [
-   "GetModuleHandleA",
-   "handle do módulo carregado",
-   "nome"
-  ]
- }
 }

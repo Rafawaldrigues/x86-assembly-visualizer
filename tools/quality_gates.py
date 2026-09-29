@@ -1,29 +1,29 @@
 #!/usr/bin/env python3
-"""Portões de qualidade do ASM X: anotações de tipo e docstrings.
+"""Quality gates of ASM X: type annotations and docstrings.
 
-O plano do projeto promete "100% de anotações de tipo" e "docstrings no padrão
-Google". Promessa que ninguém confere vira desculpa, então estas duas checagens
-são automáticas — rodam no ``make quality``, no CI e no teste
-``tests/test_quality_gates.py``. O que é cobrado:
+The project plan promises "100% type annotations" and "Google standard
+docstrings". A promise nobody checks turns into an excuse, so these two checks
+are automatic: they run in ``make quality``, in CI and in the test
+``tests/test_quality_gates.py``. What is enforced:
 
-* toda função, método, classe e módulo tem docstring;
-* a primeira linha da docstring é uma frase terminada em pontuação;
-* a função tem ``Args:`` descrevendo todos os parâmetros quando tem três ou
-  mais (``self`` e ``cls`` não contam);
-* a função tem ``Returns:`` quando devolve valor e ``Raises:`` quando levanta
-  exceção explicitamente;
-* todos os parâmetros e o retorno têm anotação de tipo.
+* every function, method, class and module has a docstring;
+* the first line of the docstring is a sentence ending with punctuation;
+* the function has ``Args:`` describing every parameter when it takes three or
+  more (``self`` and ``cls`` do not count);
+* the function has ``Returns:`` when it returns a value and ``Raises:`` when it
+  raises an exception explicitly;
+* every parameter and the return value has a type annotation.
 
-O código é lido com :mod:`ast`, então nada é importado nem executado.
+The code is read with :mod:`ast`, so nothing is imported or executed.
 
 Usage:
-    python3 tools/quality_gates.py            # checa asmx/, tools/, asmx.py, tests/
-    python3 tools/quality_gates.py asmx/      # checa só um caminho
-    python3 tools/quality_gates.py --quiet    # só o resultado final
+    python3 tools/quality_gates.py            # checks asmx/, tools/, asmx.py, tests/
+    python3 tools/quality_gates.py asmx/      # checks a single path
+    python3 tools/quality_gates.py --quiet    # final result only
 
 Exit codes:
-    0  nenhuma violação
-    1  pelo menos uma violação
+    0  no violation
+    1  at least one violation
 """
 
 from __future__ import annotations
@@ -37,13 +37,13 @@ from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-#: Caminhos conferidos quando nenhum é indicado na linha de comando.
+#: Paths checked when none is given on the command line.
 PADRAO: Tuple[str, ...] = ("asmx", "tools", "asmx.py")
 
-#: Caminhos conferidos só quanto a anotações (os testes não exigem docstring).
+#: Paths checked for annotations only (the tests do not require a docstring).
 TESTES: Tuple[str, ...] = ("tests",)
 
-#: Pastas ignoradas na varredura.
+#: Folders ignored by the scan.
 IGNORAR = frozenset(
     {
         ".git",
@@ -58,24 +58,24 @@ IGNORAR = frozenset(
     }
 )
 
-#: Nomes que não contam como parâmetro a documentar.
+#: Names that do not count as a parameter to document.
 AUTO_PARAMS = frozenset({"self", "cls"})
 
-#: Pontuação aceita no fim da primeira linha da docstring.
+#: Punctuation accepted at the end of the first docstring line.
 PONTUACAO = (".", "?", "!", ":")
 
 
 @dataclass(frozen=True)
 class Violation:
-    """Uma quebra de regra encontrada no código.
+    """A broken rule found in the code.
 
     Attributes:
-        path: Arquivo onde está o problema, relativo à raiz.
-        line: Linha do nó (função, classe...).
-        name: Nome qualificado do nó (``Classe.metodo``).
-        kind: Regra quebrada (``docstring``, ``args``, ``returns``, ``raises``,
+        path: File where the problem is, relative to the root.
+        line: Line of the node (function, class...).
+        name: Qualified name of the node (``Class.method``).
+        kind: Broken rule (``docstring``, ``args``, ``returns``, ``raises``,
             ``annotation``).
-        detail: Explicação curta do que faltou.
+        detail: Short explanation of what is missing.
     """
 
     path: str
@@ -85,22 +85,22 @@ class Violation:
     detail: str
 
     def __str__(self) -> str:
-        """Formata a violação como ``arquivo:linha: tipo nome — detalhe``.
+        """Formats the violation as ``file:line: kind name — detail``.
 
         Returns:
-            A linha pronta para imprimir.
+            The line ready to print.
         """
         return "%s:%d: %s %s — %s" % (self.path, self.line, self.kind, self.name, self.detail)
 
 
 def iter_python_files(paths: Sequence[str]) -> List[str]:
-    """Lista os arquivos ``.py`` de uma lista de arquivos e diretórios.
+    """Lists the ``.py`` files of a list of files and directories.
 
     Args:
-        paths: Caminhos absolutos ou relativos à raiz do projeto.
+        paths: Paths absolute or relative to the project root.
 
     Returns:
-        Caminhos relativos à raiz, em ordem alfabética.
+        Paths relative to the root, in alphabetical order.
     """
     arquivos: List[str] = []
     for caminho in paths:
@@ -118,24 +118,24 @@ def iter_python_files(paths: Sequence[str]) -> List[str]:
 
 
 def _qualified(node: ast.AST, prefixo: str = "") -> str:
-    """Monta o nome do nó incluindo a classe/escopo onde ele está.
+    """Builds the node name including the class/scope where it appears.
 
     Args:
-        node: Nó do :mod:`ast` (função, classe...).
-        prefixo: Nome do escopo onde o nó aparece.
+        node: :mod:`ast` node (function, class...).
+        prefixo: Name of the scope where the node appears.
 
     Returns:
-        Nome qualificado, como ``Project.fork``.
+        Qualified name, such as ``Project.fork``.
     """
-    nome = getattr(node, "name", "<anônimo>")
+    nome = getattr(node, "name", "<anonymous>")
     return "%s.%s" % (prefixo, nome) if prefixo else nome
 
 
 def _docstring(node: ast.AST) -> Optional[str]:
-    """Devolve a docstring do nó, ou ``None`` quando não existe.
+    """Returns the node docstring, or ``None`` when there is none.
 
     Returns:
-        O texto da docstring ou ``None``.
+        The docstring text or ``None``.
     """
     corpo = getattr(node, "body", None)
     if not corpo:
@@ -151,10 +151,10 @@ def _docstring(node: ast.AST) -> Optional[str]:
 
 
 def _params(node: ast.AST) -> List[str]:
-    """Lista os nomes dos parâmetros de uma função, sem ``self``/``cls``.
+    """Lists the parameter names of a function, without ``self``/``cls``.
 
     Returns:
-        Nomes na ordem da assinatura, com ``*args`` e ``**kwargs`` inclusive.
+        Names in signature order, ``*args`` and ``**kwargs`` included.
     """
     args = node.args  # type: ignore[attr-defined]
     nomes = [a.arg for a in list(args.posonlyargs) + list(args.args) + list(args.kwonlyargs)]
@@ -166,16 +166,16 @@ def _params(node: ast.AST) -> List[str]:
 
 
 def _iter_corpo(node: ast.AST) -> Iterable[ast.AST]:
-    """Percorre o corpo de uma função sem entrar em funções aninhadas.
+    """Walks the body of a function without entering nested functions.
 
-    O que uma função aninhada devolve ou levanta é problema da docstring dela,
-    não da função de fora.
+    What a nested function returns or raises is a problem for its own
+    docstring, not for the outer function.
 
     Args:
-        node: Nó da função.
+        node: Function node.
 
     Yields:
-        Cada nó do corpo, exceto o interior de funções, classes e lambdas.
+        Each node of the body, except the inside of functions, classes and lambdas.
     """
     pilha = list(getattr(node, "body", []))
     while pilha:
@@ -187,11 +187,11 @@ def _iter_corpo(node: ast.AST) -> Iterable[ast.AST]:
 
 
 def _returns_value(node: ast.AST) -> bool:
-    """Diz se a função tem algum ``return`` que devolve valor.
+    """Tells whether the function has any ``return`` that returns a value.
 
     Returns:
-        ``True`` quando existe ``return`` com expressão no corpo da própria
-        função.
+        ``True`` when there is a ``return`` with an expression in the body of
+        the function itself.
     """
     return any(
         isinstance(filho, ast.Return) and filho.value is not None for filho in _iter_corpo(node)
@@ -199,36 +199,36 @@ def _returns_value(node: ast.AST) -> bool:
 
 
 def _raises(node: ast.AST) -> bool:
-    """Diz se a função levanta exceção explicitamente.
+    """Tells whether the function raises an exception explicitly.
 
     Returns:
-        ``True`` quando existe ``raise`` no corpo da própria função.
+        ``True`` when there is a ``raise`` in the body of the function itself.
     """
     return any(isinstance(filho, ast.Raise) for filho in _iter_corpo(node))
 
 
 def _has_section(doc: str, titulo: str) -> bool:
-    """Diz se a docstring tem uma seção ``Titulo:`` (Google style).
+    """Tells whether the docstring has a ``Title:`` section (Google style).
 
     Args:
-        doc: Texto da docstring.
-        titulo: Nome da seção, sem os dois pontos (``Args``, ``Returns``...).
+        doc: Docstring text.
+        titulo: Section name, without the colon (``Args``, ``Returns``...).
 
     Returns:
-        ``True`` quando a seção existe.
+        ``True`` when the section exists.
     """
     return any(linha.strip() == titulo + ":" for linha in doc.splitlines())
 
 
 def _section_names(doc: str, titulo: str) -> Set[str]:
-    """Extrai os nomes documentados dentro de uma seção do tipo ``nome:``.
+    """Extracts the names documented inside a section of the ``name:`` form.
 
     Args:
-        doc: Texto da docstring.
-        titulo: Nome da seção a varrer.
+        doc: Docstring text.
+        titulo: Name of the section to scan.
 
     Returns:
-        Conjunto com os nomes encontrados antes dos dois pontos.
+        Set with the names found before the colon.
     """
     nomes: Set[str] = set()
     dentro = False
@@ -248,31 +248,31 @@ def _section_names(doc: str, titulo: str) -> Set[str]:
 def check_file(
     path: str, *, args_min_params: int = 3, require_docstrings: bool = True
 ) -> List[Violation]:
-    """Confere anotações e docstrings de um arquivo.
+    """Checks annotations and docstrings of a single file.
 
     Args:
-        path: Caminho relativo à raiz do projeto.
-        args_min_params: A partir de quantos parâmetros a seção ``Args:``
-            passa a ser obrigatória.
-        require_docstrings: Quando ``False``, cobra só as anotações de tipo
-            (é o modo usado nos arquivos de teste, onde o nome do caso já
-            explica o que ele faz).
+        path: Path relative to the project root.
+        args_min_params: From how many parameters the ``Args:`` section becomes
+            mandatory.
+        require_docstrings: When ``False``, only the type annotations are
+            enforced (this is the mode used on test files, where the case name
+            already explains what it does).
 
     Returns:
-        Lista de violações encontradas (vazia quando o arquivo está em dia).
+        List of violations found (empty when the file is up to date).
     """
     with open(os.path.join(RAIZ, path), encoding="utf-8") as arquivo:
         try:
             arvore = ast.parse(arquivo.read(), filename=path)
         except SyntaxError as erro:
-            return [Violation(path, erro.lineno or 0, "<módulo>", "sintaxe", str(erro.msg))]
+            return [Violation(path, erro.lineno or 0, "<module>", "syntax", str(erro.msg))]
 
     violacoes: List[Violation] = []
     if require_docstrings:
         _verifica_docstring_modulo(arvore, path, violacoes)
 
     def visitar(node: ast.AST, prefixo: str) -> None:
-        """Percorre a árvore conferindo classes e funções aninhadas."""
+        """Walks the tree checking classes and nested functions."""
         for filho in ast.iter_child_nodes(node):
             if isinstance(filho, ast.ClassDef):
                 nome = _qualified(filho, prefixo)
@@ -291,40 +291,38 @@ def check_file(
 
 
 def _verifica_docstring_modulo(arvore: ast.Module, path: str, violacoes: List[Violation]) -> None:
-    """Confere a docstring do módulo.
+    """Checks the module docstring.
 
     Args:
-        arvore: Árvore sintática do arquivo.
-        path: Caminho relativo, usado nas violações.
-        violacoes: Lista onde as violações são acumuladas.
+        arvore: Syntax tree of the file.
+        path: Relative path, used in the violations.
+        violacoes: List where the violations are accumulated.
     """
     doc = _docstring(arvore)
     if doc is None:
-        violacoes.append(Violation(path, 1, "<módulo>", "docstring", "módulo sem docstring"))
+        violacoes.append(Violation(path, 1, "<module>", "docstring", "module without docstring"))
         return
     if not doc.strip().splitlines()[0].strip().endswith(PONTUACAO):
         violacoes.append(
-            Violation(
-                path, 1, "<módulo>", "docstring", "a primeira linha precisa terminar em pontuação"
-            )
+            Violation(path, 1, "<module>", "docstring", "first line must end with punctuation")
         )
 
 
 def _verifica_classe(
     node: ast.ClassDef, path: str, nome: str, violacoes: List[Violation], args_min_params: int
 ) -> None:
-    """Confere a docstring da classe, incluindo os atributos de dataclass.
+    """Checks the class docstring, including the dataclass attributes.
 
     Args:
-        node: Nó da classe.
-        path: Caminho relativo do arquivo.
-        nome: Nome qualificado da classe.
-        violacoes: Lista onde as violações são acumuladas.
-        args_min_params: Limite de parâmetros para exigir ``Args:`` nos métodos.
+        node: Class node.
+        path: Relative path of the file.
+        nome: Qualified name of the class.
+        violacoes: List where the violations are accumulated.
+        args_min_params: Parameter threshold to require ``Args:`` in the methods.
     """
     doc = _docstring(node)
     if doc is None:
-        violacoes.append(Violation(path, node.lineno, nome, "docstring", "classe sem docstring"))
+        violacoes.append(Violation(path, node.lineno, nome, "docstring", "class without docstring"))
     elif not doc.strip().splitlines()[0].strip().endswith(PONTUACAO):
         violacoes.append(
             Violation(
@@ -332,7 +330,7 @@ def _verifica_classe(
                 node.lineno,
                 nome,
                 "docstring",
-                "a primeira linha precisa terminar em pontuação",
+                "first line must end with punctuation",
             )
         )
 
@@ -345,31 +343,47 @@ def _verifica_funcao(
     args_min_params: int,
     require_docstrings: bool = True,
 ) -> None:
-    """Confere anotações, docstring e seções de uma função ou método.
+    """Checks annotations, docstring and sections of a function or method.
 
     Args:
-        node: Nó da função ou método.
-        path: Caminho relativo do arquivo.
-        nome: Nome qualificado da função.
-        violacoes: Lista onde as violações são acumuladas.
-        args_min_params: A partir de quantos parâmetros ``Args:`` é exigido.
-        require_docstrings: Se as seções de docstring são cobradas.
+        node: Function or method node.
+        path: Relative path of the file.
+        nome: Qualified name of the function.
+        violacoes: List where the violations are accumulated.
+        args_min_params: From how many parameters ``Args:`` is required.
+        require_docstrings: Whether the docstring sections are enforced.
     """
     doc = _docstring(node)
     if doc is None and require_docstrings:
-        violacoes.append(Violation(path, node.lineno, nome, "docstring", "sem docstring"))
+        violacoes.append(
+            Violation(
+                path,
+                node.lineno,  # type: ignore[attr-defined]
+                nome,
+                "docstring",
+                "no docstring",
+            )
+        )
     elif doc is not None and require_docstrings:
         primeira = doc.strip().splitlines()[0].strip() if doc.strip() else ""
         if not primeira:
-            violacoes.append(Violation(path, node.lineno, nome, "docstring", "docstring vazia"))
+            violacoes.append(
+                Violation(
+                    path,
+                    node.lineno,  # type: ignore[attr-defined]
+                    nome,
+                    "docstring",
+                    "empty docstring",
+                )
+            )
         elif not primeira.endswith(PONTUACAO):
             violacoes.append(
                 Violation(
                     path,
-                    node.lineno,
+                    node.lineno,  # type: ignore[attr-defined]
                     nome,
                     "docstring",
-                    "a primeira linha precisa terminar em pontuação",
+                    "first line must end with punctuation",
                 )
             )
         parametros = _params(node)
@@ -379,10 +393,10 @@ def _verifica_funcao(
             violacoes.append(
                 Violation(
                     path,
-                    node.lineno,
+                    node.lineno,  # type: ignore[attr-defined]
                     nome,
                     "args",
-                    "tem %d parâmetros e nenhuma seção Args:" % len(parametros),
+                    "takes %d parameters and has no Args: section" % len(parametros),
                 )
             )
         elif _has_section(doc, "Args"):
@@ -392,72 +406,94 @@ def _verifica_funcao(
                 violacoes.append(
                     Violation(
                         path,
-                        node.lineno,
+                        node.lineno,  # type: ignore[attr-defined]
                         nome,
                         "args",
-                        "parâmetros sem descrição: " + ", ".join(faltando),
+                        "parameters without a description: " + ", ".join(faltando),
                     )
                 )
         if require_docstrings and _returns_value(node) and not _has_section(doc, "Returns"):
             violacoes.append(
                 Violation(
-                    path, node.lineno, nome, "returns", "devolve valor e não tem seção Returns:"
+                    path,
+                    node.lineno,  # type: ignore[attr-defined]
+                    nome,
+                    "returns",
+                    "returns a value and has no Returns: section",
                 )
             )
         if require_docstrings and _raises(node) and not _has_section(doc, "Raises"):
             violacoes.append(
                 Violation(
-                    path, node.lineno, nome, "raises", "levanta exceção e não tem seção Raises:"
+                    path,
+                    node.lineno,  # type: ignore[attr-defined]
+                    nome,
+                    "raises",
+                    "raises and has no Raises: section",
                 )
             )
 
     for parametro in _params(node):
         alvo = (
-            node.args.vararg
+            node.args.vararg  # type: ignore[attr-defined]
             if parametro.startswith("*") and not parametro.startswith("**")
-            else node.args.kwarg if parametro.startswith("**") else None
+            else (
+                node.args.kwarg  # type: ignore[attr-defined]
+                if parametro.startswith("**")
+                else None
+            )
         )
         if alvo is not None:
             if alvo.annotation is None:
                 violacoes.append(
                     Violation(
                         path,
-                        node.lineno,
+                        node.lineno,  # type: ignore[attr-defined]
                         nome,
                         "annotation",
-                        "parâmetro %s sem anotação" % parametro,
+                        "parameter %s has no annotation" % parametro,
                     )
                 )
             continue
         for argumento in (
-            list(node.args.posonlyargs) + list(node.args.args) + list(node.args.kwonlyargs)
+            list(node.args.posonlyargs)  # type: ignore[attr-defined]
+            + list(node.args.args)  # type: ignore[attr-defined]
+            + list(node.args.kwonlyargs)  # type: ignore[attr-defined]
         ):
             if argumento.arg == parametro and argumento.annotation is None:
                 violacoes.append(
                     Violation(
                         path,
-                        node.lineno,
+                        node.lineno,  # type: ignore[attr-defined]
                         nome,
                         "annotation",
-                        "parâmetro %s sem anotação" % parametro,
+                        "parameter %s has no annotation" % parametro,
                     )
                 )
     if getattr(node, "returns", None) is None:
-        violacoes.append(Violation(path, node.lineno, nome, "annotation", "retorno sem anotação"))
+        violacoes.append(
+            Violation(
+                path,
+                node.lineno,  # type: ignore[attr-defined]
+                nome,
+                "annotation",
+                "return has no annotation",
+            )
+        )
 
 
 def check_paths(
     paths: Sequence[str], *, args_min_params: int = 3, require_docstrings: bool = True
 ) -> List[Violation]:
-    """Confere todos os arquivos indicados.
+    """Checks every file given.
 
     Args:
-        paths: Arquivos e diretórios a conferir.
-        args_min_params: Repassado para :func:`check_file`.
-        require_docstrings: Repassado para :func:`check_file`.
+        paths: Files and directories to check.
+        args_min_params: Forwarded to :func:`check_file`.
+        require_docstrings: Forwarded to :func:`check_file`.
 
     Returns:
-        Lista de violações, ordenada por arquivo e linha.
+        List of violations, sorted by file and line.
     """
     violacoes: List[Violation] = []
     for path in iter_python_files(paths):
@@ -468,13 +504,13 @@ def check_paths(
 
 
 def summarize(violacoes: Iterable[Violation]) -> Dict[str, int]:
-    """Conta as violações por tipo.
+    """Counts the violations by type.
 
     Args:
-        violacoes: Violações encontradas.
+        violacoes: Violations found.
 
     Returns:
-        Dicionário ``tipo -> quantidade``.
+        Dictionary ``type -> count``.
     """
     contagem: Dict[str, int] = {}
     for violacao in violacoes:
@@ -483,33 +519,35 @@ def summarize(violacoes: Iterable[Violation]) -> Dict[str, int]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Monta o analisador de argumentos do utilitário.
+    """Builds the argument parser of the utility.
 
     Returns:
-        O parser com os caminhos posicionais e as opções.
+        The parser with the positional paths and the options.
     """
     parser = argparse.ArgumentParser(
-        prog="quality_gates", description="Confere anotações de tipo e docstrings do ASM X."
+        prog="quality_gates", description="Checks type annotations and docstrings of ASM X."
     )
     parser.add_argument(
         "paths",
         nargs="*",
         default=list(PADRAO),
-        help="arquivos ou diretórios (padrão: %s)" % ", ".join(PADRAO),
+        help="files or directories (default: %s)" % ", ".join(PADRAO),
     )
-    parser.add_argument("-q", "--quiet", action="store_true", help="mostra só o resumo final")
-    parser.add_argument("--max", type=int, default=40, help="quantas violações listar (padrão: 40)")
+    parser.add_argument("-q", "--quiet", action="store_true", help="shows only the final summary")
+    parser.add_argument(
+        "--max", type=int, default=40, help="how many violations to list (default: 40)"
+    )
     return parser
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    """Ponto de entrada do utilitário.
+    """Entry point of the utility.
 
     Args:
-        argv: Argumentos sem o nome do programa.
+        argv: Arguments without the program name.
 
     Returns:
-        ``0`` quando não há violação, ``1`` quando há.
+        ``0`` when there is no violation, ``1`` when there is at least one.
     """
     args = build_parser().parse_args(list(argv) if argv is not None else None)
     violacoes = check_paths(args.paths or list(PADRAO))
@@ -518,7 +556,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             for violacao in violacoes[: args.max]:
                 print(violacao)
         print(
-            "falharam %d verificação(ões): %s"
+            "failed %d check(s): %s"
             % (
                 len(violacoes),
                 ", ".join("%s=%d" % kv for kv in sorted(summarize(violacoes).items())),
@@ -526,7 +564,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
         return 1
     print(
-        "tudo em ordem: %d arquivo(s) com 100%% de anotações e docstrings"
+        "all good: %d file(s) with 100%% annotations and docstrings"
         % len(iter_python_files(args.paths or list(PADRAO)))
     )
     return 0

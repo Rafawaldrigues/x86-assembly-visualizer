@@ -1,4 +1,4 @@
-"""Testes da hierarquia de erros: códigos, contexto e compatibilidade."""
+"""Tests of the error hierarchy: codes, context and compatibility."""
 
 import unittest
 
@@ -26,33 +26,33 @@ from asmx.errors import (
 
 
 class TestBase(unittest.TestCase):
-    """Comportamento comum a todos os erros."""
+    """Behavior common to every error."""
 
-    def test_str_mostra_o_codigo(self) -> None:
-        erro = AsmxError("algo deu errado")
-        self.assertEqual(str(erro), "[ERR_ASMX] algo deu errado")
+    def test_str_shows_the_code(self) -> None:
+        error = AsmxError("something went wrong")
+        self.assertEqual(str(error), "[ERR_ASMX] something went wrong")
 
-    def test_codigo_pode_ser_trocado(self) -> None:
-        erro = AsmxError("quebrou", code="ERR_PROPRIO", etapa="teste")
-        self.assertEqual(erro.code, "ERR_PROPRIO")
-        self.assertEqual(erro.context["etapa"], "teste")
+    def test_code_can_be_replaced(self) -> None:
+        error = AsmxError("it broke", code="ERR_CUSTOM", stage="test")
+        self.assertEqual(error.code, "ERR_CUSTOM")
+        self.assertEqual(error.context["stage"], "test")
 
-    def test_repr_e_curto(self) -> None:
+    def test_repr_is_short(self) -> None:
         self.assertEqual(repr(AsmxError("x")), "AsmxError(code='ERR_ASMX', message='x')")
 
-    def test_to_dict_sem_contexto(self) -> None:
-        dados = ProjectError("falhou").to_dict()
+    def test_to_dict_without_context(self) -> None:
+        data = ProjectError("failed").to_dict()
         self.assertEqual(
-            dados, {"error": "ProjectError", "code": "ERR_PROJECT", "message": "falhou"}
+            data, {"error": "ProjectError", "code": "ERR_PROJECT", "message": "failed"}
         )
 
-    def test_to_dict_com_contexto(self) -> None:
-        dados = SourceNotFoundError("/tmp/x.asm").to_dict()
-        self.assertEqual(dados["code"], "ERR_SOURCE_NOT_FOUND")
-        self.assertEqual(dados["context"]["path"], "/tmp/x.asm")
+    def test_to_dict_with_context(self) -> None:
+        data = SourceNotFoundError("/tmp/x.asm").to_dict()
+        self.assertEqual(data["code"], "ERR_SOURCE_NOT_FOUND")
+        self.assertEqual(data["context"]["path"], "/tmp/x.asm")
 
-    def test_indice_de_codigos_cobre_todas_as_classes(self) -> None:
-        for classe in (
+    def test_code_index_covers_every_class(self) -> None:
+        for error_class in (
             SourceNotFoundError,
             SourceReadError,
             SourceWriteError,
@@ -71,99 +71,99 @@ class TestBase(unittest.TestCase):
             UnknownMnemonicError,
             LineNotFoundError,
         ):
-            with self.subTest(classe=classe.__name__):
-                self.assertIs(ERROR_CODES[classe.code], classe)
+            with self.subTest(error_class=error_class.__name__):
+                self.assertIs(ERROR_CODES[error_class.code], error_class)
 
-    def test_codigos_sao_unicos(self) -> None:
-        codigos = [c.code for c in ERROR_CODES.values()]
-        self.assertEqual(len(codigos), len(set(codigos)))
+    def test_codes_are_unique(self) -> None:
+        codes = [c.code for c in ERROR_CODES.values()]
+        self.assertEqual(len(codes), len(set(codes)))
 
-    def test_todos_comecam_com_err(self) -> None:
-        for codigo in ERROR_CODES:
-            with self.subTest(codigo=codigo):
-                self.assertTrue(codigo.startswith("ERR_"))
+    def test_all_start_with_err(self) -> None:
+        for code in ERROR_CODES:
+            with self.subTest(code=code):
+                self.assertTrue(code.startswith("ERR_"))
 
 
-class TestCompatibilidadeComErrosEmbutidos(unittest.TestCase):
-    """Quem já tratava ValueError/KeyError continua funcionando."""
+class TestCompatibilityWithBuiltinErrors(unittest.TestCase):
+    """Code that already caught ValueError/KeyError keeps working."""
 
-    def test_documento_ausente_e_file_not_found(self) -> None:
+    def test_missing_document_is_file_not_found(self) -> None:
         with self.assertRaises(FileNotFoundError):
-            raise SourceNotFoundError("/tmp/nada.asm")
+            raise SourceNotFoundError("/tmp/nothing.asm")
 
-    def test_projeto_invalido_e_value_error(self) -> None:
+    def test_invalid_project_is_value_error(self) -> None:
         with self.assertRaises(ValueError):
-            raise ProjectFormatError("p.asmproj", "json quebrado")
+            raise ProjectFormatError("p.asmproj", "broken json")
 
-    def test_branch_inexistente_e_key_error(self) -> None:
+    def test_nonexistent_branch_is_key_error(self) -> None:
         with self.assertRaises(KeyError):
-            raise BranchNotFoundError("nao_existe")
+            raise BranchNotFoundError("does_not_exist")
 
-    def test_timeout_e_timeout_error(self) -> None:
+    def test_timeout_is_timeout_error(self) -> None:
         with self.assertRaises(TimeoutError):
             raise AnalysisTimeoutError(2.5, steps=100)
 
-    def test_emulacao_e_runtime_error(self) -> None:
+    def test_emulation_is_runtime_error(self) -> None:
         with self.assertRaises(RuntimeError):
-            raise EmulationError("não consegui começar")
+            raise EmulationError("could not start")
 
 
-class TestMensagens(unittest.TestCase):
-    """As mensagens precisam ser úteis sozinhas."""
+class TestMessages(unittest.TestCase):
+    """The messages need to be useful on their own."""
 
-    def test_arquivo_nao_encontrado(self) -> None:
+    def test_file_not_found(self) -> None:
         self.assertIn("/tmp/x.asm", str(SourceNotFoundError("/tmp/x.asm")))
 
-    def test_erro_de_leitura_traz_o_motivo(self) -> None:
-        self.assertIn("permissão negada", str(SourceReadError("/etc/x", "permissão negada")))
+    def test_read_error_brings_the_reason(self) -> None:
+        self.assertIn("permission denied", str(SourceReadError("/etc/x", "permission denied")))
 
-    def test_erro_de_escrita(self) -> None:
-        self.assertIn("não consegui gravar", str(SourceWriteError("/tmp/x", "disco cheio")))
+    def test_write_error(self) -> None:
+        self.assertIn("could not write", str(SourceWriteError("/tmp/x", "disk full")))
 
-    def test_extensao_recusada_lista_as_aceitas(self) -> None:
-        erro = UnsupportedSourceError("a.bin", ".asm, .s")
-        self.assertIn("a.bin", str(erro))
-        self.assertIn(".asm", str(erro))
-        self.assertEqual(erro.context["expected"], ".asm, .s")
+    def test_refused_extension_lists_the_accepted_ones(self) -> None:
+        error = UnsupportedSourceError("a.bin", ".asm, .s")
+        self.assertIn("a.bin", str(error))
+        self.assertIn(".asm", str(error))
+        self.assertEqual(error.context["expected"], ".asm, .s")
 
-    def test_branch_repetida(self) -> None:
+    def test_repeated_branch(self) -> None:
         self.assertEqual(
-            str(BranchExistsError("alt")), "[ERR_BRANCH_EXISTS] já existe uma branch chamada alt"
+            str(BranchExistsError("alt")), "[ERR_BRANCH_EXISTS] already exists a branch named alt"
         )
 
-    def test_nome_de_branch_vazio(self) -> None:
-        self.assertIn("precisa de um nome", str(EmptyBranchNameError()))
+    def test_empty_branch_name(self) -> None:
+        self.assertIn("needs a name", str(EmptyBranchNameError()))
 
-    def test_ultima_branch(self) -> None:
-        self.assertIn("pelo menos uma branch", str(LastBranchError()))
+    def test_last_branch(self) -> None:
+        self.assertIn("at least one branch", str(LastBranchError()))
 
-    def test_cenario_com_nome(self) -> None:
-        erro = ScenarioError("limite inválido", scenario="grande")
-        self.assertEqual(erro.scenario, "grande")
-        self.assertEqual(erro.context["scenario"], "grande")
+    def test_scenario_with_a_name(self) -> None:
+        error = ScenarioError("invalid limit", scenario="large")
+        self.assertEqual(error.scenario, "large")
+        self.assertEqual(error.context["scenario"], "large")
 
-    def test_config_com_campo(self) -> None:
-        erro = ConfigError("fora da faixa", path="asmx.json", field="timeout")
-        self.assertEqual(erro.field, "timeout")
-        self.assertEqual(erro.path, "asmx.json")
+    def test_config_with_a_field(self) -> None:
+        error = ConfigError("out of range", path="asmx.json", field="timeout")
+        self.assertEqual(error.field, "timeout")
+        self.assertEqual(error.path, "asmx.json")
 
-    def test_timeout_mostra_o_limite(self) -> None:
-        erro = AnalysisTimeoutError(1.5, steps=256)
-        self.assertIn("1.5 s", str(erro))
-        self.assertEqual(erro.steps, 256)
+    def test_timeout_shows_the_limit(self) -> None:
+        error = AnalysisTimeoutError(1.5, steps=256)
+        self.assertIn("1.5 s", str(error))
+        self.assertEqual(error.steps, 256)
 
-    def test_mnemônico_desconhecido_mostra_o_tamanho_do_acervo(self) -> None:
+    def test_unknown_mnemonic_shows_the_catalog_size(self) -> None:
         self.assertIn("148", str(UnknownMnemonicError("xyz", 148)))
 
-    def test_linha_inexistente_mostra_o_total(self) -> None:
-        erro = LineNotFoundError(99, 20)
-        self.assertIn("99", str(erro))
-        self.assertIn("20", str(erro))
+    def test_nonexistent_line_shows_the_total(self) -> None:
+        error = LineNotFoundError(99, 20)
+        self.assertIn("99", str(error))
+        self.assertIn("20", str(error))
 
-    def test_erro_de_parse_guarda_a_linha(self) -> None:
-        erro = ParseError("linha estranha", line=7)
-        self.assertEqual(erro.line, 7)
-        self.assertEqual(erro.context["line"], 7)
+    def test_parse_error_keeps_the_line(self) -> None:
+        error = ParseError("strange line", line=7)
+        self.assertEqual(error.line, 7)
+        self.assertEqual(error.context["line"], 7)
 
 
 if __name__ == "__main__":

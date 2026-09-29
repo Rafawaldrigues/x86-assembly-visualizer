@@ -1,9 +1,9 @@
-"""Validação estática: encontra o que provavelmente vai quebrar antes de rodar.
+"""Static validation: finds what will probably break before running.
 
-Cada regra é uma função que recebe a :class:`~asmx.analyzer.Analysis` e devolve
-uma lista de :class:`Problem`; todas rodam em :func:`validate`, na ordem de
-:data:`ALL_CHECKS`. Os códigos vão de STR (strings) e DIV (divisão) a SEC
-(seções) e REG (registrador lido antes de receber valor).
+Each rule is a function that receives the :class:`~asmx.analyzer.Analysis` and
+returns a list of :class:`Problem`; all of them run in :func:`validate`, in the
+order of :data:`ALL_CHECKS`. The codes go from STR (strings) and DIV (division)
+to SEC (sections) and REG (register read before receiving a value).
 """
 
 from __future__ import annotations
@@ -15,22 +15,22 @@ from typing import Any, Callable, Dict, List, Optional
 from .analyzer import Analysis
 from .isa import CALLEE_SAVED_SYSV, CALLEE_SAVED_WIN, REG_INFO, is_cond_jump
 
-ERRO = "erro"
-ALERTA = "alerta"
+ERROR = "error"
+WARNING = "warning"
 INFO = "info"
-SEVERITY_ORDER = {ERRO: 0, ALERTA: 1, INFO: 2}
+SEVERITY_ORDER = {ERROR: 0, WARNING: 1, INFO: 2}
 
 
 @dataclass
 class Problem:
-    """Um problema encontrado pela validação estática.
+    """An issue found by the static validation.
 
     Attributes:
-        line: Linha do fonte onde o problema aparece.
-        severity: ``erro``, ``alerta`` ou ``info``.
-        code: Código da regra (``DIV001``, ``STR003``...).
-        message: O que está errado.
-        hint: Como corrigir.
+        line: Source line where the issue appears.
+        severity: ``error``, ``warning`` or ``info``.
+        code: Rule code (``DIV001``, ``STR003``...).
+        message: What is wrong.
+        hint: How to fix it.
     """
 
     line: int
@@ -40,18 +40,18 @@ class Problem:
     hint: str = ""
 
     def __str__(self) -> str:
-        """Formata o problema numa linha legível.
+        """Formats the issue into one readable line.
 
         Returns:
-            Texto no formato ``L12 [erro] DIV001: mensagem``.
+            Text in the ``L12 [error] DIV001: message`` format.
         """
         return "L%d [%s] %s: %s" % (self.line, self.severity, self.code, self.message)
 
     def to_dict(self) -> Dict[str, Any]:
-        """Converte o problema em dicionário pronto para JSON.
+        """Converts the issue into a dictionary ready for JSON.
 
         Returns:
-            Dicionário com ``line``, ``severity``, ``code``, ``message`` e
+            Dictionary with ``line``, ``severity``, ``code``, ``message`` and
             ``hint``.
         """
         return {
@@ -64,55 +64,56 @@ class Problem:
 
 
 def _base(reg: Optional[str]) -> Optional[str]:
-    """Descobre o registrador de 64 bits por trás de um nome parcial.
+    """Finds the 64-bit register behind a partial name.
 
     Args:
-        reg: Nome do registrador, ou ``None``.
+        reg: Register name, or ``None``.
 
     Returns:
-        O nome base (``rax``, ``rsp``...) ou ``None`` quando não é registrador.
+        The base name (``rax``, ``rsp``...) or ``None`` when it is not a register.
     """
     return REG_INFO[reg]["base"] if reg and reg in REG_INFO else None
 
 
 def _func_ranges(analysis: Analysis) -> Dict[str, List[Any]]:
-    """Agrupa as instruções por função declarada.
+    """Groups the instructions by declared function.
 
     Args:
-        analysis: Análise do fonte.
+        analysis: Source analysis.
 
     Returns:
-        Dicionário ``função -> instruções``; o código sem rótulo entra como
-        ``<sem rótulo>``.
+        Dictionary ``function -> instructions``; code without a label goes in as
+        ``<unlabeled>``.
     """
     groups: Dict[str, List[Any]] = {}
     for ins in analysis.instrs:
-        groups.setdefault(ins.func or "<sem rótulo>", []).append(ins)
+        groups.setdefault(ins.func or "<unlabeled>", []).append(ins)
     return groups
 
 
 # --------------------------------------------------------------- strings --
 def check_strings(analysis: Analysis) -> List[Problem]:
-    """Confere as strings das linhas de dados.
+    """Checks the strings of the data lines.
 
-    Detecta aspas não fechadas (STR002), caracteres fora do ASCII (STR001),
-    caracteres de controle literais (STR004) e barras invertidas que talvez não
-    sejam escape (STR005).
+    Detects unterminated quotes (STR002), non-ASCII characters (STR001), literal
+    control characters (STR004) and backslashes that may not be an escape
+    (STR005).
 
     Args:
-        analysis: Análise do fonte.
+        analysis: Source analysis.
 
     Returns:
-        A lista de problemas encontrados, na ordem das linhas.
+        The list of issues found, in line order.
     """
     out = []
     for linha in analysis.program.lines:
         if linha.kind != "data" or linha.reserve:
             continue
-        # O parser já separou comentário de código respeitando as aspas, então
-        # o código é o começo da linha crua, sem o comentário do fim. Cortar em
-        # ";" na mão daria falso positivo em string que contém ponto e vírgula
-        # (por exemplo um User-Agent "Mozilla/5.0 (compatible; ASMX/1.0)").
+        # The parser already separated comment from code respecting the quotes,
+        # so the code is the beginning of the raw line, without the trailing
+        # comment. Cutting at ";" by hand would give a false positive on a
+        # string that contains a semicolon (for example a User-Agent
+        # "Mozilla/5.0 (compatible; ASMX/1.0)").
         code = linha.raw[: len(linha.raw) - len(linha.comment)] if linha.comment else linha.raw
         aspas = code.count('"')
         simples = code.count("'")
@@ -120,10 +121,10 @@ def check_strings(analysis: Analysis) -> List[Problem]:
             out.append(
                 Problem(
                     linha.n,
-                    ERRO,
+                    ERROR,
                     "STR002",
-                    "aspas não fechadas nesta linha de dados",
-                    "o montador vai engolir o resto da linha; feche a string",
+                    "unterminated quotes on this data line",
+                    "the assembler will swallow the rest of the line; close the string",
                 )
             )
         for arg in linha.args:
@@ -136,12 +137,12 @@ def check_strings(analysis: Analysis) -> List[Problem]:
                 out.append(
                     Problem(
                         linha.n,
-                        ALERTA,
+                        WARNING,
                         "STR001",
-                        "a string tem caractere fora do ASCII (%s) — cada um vira "
-                        "2 ou mais bytes em UTF-8" % " ".join(sorted(set(fora))),
-                        "o tamanho calculado com $ - rótulo não vai bater com a "
-                        "quantidade de letras; troque por ASCII ou conte os bytes reais",
+                        "the string has a non-ASCII character (%s) — each one becomes "
+                        "2 or more bytes in UTF-8" % " ".join(sorted(set(fora))),
+                        "the size computed with $ - label will not match the number of "
+                        "letters; switch to ASCII or count the real bytes",
                     )
                 )
             ctrl = [c for c in texto if ord(c) < 32 and c not in "\n\t"]
@@ -149,10 +150,10 @@ def check_strings(analysis: Analysis) -> List[Problem]:
                 out.append(
                     Problem(
                         linha.n,
-                        ALERTA,
+                        WARNING,
                         "STR004",
-                        "a string tem caractere de controle literal",
-                        'prefira escrever o código numérico: db "texto", 10',
+                        "the string has a literal control character",
+                        'prefer writing the numeric code: db "text", 10',
                     )
                 )
             if "\\" in texto and not re.search(r"\\[nt0\\]", texto):
@@ -161,25 +162,25 @@ def check_strings(analysis: Analysis) -> List[Problem]:
                         linha.n,
                         INFO,
                         "STR005",
-                        "a barra invertida não é escape em toda sintaxe de montador",
-                        "no NASM só strings com aspas duplas aceitam escapes; confira o "
-                        "byte que vai realmente sair",
+                        "the backslash is not an escape in every assembler syntax",
+                        "in NASM only double-quoted strings accept escapes; check the byte "
+                        "that will really come out",
                     )
                 )
     return out
 
 
 def check_unterminated(analysis: Analysis) -> List[Problem]:
-    """Confere strings de dados sem terminador 0 e sem tamanho calculado por equ.
+    """Checks data strings without a 0 terminator and without a size computed by equ.
 
-    Detecta o caso STR006: a string não termina em 0 e nenhum
-    ``rótulo_len equ $ - rótulo`` diz onde ela acaba.
+    Detects the STR006 case: the string does not end in 0 and no
+    ``label_len equ $ - label`` says where it ends.
 
     Args:
-        analysis: Análise do fonte.
+        analysis: Source analysis.
 
     Returns:
-        A lista de problemas STR006 encontrados.
+        The list of STR006 issues found.
     """
     out = []
     tamanhos = set()
@@ -200,27 +201,28 @@ def check_unterminated(analysis: Analysis) -> List[Problem]:
         out.append(
             Problem(
                 linha.n,
-                ALERTA,
+                WARNING,
                 "STR006",
-                "a string %s não termina em 0 nem tem tamanho calculado" % linha.label,
-                "sem terminador e sem '%s_len equ $ - %s' não há como saber onde ela acaba; "
-                "quem for imprimir vai chutar o tamanho" % (linha.label, linha.label),
+                "the string %s does not end in 0 nor has a computed size" % linha.label,
+                "without a terminator and without '%s_len equ $ - %s' there is no way to know "
+                "where it ends; whoever prints it will guess the size" % (linha.label, linha.label),
             )
         )
     return out
 
 
 def check_cstrings(analysis: Analysis) -> List[Problem]:
-    """Confere strings passadas para funções que esperam terminador nulo.
+    """Checks strings passed to functions that expect a null terminator.
 
-    Detecta o caso STR003: um símbolo sem 0 no fim é carregado num registrador e
-    depois entregue a ``printf``, ``puts``, ``MessageBox`` e afins.
+    Detects the STR003 case: a symbol without a trailing 0 is loaded into a
+    register and then handed to ``printf``, ``puts``, ``MessageBox`` and the
+    like.
 
     Args:
-        analysis: Análise do fonte.
+        analysis: Source analysis.
 
     Returns:
-        A lista de problemas STR003 encontrados.
+        The list of STR003 issues found.
     """
     out = []
     machine_syms = {}
@@ -249,28 +251,29 @@ def check_cstrings(analysis: Analysis) -> List[Problem]:
                         out.append(
                             Problem(
                                 line,
-                                ERRO,
+                                ERROR,
                                 "STR003",
-                                "a string %s é passada para %s mas não termina em 0" % (sym, alvo),
-                                'acrescente o terminador: %s db "...", 0' % sym,
+                                "the string %s is passed to %s but does not end in 0" % (sym, alvo),
+                                'add the terminator: %s db "...", 0' % sym,
                             )
                         )
             pending = {}
     return out
 
 
-# --------------------------------------------------------------- divisão --
+# -------------------------------------------------------------- division --
 def check_division(analysis: Analysis) -> List[Problem]:
-    """Confere as divisões dentro de cada bloco básico.
+    """Checks the divisions inside each basic block.
 
-    Detecta DIV/IDIV sem RDX preparado (DIV001), divisão por zero literal
-    (DIV002) e divisor imediato, que a instrução não aceita (DIV003).
+    Detects DIV/IDIV without RDX prepared (DIV001), literal division by zero
+    (DIV002) and an immediate divisor, which the instruction does not accept
+    (DIV003).
 
     Args:
-        analysis: Análise do fonte.
+        analysis: Source analysis.
 
     Returns:
-        A lista de problemas encontrados.
+        The list of issues found.
     """
     out = []
     for b in analysis.blocks:
@@ -301,11 +304,11 @@ def check_division(analysis: Analysis) -> List[Problem]:
                     out.append(
                         Problem(
                             ins.n,
-                            ERRO,
+                            ERROR,
                             "DIV001",
-                            "%s sem preparar RDX neste bloco" % m.upper(),
-                            "a CPU divide RDX:RAX; com lixo em RDX o quociente estoura e dispara "
-                            "exceção. Coloque %s antes." % correcao,
+                            "%s without preparing RDX in this block" % m.upper(),
+                            "the CPU divides RDX:RAX; with garbage in RDX the quotient overflows "
+                            "and raises an exception. Put %s before it." % correcao,
                         )
                     )
                 op = ins.operands[0] if ins.operands else None
@@ -314,38 +317,38 @@ def check_division(analysis: Analysis) -> List[Problem]:
                         out.append(
                             Problem(
                                 ins.n,
-                                ERRO,
+                                ERROR,
                                 "DIV002",
-                                "divisão por zero literal",
-                                "o processo morre com exceção #DE",
+                                "literal division by zero",
+                                "the process dies with a #DE exception",
                             )
                         )
                     else:
                         out.append(
                             Problem(
                                 ins.n,
-                                ERRO,
+                                ERROR,
                                 "DIV003",
-                                "DIV/IDIV não aceita operando imediato",
-                                "carregue o divisor num registrador antes",
+                                "DIV/IDIV does not accept an immediate operand",
+                                "load the divisor into a register first",
                             )
                         )
                 prepared = False
     return out
 
 
-# ----------------------------------------------------------------- pilha --
+# ----------------------------------------------------------------- stack --
 def check_stack(analysis: Analysis) -> List[Problem]:
-    """Confere o equilíbrio da pilha em cada função que termina em RET.
+    """Checks the stack balance in each function that ends in RET.
 
-    Detecta função que retorna com valores a mais na pilha (STK001) ou que
-    desempilha mais do que empilhou (STK002).
+    Detects a function that returns with extra values on the stack (STK001) or
+    that pops more than it pushed (STK002).
 
     Args:
-        analysis: Análise do fonte.
+        analysis: Source analysis.
 
     Returns:
-        A lista de problemas encontrados.
+        The list of issues found.
     """
     out = []
     for name, instrs in _func_ranges(analysis).items():
@@ -365,21 +368,21 @@ def check_stack(analysis: Analysis) -> List[Problem]:
                     out.append(
                         Problem(
                             ins.n,
-                            ERRO,
+                            ERROR,
                             "STK001",
-                            "%s retorna com %d valor(es) a mais na pilha" % (name, saldo),
-                            "cada PUSH precisa do POP correspondente antes do RET, senão o RET "
-                            "pega o valor errado e desvia para um endereço inválido",
+                            "%s returns with %d extra value(s) on the stack" % (name, saldo),
+                            "every PUSH needs its matching POP before the RET, otherwise the RET "
+                            "takes the wrong value and jumps to an invalid address",
                         )
                     )
                 elif saldo < 0:
                     out.append(
                         Problem(
                             ins.n,
-                            ERRO,
+                            ERROR,
                             "STK002",
-                            "%s desempilha %d valor(es) a mais do que empilhou" % (name, -saldo),
-                            "a função está consumindo a pilha de quem chamou",
+                            "%s pops %d more value(s) than it pushed" % (name, -saldo),
+                            "the function is consuming the caller stack",
                         )
                     )
                 saldo = 0
@@ -388,16 +391,16 @@ def check_stack(analysis: Analysis) -> List[Problem]:
 
 
 def check_missing_ret(analysis: Analysis) -> List[Problem]:
-    """Confere funções chamadas com CALL que não têm RET nem desvio de saída.
+    """Checks functions called with CALL that have no RET and no exit jump.
 
-    Detecta o caso STK003: sem RET nem JMP, a execução escorrega para o código
-    seguinte.
+    Detects the STK003 case: without RET or JMP, execution slips into the
+    following code.
 
     Args:
-        analysis: Análise do fonte.
+        analysis: Source analysis.
 
     Returns:
-        A lista de problemas STK003 encontrados.
+        The list of STK003 issues found.
     """
     out = []
     chamadas = {
@@ -413,10 +416,10 @@ def check_missing_ret(analysis: Analysis) -> List[Problem]:
             out.append(
                 Problem(
                     instrs[0].n,
-                    ERRO,
+                    ERROR,
                     "STK003",
-                    "%s é chamada com CALL mas não tem RET" % name,
-                    "a execução vai escorregar para o código seguinte",
+                    "%s is called with CALL but has no RET" % name,
+                    "execution will slip into the following code",
                 )
             )
     return out
@@ -424,16 +427,16 @@ def check_missing_ret(analysis: Analysis) -> List[Problem]:
 
 # -------------------------------------------------------------------- ABI -
 def check_abi(analysis: Analysis) -> List[Problem]:
-    """Confere o respeito à ABI da plataforma detectada.
+    """Checks the respect for the ABI of the detected platform.
 
-    Detecta registrador preservado alterado sem PUSH/POP (ABI002) e, no Windows,
-    chamada sem os 32 bytes de shadow space (ABI001).
+    Detects a preserved register changed without PUSH/POP (ABI002) and, on
+    Windows, a call without the 32 bytes of shadow space (ABI001).
 
     Args:
-        analysis: Análise do fonte.
+        analysis: Source analysis.
 
     Returns:
-        A lista de problemas encontrados.
+        The list of issues found.
     """
     out = []
     win = analysis.platform.os == "windows"
@@ -457,15 +460,15 @@ def check_abi(analysis: Analysis) -> List[Problem]:
                     out.append(
                         Problem(
                             ins.n,
-                            ALERTA,
+                            WARNING,
                             "ABI002",
-                            "%s altera %s sem salvar antes" % (name, base.upper()),
-                            "%s precisa voltar intacto para quem chamou (%s). Faça PUSH "
-                            "no começo e POP no fim."
+                            "%s changes %s without saving it first" % (name, base.upper()),
+                            "%s must go back intact to the caller (%s). Do a PUSH "
+                            "at the start and a POP at the end."
                             % (base.upper(), analysis.platform.abi["name"]),
                         )
                     )
-                    salvos.add(base)  # avisa uma vez só por registrador
+                    salvos.add(base)  # warns only once per register
         if win:
             reserva = any(
                 i.mnemonic == "sub"
@@ -481,30 +484,30 @@ def check_abi(analysis: Analysis) -> List[Problem]:
                 out.append(
                     Problem(
                         chama[0].n,
-                        ERRO,
+                        ERROR,
                         "ABI001",
-                        "chamada sem shadow space reservado",
-                        "a ABI do Windows exige SUB RSP, 40 (32 de shadow space + alinhamento) "
-                        "antes de chamar qualquer função",
+                        "call without reserved shadow space",
+                        "the Windows ABI requires SUB RSP, 40 (32 of shadow space + alignment) "
+                        "before calling any function",
                     )
                 )
     return out
 
 
-# ------------------------------------------------------------- operandos --
+# -------------------------------------------------------------- operands --
 def check_operands(analysis: Analysis) -> List[Problem]:
-    """Confere operandos e mnemônicos instrução por instrução.
+    """Checks operands and mnemonics instruction by instruction.
 
-    Detecta mnemônico desconhecido (UNK001), memória dos dois lados (MEM002),
-    tamanho de memória ambíguo (MEM001), imediato que não cabe no destino
-    (IMM001), imediato de 64 bits fora do MOV (IMM002) e deslocamento maior que
-    o operando (SHF001).
+    Detects an unknown mnemonic (UNK001), memory on both sides (MEM002),
+    ambiguous memory size (MEM001), an immediate that does not fit in the target
+    (IMM001), a 64-bit immediate outside MOV (IMM002) and a shift larger than
+    the operand (SHF001).
 
     Args:
-        analysis: Análise do fonte.
+        analysis: Source analysis.
 
     Returns:
-        A lista de problemas encontrados.
+        The list of issues found.
     """
     out = []
     for ins in analysis.instrs:
@@ -513,10 +516,10 @@ def check_operands(analysis: Analysis) -> List[Problem]:
             out.append(
                 Problem(
                     ins.n,
-                    ALERTA,
+                    WARNING,
                     "UNK001",
-                    "mnemônico desconhecido: %s" % ins.mnemonic,
-                    "pode ser macro, instrução SIMD fora do acervo ou erro de digitação",
+                    "unknown mnemonic: %s" % ins.mnemonic,
+                    "it may be a macro, a SIMD instruction outside the collection or a typo",
                 )
             )
             continue
@@ -524,10 +527,10 @@ def check_operands(analysis: Analysis) -> List[Problem]:
             out.append(
                 Problem(
                     ins.n,
-                    ERRO,
+                    ERROR,
                     "MEM002",
-                    "não existe instrução com memória nos dois lados",
-                    "passe por um registrador: MOV RAX, [origem] / MOV [destino], RAX",
+                    "there is no instruction with memory on both sides",
+                    "go through a register: MOV RAX, [source] / MOV [target], RAX",
                 )
             )
         if (
@@ -540,10 +543,10 @@ def check_operands(analysis: Analysis) -> List[Problem]:
             out.append(
                 Problem(
                     ins.n,
-                    ERRO,
+                    ERROR,
                     "MEM001",
-                    "tamanho do operando ambíguo",
-                    "o montador não sabe se grava 1, 2, 4 ou 8 bytes. Escreva "
+                    "ambiguous operand size",
+                    "the assembler does not know whether to write 1, 2, 4 or 8 bytes. Write "
                     "%s byte [..], %s" % (ins.mnemonic, ops[1].text),
                 )
             )
@@ -556,23 +559,23 @@ def check_operands(analysis: Analysis) -> List[Problem]:
                 out.append(
                     Problem(
                         ins.n,
-                        ERRO,
+                        ERROR,
                         "IMM001",
-                        "o valor %s não cabe em %s (%d bits)"
+                        "the value %s does not fit in %s (%d bits)"
                         % (ops[1].text, ops[0].text, size * 8),
-                        "o montador trunca ou recusa. Use um registrador maior ou "
-                        "reveja a constante.",
+                        "the assembler truncates or refuses it. Use a larger register or "
+                        "review the constant.",
                     )
                 )
             elif size == 8 and v > 0xFFFFFFFF and ins.mnemonic != "mov":
                 out.append(
                     Problem(
                         ins.n,
-                        ALERTA,
+                        WARNING,
                         "IMM002",
-                        "imediato de 64 bits só é aceito em MOV",
-                        "instruções como ADD/CMP aceitam no máximo 32 bits com sinal; carregue o "
-                        "valor em outro registrador primeiro",
+                        "a 64-bit immediate is only accepted in MOV",
+                        "instructions like ADD/CMP accept at most 32 bits with sign; load the "
+                        "value into another register first",
                     )
                 )
         if (
@@ -586,29 +589,28 @@ def check_operands(analysis: Analysis) -> List[Problem]:
                 out.append(
                     Problem(
                         ins.n,
-                        ALERTA,
+                        WARNING,
                         "SHF001",
-                        "deslocamento de %d bits num operando de %d bits"
-                        % (int(ops[1].value or 0), bits),
-                        "o processador usa só os 5 ou 6 bits baixos da contagem; "
-                        "o resultado não é o que parece",
+                        "shift of %d bits on a %d-bit operand" % (int(ops[1].value or 0), bits),
+                        "the processor uses only the low 5 or 6 bits of the count; "
+                        "the result is not what it looks like",
                     )
                 )
     return out
 
 
-# --------------------------------------------------------------- símbolos -
+# --------------------------------------------------------------- symbols --
 def check_symbols(analysis: Analysis) -> List[Problem]:
-    """Confere se todo símbolo usado existe e se todo rótulo é usado.
+    """Checks that every used symbol exists and that every label is used.
 
-    Detecta desvio ou chamada para alvo inexistente (SYM001), rótulo nunca usado
-    (SYM002) e símbolo referenciado sem definição (SYM003).
+    Detects a jump or call to a nonexistent target (SYM001), a label that is
+    never used (SYM002) and a referenced symbol without a definition (SYM003).
 
     Args:
-        analysis: Análise do fonte.
+        analysis: Source analysis.
 
     Returns:
-        A lista de problemas encontrados.
+        The list of issues found.
     """
     out = []
     definidos = set(analysis.label_at) | {
@@ -625,10 +627,11 @@ def check_symbols(analysis: Analysis) -> List[Problem]:
                 out.append(
                     Problem(
                         ins.n,
-                        ERRO,
+                        ERROR,
                         "SYM003",
-                        "%s não está definido em lugar nenhum" % sym,
-                        "declare o dado (%s dq 0), crie o rótulo ou use EXTERN %s" % (sym, sym),
+                        "%s is not defined anywhere" % sym,
+                        "declare the data (%s dq 0), create the label or use EXTERN %s"
+                        % (sym, sym),
                     )
                 )
         if ins.mnemonic in ("call", "jmp") or is_cond_jump(ins.mnemonic):
@@ -639,11 +642,11 @@ def check_symbols(analysis: Analysis) -> List[Problem]:
                     out.append(
                         Problem(
                             ins.n,
-                            ERRO,
+                            ERROR,
                             "SYM001",
-                            "%s aponta para %s, que não existe neste arquivo"
+                            "%s points to %s, which does not exist in this file"
                             % (ins.mnemonic.upper(), alvo),
-                            "defina o rótulo ou declare EXTERN %s" % alvo,
+                            "define the label or declare EXTERN %s" % alvo,
                         )
                     )
     for name, info in analysis.symbols.items():
@@ -658,24 +661,24 @@ def check_symbols(analysis: Analysis) -> List[Problem]:
                     info["line"],
                     INFO,
                     "SYM002",
-                    "o rótulo %s nunca é usado" % name,
-                    "código morto ou rótulo escrito errado em outro lugar",
+                    "the label %s is never used" % name,
+                    "dead code or a label misspelled somewhere else",
                 )
             )
     return out
 
 
 def check_entry(analysis: Analysis) -> List[Problem]:
-    """Confere o ponto de entrada do programa.
+    """Checks the program entry point.
 
-    Detecta a ausência de ``_start``/``main`` (ENT001) e ponto de entrada que
-    existe mas não foi declarado ``global`` (ENT002).
+    Detects the absence of ``_start``/``main`` (ENT001) and an entry point that
+    exists but was not declared ``global`` (ENT002).
 
     Args:
-        analysis: Análise do fonte.
+        analysis: Source analysis.
 
     Returns:
-        A lista de problemas encontrados.
+        The list of issues found.
     """
     out = []
     entradas = [n for n in ("_start", "main", "start", "WinMain") if n in analysis.label_at]
@@ -683,10 +686,10 @@ def check_entry(analysis: Analysis) -> List[Problem]:
         out.append(
             Problem(
                 analysis.instrs[0].n,
-                ALERTA,
+                WARNING,
                 "ENT001",
-                "nenhum ponto de entrada (_start, main) encontrado",
-                "o ligador precisa saber onde começar",
+                "no entry point (_start, main) found",
+                "the linker needs to know where to start",
             )
         )
     for e in entradas:
@@ -695,27 +698,27 @@ def check_entry(analysis: Analysis) -> List[Problem]:
             out.append(
                 Problem(
                     info.get("line", 1),
-                    ERRO,
+                    ERROR,
                     "ENT002",
-                    "%s existe mas não foi declarado global" % e,
-                    "acrescente: global %s" % e,
+                    "%s exists but was not declared global" % e,
+                    "add: global %s" % e,
                 )
             )
     return out
 
 
 def check_exit(analysis: Analysis) -> List[Problem]:
-    """Confere se o programa tem uma saída explícita.
+    """Checks whether the program has an explicit exit.
 
-    Detecta o caso EXIT001: sem ``exit`` (syscall 60 no Linux), ``ExitProcess``
-    ou RET em ``main``/``WinMain`` a execução continua por memória que não é
-    código.
+    Detects the EXIT001 case: without ``exit`` (syscall 60 on Linux),
+    ``ExitProcess`` or RET in ``main``/``WinMain``, execution continues through
+    memory that is not code.
 
     Args:
-        analysis: Análise do fonte.
+        analysis: Source analysis.
 
     Returns:
-        A lista com o problema EXIT001, ou vazia quando há saída.
+        The list with the EXIT001 issue, or empty when there is an exit.
     """
     if not analysis.instrs:
         return []
@@ -732,28 +735,28 @@ def check_exit(analysis: Analysis) -> List[Problem]:
         return [
             Problem(
                 analysis.instrs[-1].n,
-                ALERTA,
+                WARNING,
                 "EXIT001",
-                "o programa não tem uma saída explícita",
-                "sem exit (syscall 60 no Linux, ExitProcess no Windows) a execução "
-                "continua por memória que não é código e o processo quebra",
+                "the program has no explicit exit",
+                "without exit (syscall 60 on Linux, ExitProcess on Windows) execution "
+                "continues through memory that is not code and the process crashes",
             )
         ]
     return []
 
 
-# ----------------------------------------------------------------- fluxo --
+# ------------------------------------------------------------------ flow --
 def check_flow(analysis: Analysis) -> List[Problem]:
-    """Confere o fluxo entre blocos básicos.
+    """Checks the flow between basic blocks.
 
-    Detecta bloco inalcançável (FLOW001) e laço que volta para trás sem alterar
-    registrador nem memória (FLOW002).
+    Detects an unreachable block (FLOW001) and a loop that goes back without
+    changing a register or memory (FLOW002).
 
     Args:
-        analysis: Análise do fonte.
+        analysis: Source analysis.
 
     Returns:
-        A lista de problemas encontrados.
+        The list of issues found.
     """
     out = []
     entradas = {"_start", "main", "start", "WinMain"}
@@ -773,10 +776,10 @@ def check_flow(analysis: Analysis) -> List[Problem]:
         out.append(
             Problem(
                 b.instrs[0].n,
-                ALERTA,
+                WARNING,
                 "FLOW001",
-                "o bloco %s nunca é alcançado" % b.name,
-                "nenhum desvio ou chamada leva até aqui — código morto ou rótulo errado",
+                "block %s is never reached" % b.name,
+                "no jump or call leads here — dead code or a wrong label",
             )
         )
 
@@ -815,11 +818,10 @@ def check_flow(analysis: Analysis) -> List[Problem]:
             out.append(
                 Problem(
                     last.n,
-                    ERRO,
+                    ERROR,
                     "FLOW002",
-                    "laço sem nada que altere a condição de parada",
-                    "este bloco volta para trás sem mudar registrador nem memória: "
-                    "laço infinito",
+                    "loop with nothing that changes the stop condition",
+                    "this block goes back without changing a register or memory: " "infinite loop",
                 )
             )
     return out
@@ -827,16 +829,16 @@ def check_flow(analysis: Analysis) -> List[Problem]:
 
 # -------------------------------------------------------------- syscalls --
 def check_syscalls(analysis: Analysis) -> List[Problem]:
-    """Confere o uso de SYSCALL dentro dos blocos.
+    """Checks the use of SYSCALL inside the blocks.
 
-    Detecta SYSCALL sem RAX definido no mesmo bloco (SYS001) e leitura de RCX ou
-    R11 depois de um SYSCALL, que destrói os dois (SYS002).
+    Detects a SYSCALL without RAX defined in the same block (SYS001) and a read
+    of RCX or R11 after a SYSCALL, which destroys both (SYS002).
 
     Args:
-        analysis: Análise do fonte.
+        analysis: Source analysis.
 
     Returns:
-        A lista de problemas encontrados.
+        The list of issues found.
     """
     out = []
     for b in analysis.blocks:
@@ -853,15 +855,15 @@ def check_syscalls(analysis: Analysis) -> List[Problem]:
                     out.append(
                         Problem(
                             ins.n,
-                            ALERTA,
+                            WARNING,
                             "SYS001",
-                            "SYSCALL sem definir RAX neste bloco",
-                            "o número do serviço vem de RAX; sem ele o kernel recebe "
-                            "um pedido aleatório",
+                            "SYSCALL without defining RAX in this block",
+                            "the service number comes from RAX; without it the kernel receives "
+                            "a random request",
                         )
                     )
                 rax_definido = False
-        # RCX e R11 são destruídos pelo syscall
+        # RCX and R11 are destroyed by the syscall
         depois = False
         for ins in b.instrs:
             if ins.mnemonic == "syscall":
@@ -874,10 +876,11 @@ def check_syscalls(analysis: Analysis) -> List[Problem]:
                     out.append(
                         Problem(
                             ins.n,
-                            ALERTA,
+                            WARNING,
                             "SYS002",
-                            "%s é lido depois de um SYSCALL" % op.text.upper(),
-                            "o SYSCALL destrói RCX e R11; salve antes se precisar " "do valor",
+                            "%s is read after a SYSCALL" % op.text.upper(),
+                            "the SYSCALL destroys RCX and R11; save it before if you need "
+                            "the value",
                         )
                     )
                     depois = False
@@ -885,16 +888,16 @@ def check_syscalls(analysis: Analysis) -> List[Problem]:
 
 
 def check_sections(analysis: Analysis) -> List[Problem]:
-    """Confere o uso das seções do arquivo.
+    """Checks the use of the file sections.
 
-    Detecta instruções fora de uma seção de código (SEC001) e escrita num
-    símbolo de ``.rodata`` (SEC002).
+    Detects instructions outside a code section (SEC001) and a write to a symbol
+    in ``.rodata`` (SEC002).
 
     Args:
-        analysis: Análise do fonte.
+        analysis: Source analysis.
 
     Returns:
-        A lista de problemas encontrados.
+        The list of issues found.
     """
     out = []
     secoes = {linha.new_section for linha in analysis.program.lines if linha.new_section}
@@ -902,10 +905,10 @@ def check_sections(analysis: Analysis) -> List[Problem]:
         out.append(
             Problem(
                 analysis.instrs[0].n,
-                ALERTA,
+                WARNING,
                 "SEC001",
-                "há instruções fora de uma seção de código",
-                "declare section .text antes do código executável",
+                "there are instructions outside a code section",
+                "declare section .text before the executable code",
             )
         )
     for ins in analysis.instrs:
@@ -916,27 +919,27 @@ def check_sections(analysis: Analysis) -> List[Problem]:
                 out.append(
                     Problem(
                         ins.n,
-                        ERRO,
+                        ERROR,
                         "SEC002",
-                        "escrita em %s, que está em .rodata" % sym,
-                        ".rodata é somente leitura: o processo recebe SIGSEGV. "
-                        "Mova a variável para .data",
+                        "write to %s, which is in .rodata" % sym,
+                        ".rodata is read-only: the process gets SIGSEGV. "
+                        "Move the variable to .data",
                     )
                 )
     return out
 
 
 def check_uninitialized(analysis: Analysis) -> List[Problem]:
-    """Confere registradores lidos antes de receberem algum valor.
+    """Checks registers read before receiving any value.
 
-    Detecta o caso REG001: o registrador não é argumento da função nem foi
-    escrito antes, então o valor é o que sobrou de antes.
+    Detects the REG001 case: the register is not an argument of the function and
+    was not written before, so the value is whatever was left over.
 
     Args:
-        analysis: Análise do fonte.
+        analysis: Source analysis.
 
     Returns:
-        A lista de problemas REG001 encontrados.
+        The list of REG001 issues found.
     """
     out = []
     plat_args = analysis.platform.abi["args"]
@@ -963,11 +966,10 @@ def check_uninitialized(analysis: Analysis) -> List[Problem]:
                         out.append(
                             Problem(
                                 ins.n,
-                                ALERTA,
+                                WARNING,
                                 "REG001",
-                                "%s é lido antes de receber qualquer valor em %s"
-                                % (r.upper(), name),
-                                "o valor é o que sobrou de antes; inicialize o registrador",
+                                "%s is read before receiving any value in %s" % (r.upper(), name),
+                                "the value is whatever was left over; initialize the register",
                             )
                         )
                         escritos.add(r)
@@ -1004,39 +1006,44 @@ ALL_CHECKS: List[Callable[[Analysis], List[Problem]]] = [
 
 
 def validate(analysis: Analysis) -> List[Problem]:
-    """Roda todas as regras e devolve os problemas em ordem de gravidade.
+    """Runs every rule and returns the issues in severity order.
 
-    Uma regra que estoura vira um problema ``INT001``, em vez de derrubar a
-    validação inteira.
+    A rule that blows up becomes an ``INT001`` issue, instead of taking the whole
+    validation down.
 
     Args:
-        analysis: Análise do fonte.
+        analysis: Source analysis.
 
     Returns:
-        A lista de :class:`Problem` ordenada por gravidade e por linha.
+        The list of :class:`Problem` ordered by severity and by line.
     """
     problems: List[Problem] = []
     for check in ALL_CHECKS:
         try:
             problems.extend(check(analysis))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 - one broken rule cannot stop the rest
             problems.append(
-                Problem(1, INFO, "INT001", "falha interna na regra %s: %s" % (check.__name__, exc))
+                Problem(
+                    1,
+                    INFO,
+                    "INT001",
+                    "internal failure in rule %s: %s" % (check.__name__, exc),
+                )
             )
     problems.sort(key=lambda p: (SEVERITY_ORDER[p.severity], p.line))
     return problems
 
 
 def summary(problems: List[Problem]) -> str:
-    """Resume a validação em uma linha.
+    """Summarizes the validation in one line.
 
     Args:
-        problems: Lista devolvida por :func:`validate`.
+        problems: List returned by :func:`validate`.
 
     Returns:
-        Texto como ``"2 erro(s), 1 alerta(s), 0 informação(ões)"``.
+        Text like ``"2 error(s), 1 warning(s), 0 info(s)"``.
     """
-    e = sum(1 for p in problems if p.severity == ERRO)
-    a = sum(1 for p in problems if p.severity == ALERTA)
+    e = sum(1 for p in problems if p.severity == ERROR)
+    a = sum(1 for p in problems if p.severity == WARNING)
     i = sum(1 for p in problems if p.severity == INFO)
-    return "%d erro(s), %d alerta(s), %d informação(ões)" % (e, a, i)
+    return "%d error(s), %d warning(s), %d info(s)" % (e, a, i)

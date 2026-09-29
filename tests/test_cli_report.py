@@ -1,4 +1,4 @@
-"""Testes dos comandos ``report`` e ``analyze`` da linha de comando."""
+"""Tests of the ``report`` and ``analyze`` commands of the command line."""
 
 import contextlib
 import io
@@ -12,8 +12,8 @@ from asmx.cli import (
     EXIT_INPUT,
     EXIT_OK,
     EXIT_PROBLEMS,
-    _atingiu,
     _expand_sources,
+    _reached,
     _risk_rank,
     build_parser,
     build_payload,
@@ -22,288 +22,362 @@ from asmx.cli import (
 from asmx.examples import EXAMPLES
 from asmx.logging_setup import reset_logging
 
-LIMPO = EXAMPLES["linux-hello"]["code"]
-QUEBRADO = EXAMPLES["quebrado"]["code"]
+#: Clean program, used in most cases.
+CLEAN = EXAMPLES["linux-hello"]["code"]
+
+#: Program with defects on purpose.
+BROKEN = EXAMPLES["broken"]["code"]
 
 
 class BaseCLI(unittest.TestCase):
-    """Arquivos temporários, captura de saída e ambiente limpo."""
+    """Temporary files, output capture and a clean environment."""
 
     def setUp(self) -> None:
+        """Create the temporary folder, the environment and the sample files."""
         self.dir = tempfile.TemporaryDirectory()
-        self.ambiente = unittest.mock.patch.dict(
+        self.env = unittest.mock.patch.dict(
             os.environ, {"ASMX_OUTPUT_DIR": os.path.join(self.dir.name, "results")}
         )
-        self.ambiente.start()
-        self.limpo = self.escreve("limpo.asm", LIMPO)
-        self.quebrado = self.escreve("quebrado.asm", QUEBRADO)
+        self.env.start()
+        self.clean = self.write_file("clean.asm", CLEAN)
+        self.broken = self.write_file("broken.asm", BROKEN)
 
     def tearDown(self) -> None:
-        self.ambiente.stop()
+        """Restore the environment and clean the logging."""
+        self.env.stop()
         self.dir.cleanup()
         reset_logging()
 
-    def escreve(self, nome: str, conteudo: str) -> str:
-        caminho = os.path.join(self.dir.name, nome)
-        os.makedirs(os.path.dirname(caminho), exist_ok=True)
-        with open(caminho, "w", encoding="utf-8") as arquivo:
-            arquivo.write(conteudo)
-        return caminho
+    def write_file(self, name: str, content: str) -> str:
+        """Write a source file inside the temporary folder and return its path.
+
+        Returns:
+            Absolute path of the file that was written.
+        """
+        path = os.path.join(self.dir.name, name)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(content)
+        return path
 
     def run_cli(self, *argv: str) -> tuple:
-        saida, erro = io.StringIO(), io.StringIO()
-        with contextlib.redirect_stdout(saida), contextlib.redirect_stderr(erro):
-            codigo = main(list(argv))
-        return codigo, saida.getvalue(), erro.getvalue()
+        """Run the command line capturing the output and return the exit code.
+
+        Returns:
+            Tuple with the exit code, the standard output and the standard error.
+        """
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = main(list(argv))
+        return code, out.getvalue(), err.getvalue()
 
     def run_json(self, *argv: str) -> tuple:
-        """Roda o comando com ``--json`` e devolve o JSON já carregado."""
-        codigo, saida, erro = self.run_cli(*argv, "--json")
-        return codigo, json.loads(saida), erro
+        """Run the command with ``--json`` and return the already loaded JSON.
+
+        Returns:
+            Tuple with the exit code, the JSON already loaded and the standard error.
+        """
+        code, out, err = self.run_cli(*argv, "--json")
+        return code, json.loads(out), err
 
 
-class TestAuxiliares(unittest.TestCase):
-    """Funções pequenas que sustentam os dois comandos."""
+class TestHelpers(unittest.TestCase):
+    """Small functions that support both commands."""
 
-    def test_risk_rank_ordena(self) -> None:
-        self.assertLess(_risk_rank("baixo"), _risk_rank("medio"))
-        self.assertLess(_risk_rank("medio"), _risk_rank("alto"))
-        self.assertLess(_risk_rank("alto"), _risk_rank("critico"))
-        self.assertEqual(_risk_rank("desconhecido"), 0)
+    def test_risk_rank_orders(self) -> None:
+        """The ranks follow low < medium < high < critical."""
+        self.assertLess(_risk_rank("low"), _risk_rank("medium"))
+        self.assertLess(_risk_rank("medium"), _risk_rank("high"))
+        self.assertLess(_risk_rank("high"), _risk_rank("critical"))
+        self.assertEqual(_risk_rank("unknown"), 0)
 
-    def test_atingiu_com_e_sem_limite(self) -> None:
+    def test_reached_with_and_without_limit(self) -> None:
+        """The limit is reached when the risk equals or exceeds it."""
         from asmx.report import ReportData
 
-        dados = ReportData(risk={"level": "alto"})
-        self.assertTrue(_atingiu("alto", dados))
-        self.assertTrue(_atingiu("medio", dados))
-        self.assertFalse(_atingiu("critico", dados))
-        self.assertFalse(_atingiu(None, dados))
+        data = ReportData(risk={"level": "high"})
+        self.assertTrue(_reached("high", data))
+        self.assertTrue(_reached("medium", data))
+        self.assertFalse(_reached("critical", data))
+        self.assertFalse(_reached(None, data))
 
-    def test_expand_sources_em_diretorio(self) -> None:
-        with tempfile.TemporaryDirectory() as pasta:
-            for nome in ("a.asm", "b.s", "c.txt", "d.bin"):
-                with open(os.path.join(pasta, nome), "w", encoding="utf-8") as arquivo:
-                    arquivo.write("nop\n")
-            os.makedirs(os.path.join(pasta, "sub"))
-            with open(os.path.join(pasta, "sub", "e.asm"), "w", encoding="utf-8") as arquivo:
-                arquivo.write("nop\n")
-            os.makedirs(os.path.join(pasta, ".oculto"))
-            with open(os.path.join(pasta, ".oculto", "f.asm"), "w", encoding="utf-8") as a:
-                a.write("nop\n")
-            encontrados = [os.path.basename(c) for c in _expand_sources([pasta])]
-        self.assertIn("a.asm", encontrados)
-        self.assertIn("b.s", encontrados)
-        self.assertIn("c.txt", encontrados)
-        self.assertNotIn("d.bin", encontrados)
-        self.assertIn("e.asm", encontrados)
-        self.assertNotIn("f.asm", encontrados)
+    def test_expand_sources_in_directory(self) -> None:
+        """Directories are expanded into sources, hidden folders aside."""
+        with tempfile.TemporaryDirectory() as folder:
+            for name in ("a.asm", "b.s", "c.txt", "d.bin"):
+                with open(os.path.join(folder, name), "w", encoding="utf-8") as handle:
+                    handle.write("nop\n")
+            os.makedirs(os.path.join(folder, "sub"))
+            with open(os.path.join(folder, "sub", "e.asm"), "w", encoding="utf-8") as handle:
+                handle.write("nop\n")
+            os.makedirs(os.path.join(folder, ".hidden"))
+            with open(os.path.join(folder, ".hidden", "f.asm"), "w", encoding="utf-8") as handle:
+                handle.write("nop\n")
+            found = [os.path.basename(path) for path in _expand_sources([folder])]
+        self.assertIn("a.asm", found)
+        self.assertIn("b.s", found)
+        self.assertIn("c.txt", found)
+        self.assertNotIn("d.bin", found)
+        self.assertIn("e.asm", found)
+        self.assertNotIn("f.asm", found)
 
-    def test_expand_sources_mantem_arquivo_explicito(self) -> None:
+    def test_expand_sources_keeps_explicit_file(self) -> None:
+        """A file named directly is kept, even with an unknown extension."""
         self.assertEqual(_expand_sources(["/tmp/x.bin"]), ["/tmp/x.bin"])
 
-    def test_payload_inclui_campos_novos(self) -> None:
+    def test_payload_includes_out_and_format(self) -> None:
+        """The payload records the output and the format of the report."""
         args = build_parser().parse_args(["report", "a.asm", "--out", "r.html", "--format", "json"])
-        dados = build_payload(args)
-        self.assertEqual(dados["out"], "r.html")
-        self.assertEqual(dados["format"], "json")
+        data = build_payload(args)
+        self.assertEqual(data["out"], "r.html")
+        self.assertEqual(data["format"], "json")
 
 
 class TestReport(BaseCLI):
-    """Comando ``report``."""
+    """The ``report`` command."""
 
-    def test_html_no_caminho_indicado(self) -> None:
-        destino = os.path.join(self.dir.name, "saida", "rel.html")
-        codigo, saida, _ = self.run_cli("report", self.limpo, "--out", destino, "--no-color")
-        self.assertEqual(codigo, EXIT_OK)
-        self.assertTrue(os.path.exists(destino))
-        with open(destino, encoding="utf-8") as arquivo:
-            conteudo = arquivo.read()
-        self.assertIn("<!DOCTYPE html>", conteudo)
-        self.assertIn("limpo.asm", saida + conteudo)
+    def test_html_at_the_given_path(self) -> None:
+        """The HTML goes to the path given in --out."""
+        destination = os.path.join(self.dir.name, "out", "rel.html")
+        code, out, _ = self.run_cli("report", self.clean, "--out", destination, "--no-color")
+        self.assertEqual(code, EXIT_OK)
+        self.assertTrue(os.path.exists(destination))
+        with open(destination, encoding="utf-8") as handle:
+            content = handle.read()
+        self.assertIn("<!DOCTYPE html>", content)
+        self.assertIn("clean.asm", out + content)
 
-    def test_html_padrao_vai_para_output_dir(self) -> None:
-        codigo, saida, _ = self.run_cli("report", self.limpo, "--no-color")
-        self.assertEqual(codigo, EXIT_OK)
-        esperado = os.path.join(os.environ["ASMX_OUTPUT_DIR"], "limpo.report.html")
-        self.assertTrue(os.path.exists(esperado))
-        self.assertIn("relatório gravado em", saida)
+    def test_default_html_goes_to_output_dir(self) -> None:
+        """Without --out the HTML goes to the output directory."""
+        code, out, _ = self.run_cli("report", self.clean, "--no-color")
+        self.assertEqual(code, EXIT_OK)
+        expected = os.path.join(os.environ["ASMX_OUTPUT_DIR"], "clean.report.html")
+        self.assertTrue(os.path.exists(expected))
+        self.assertIn("report written to", out)
 
-    def test_resumo_json_sem_gravar_arquivo(self) -> None:
-        codigo, dados, _ = self.run_json("report", self.limpo)
-        self.assertEqual(codigo, EXIT_OK)
-        self.assertEqual(dados["schema"], "asmx-report/1")
-        self.assertEqual(dados["file"], "limpo.asm")
-        self.assertEqual(dados["counts"]["instructions"], 8)
-        self.assertEqual(dados["output"], "-")
+    def test_json_summary_writes_no_file(self) -> None:
+        """The JSON summary goes to the screen and writes no file."""
+        code, data, _ = self.run_json("report", self.clean)
+        self.assertEqual(code, EXIT_OK)
+        self.assertEqual(data["schema"], "asmx-report/1")
+        self.assertEqual(data["file"], "clean.asm")
+        self.assertEqual(data["counts"]["instructions"], 8)
+        self.assertEqual(data["output"], "-")
         self.assertFalse(
-            os.path.exists(os.path.join(os.environ["ASMX_OUTPUT_DIR"], "limpo.report.html"))
+            os.path.exists(os.path.join(os.environ["ASMX_OUTPUT_DIR"], "clean.report.html"))
         )
 
-    def test_relatorio_json_na_tela(self) -> None:
-        codigo, saida, _ = self.run_cli("report", self.limpo, "--format", "json")
-        self.assertEqual(codigo, EXIT_OK)
-        self.assertEqual(json.loads(saida)["schema"], "asmx-report/1")
+    def test_json_report_on_screen(self) -> None:
+        """The JSON format prints the report on the screen."""
+        code, out, _ = self.run_cli("report", self.clean, "--format", "json")
+        self.assertEqual(code, EXIT_OK)
+        self.assertEqual(json.loads(out)["schema"], "asmx-report/1")
 
-    def test_resumo_json_com_arquivo_gravado(self) -> None:
-        destino = os.path.join(self.dir.name, "com-resumo.html")
-        _, dados, _ = self.run_json("report", self.limpo, "--out", destino)
-        self.assertEqual(dados["output"], destino)
-        self.assertTrue(os.path.exists(destino))
+    def test_json_summary_with_written_file(self) -> None:
+        """With --out the summary cites the file that was written."""
+        destination = os.path.join(self.dir.name, "with-summary.html")
+        _, data, _ = self.run_json("report", self.clean, "--out", destination)
+        self.assertEqual(data["output"], destination)
+        self.assertTrue(os.path.exists(destination))
 
-    def test_markdown_e_dot_e_svg(self) -> None:
-        for formato, marca in (
+    def test_markdown_and_dot_and_svg(self) -> None:
+        """Every text format prints its own marker."""
+        for format_name, marker in (
             ("md", "# ASM X"),
             ("dot", "digraph"),
             ("svg", "<svg"),
             ("mermaid", "flowchart"),
         ):
-            with self.subTest(formato=formato):
-                codigo, saida, _ = self.run_cli("report", self.limpo, "--format", formato)
-                self.assertEqual(codigo, EXIT_OK)
-                self.assertIn(marca, saida)
+            with self.subTest(format=format_name):
+                code, out, _ = self.run_cli("report", self.clean, "--format", format_name)
+                self.assertEqual(code, EXIT_OK)
+                self.assertIn(marker, out)
 
-    def test_sem_emulacao(self) -> None:
-        _, dados, _ = self.run_json("report", self.limpo, "--format", "json", "--no-emulate")
-        self.assertEqual(dados["counts"]["instructions"], 8)
+    def test_without_emulation(self) -> None:
+        """The static report keeps the instruction count."""
+        _, data, _ = self.run_json("report", self.clean, "--format", "json", "--no-emulate")
+        self.assertEqual(data["counts"]["instructions"], 8)
 
-    def test_fail_on_alto(self) -> None:
-        codigo, _, _ = self.run_cli(
+    def test_fail_on_high(self) -> None:
+        """A risk above the limit turns into the problem exit code."""
+        code, _, _ = self.run_cli(
             "report",
-            self.quebrado,
+            self.broken,
             "--fail-on",
-            "alto",
+            "high",
             "--out",
             os.path.join(self.dir.name, "q.html"),
         )
-        self.assertEqual(codigo, EXIT_PROBLEMS)
+        self.assertEqual(code, EXIT_PROBLEMS)
 
-    def test_fail_on_nao_atingido(self) -> None:
-        codigo, _, _ = self.run_cli(
+    def test_fail_on_not_reached(self) -> None:
+        """A risk below the limit keeps the success exit code."""
+        code, _, _ = self.run_cli(
             "report",
-            self.limpo,
+            self.clean,
             "--fail-on",
-            "critico",
+            "critical",
             "--out",
             os.path.join(self.dir.name, "l.html"),
         )
-        self.assertEqual(codigo, EXIT_OK)
+        self.assertEqual(code, EXIT_OK)
 
-    def test_json_com_fail_on(self) -> None:
-        codigo, dados, _ = self.run_json(
+    def test_json_with_fail_on(self) -> None:
+        """The JSON summary carries the exit code of --fail-on."""
+        code, data, _ = self.run_json(
             "report",
-            self.quebrado,
+            self.broken,
             "--fail-on",
-            "medio",
+            "medium",
             "--out",
             os.path.join(self.dir.name, "q2.html"),
         )
-        self.assertEqual(codigo, EXIT_PROBLEMS)
-        self.assertEqual(dados["exit_code"], EXIT_PROBLEMS)
-        self.assertTrue(dados["behaviors"])
+        self.assertEqual(code, EXIT_PROBLEMS)
+        self.assertEqual(data["exit_code"], EXIT_PROBLEMS)
+        self.assertTrue(data["behaviors"])
 
-    def test_abre_no_navegador(self) -> None:
-        destino = os.path.join(self.dir.name, "abre.html")
-        with unittest.mock.patch("asmx.cli.webbrowser.open") as abrir:
-            codigo, _, _ = self.run_cli("report", self.limpo, "--out", destino, "--open")
-        self.assertEqual(codigo, EXIT_OK)
-        abrir.assert_called_once()
-        self.assertTrue(str(abrir.call_args[0][0]).startswith("file://"))
+    def test_opens_in_browser(self) -> None:
+        """The --open flag opens the file URL in the browser."""
+        destination = os.path.join(self.dir.name, "opens.html")
+        with unittest.mock.patch("asmx.cli.webbrowser.open") as opened:
+            code, _, _ = self.run_cli("report", self.clean, "--out", destination, "--open")
+        self.assertEqual(code, EXIT_OK)
+        opened.assert_called_once()
+        self.assertTrue(str(opened.call_args[0][0]).startswith("file://"))
 
-    def test_arquivo_ausente(self) -> None:
-        codigo, _, erro = self.run_cli("report", os.path.join(self.dir.name, "nada.asm"))
-        self.assertEqual(codigo, EXIT_INPUT)
-        self.assertIn("ERR_SOURCE_NOT_FOUND", erro)
+    def test_missing_file(self) -> None:
+        """A file that does not exist exits with the input code."""
+        code, _, err = self.run_cli("report", os.path.join(self.dir.name, "nothing.asm"))
+        self.assertEqual(code, EXIT_INPUT)
+        self.assertIn("ERR_SOURCE_NOT_FOUND", err)
 
-    def test_entrada_inexistente(self) -> None:
-        codigo, _, erro = self.run_cli("report", self.limpo, "--entry", "nao_existe")
-        self.assertEqual(codigo, EXIT_INPUT)
-        self.assertIn("rótulo", erro)
+    def test_missing_entry(self) -> None:
+        """An unknown entry label exits with the input code."""
+        code, _, err = self.run_cli("report", self.clean, "--entry", "does_not_exist")
+        self.assertEqual(code, EXIT_INPUT)
+        self.assertIn("label not found", err)
 
-    def test_stdin_muda_a_saida(self) -> None:
-        codigo_fonte = (
+    def test_stdin_changes_the_output(self) -> None:
+        """The simulated input shows up in the report."""
+        source = (
             "section .bss\nbuf resb 8\nsection .text\nglobal _start\n_start:\n"
             "mov rax, 0\nmov rdi, 0\nmov rsi, buf\nmov rdx, 3\nsyscall\n"
             "mov rax, 1\nmov rdi, 1\nmov rsi, buf\nmov rdx, 3\nsyscall\n"
             "mov rax, 60\nxor rdi, rdi\nsyscall"
         )
-        caminho = self.escreve("le.asm", codigo_fonte)
-        destino = os.path.join(self.dir.name, "le.report.html")
-        _, _, _ = self.run_cli("report", caminho, "--stdin", "abc", "--out", destino)
-        with open(destino, encoding="utf-8") as arquivo:
-            self.assertIn(">abc<", arquivo.read())
+        path = self.write_file("reads.asm", source)
+        destination = os.path.join(self.dir.name, "reads.report.html")
+        _, _, _ = self.run_cli("report", path, "--stdin", "abc", "--out", destination)
+        with open(destination, encoding="utf-8") as handle:
+            self.assertIn(">abc<", handle.read())
 
 
 class TestAnalyze(BaseCLI):
-    """Comando ``analyze`` (lote com índice)."""
+    """The ``analyze`` command (batch with an index)."""
 
     def setUp(self) -> None:
+        """Create the batch folder with four sources and the output folder."""
         super().setUp()
-        self.pasta = os.path.join(self.dir.name, "lote")
-        os.makedirs(self.pasta)
-        self.escreve("lote/a.asm", LIMPO)
-        self.escreve("lote/b.asm", QUEBRADO)
-        self.escreve("lote/c.txt", "nop\n")
-        self.escreve("lote/sub/d.asm", EXAMPLES["linux-loop"]["code"])
-        self.saida = os.path.join(self.dir.name, "saida-lote")
+        self.batch = os.path.join(self.dir.name, "batch")
+        os.makedirs(self.batch)
+        self.write_file("batch/a.asm", CLEAN)
+        self.write_file("batch/b.asm", BROKEN)
+        self.write_file("batch/c.txt", "nop\n")
+        self.write_file("batch/sub/d.asm", EXAMPLES["linux-loop"]["code"])
+        self.output = os.path.join(self.dir.name, "batch-output")
 
-    def test_lote_gera_relatorios_e_indice(self) -> None:
-        codigo, saida, _ = self.run_cli("analyze", self.pasta, "--out", self.saida, "--no-color")
-        self.assertEqual(codigo, EXIT_OK)
-        arquivos = sorted(os.listdir(self.saida))
-        self.assertIn("index.html", arquivos)
-        self.assertIn("a.report.html", arquivos)
-        self.assertIn("b.report.html", arquivos)
-        self.assertIn("d.report.html", arquivos)
-        with open(os.path.join(self.saida, "index.html"), encoding="utf-8") as arquivo:
-            indice = arquivo.read()
-        self.assertIn("a.report.html", indice)
-        self.assertIn("4 arquivo(s)", indice)
-        self.assertIn("resumo:", saida)
+    def test_batch_writes_reports_and_index(self) -> None:
+        """The batch writes the reports, the index and the manifest."""
+        code, out, _ = self.run_cli("analyze", self.batch, "--out", self.output, "--no-color")
+        self.assertEqual(code, EXIT_OK)
+        files = sorted(os.listdir(self.output))
+        self.assertIn("index.html", files)
+        self.assertIn("index.json", files)
+        self.assertIn("a.report.html", files)
+        self.assertIn("b.report.html", files)
+        self.assertIn("d.report.html", files)
+        with open(os.path.join(self.output, "index.html"), encoding="utf-8") as handle:
+            index = handle.read()
+        self.assertIn("a.report.html", index)
+        self.assertIn("4 file(s)", index)
+        self.assertIn("summary:", out)
 
-    def test_lote_json(self) -> None:
-        codigo, dados, _ = self.run_json("analyze", self.pasta, "--out", self.saida)
-        self.assertEqual(codigo, EXIT_OK)
-        self.assertEqual(dados["schema"], "asmx-analyze/1")
-        self.assertEqual(len(dados["files"]), 4)
-        nomes = {f["name"] for f in dados["files"]}
-        self.assertEqual(nomes, {"a.asm", "b.asm", "c.txt", "d.asm"})
-        self.assertTrue(all("risk" in f for f in dados["files"]))
-
-    def test_sem_indice(self) -> None:
-        _, _, _ = self.run_cli("analyze", self.pasta, "--out", self.saida, "--no-index")
-        self.assertNotIn("index.html", os.listdir(self.saida))
-
-    def test_formato_json_no_lote(self) -> None:
-        _, _, _ = self.run_cli("analyze", self.pasta, "--out", self.saida, "--format", "json")
-        arquivos = os.listdir(self.saida)
-        self.assertIn("a.report.json", arquivos)
-        self.assertNotIn("index.html", arquivos)
-
-    def test_fail_on_medio(self) -> None:
-        codigo, _, _ = self.run_cli(
-            "analyze", self.pasta, "--out", self.saida, "--fail-on", "medio"
+    def test_manifest_has_schema_files_groups_and_exit_code(self) -> None:
+        """The manifest carries the schema, the files, the groups and the exit code."""
+        code, _, _ = self.run_cli("analyze", self.batch, "--out", self.output)
+        self.assertEqual(code, EXIT_OK)
+        with open(os.path.join(self.output, "index.json"), encoding="utf-8") as handle:
+            manifest = json.load(handle)
+        self.assertEqual(
+            set(manifest),
+            {"schema", "command", "directory", "format", "files", "groups", "exit_code"},
         )
-        self.assertEqual(codigo, EXIT_PROBLEMS)
+        self.assertEqual(manifest["schema"], "asmx-analyze/1")
+        self.assertEqual(len(manifest["files"]), 4)
+        self.assertEqual(manifest["groups"], [])
+        self.assertEqual(manifest["exit_code"], EXIT_OK)
 
-    def test_pasta_vazia(self) -> None:
-        vazia = os.path.join(self.dir.name, "vazia")
-        os.makedirs(vazia)
-        codigo, _, erro = self.run_cli("analyze", vazia, "--out", self.saida)
-        self.assertEqual(codigo, EXIT_INPUT)
-        self.assertIn("nenhum arquivo", erro)
+    def test_batch_json(self) -> None:
+        """The JSON batch lists the four files with their risk."""
+        code, data, _ = self.run_json("analyze", self.batch, "--out", self.output)
+        self.assertEqual(code, EXIT_OK)
+        self.assertEqual(data["schema"], "asmx-analyze/1")
+        self.assertEqual(len(data["files"]), 4)
+        names = {f["name"] for f in data["files"]}
+        self.assertEqual(names, {"a.asm", "b.asm", "c.txt", "d.asm"})
+        self.assertTrue(all("risk" in f for f in data["files"]))
 
-    def test_arquivo_solto(self) -> None:
-        codigo, _, _ = self.run_cli("analyze", self.limpo, "--out", self.saida)
-        self.assertEqual(codigo, EXIT_OK)
-        self.assertIn("limpo.report.html", os.listdir(self.saida))
+    def test_no_index(self) -> None:
+        """With --no-index only the manifest is written."""
+        _, _, _ = self.run_cli("analyze", self.batch, "--out", self.output, "--no-index")
+        files = os.listdir(self.output)
+        self.assertNotIn("index.html", files)
+        self.assertIn("index.json", files)
 
-    def test_sem_emulacao_no_lote(self) -> None:
+    def test_cluster_adds_groups(self) -> None:
+        """With --cluster the manifest groups similar files."""
+        _, data, _ = self.run_json(
+            "analyze", self.batch, "--out", self.output, "--cluster", "--threshold", "0.5"
+        )
+        self.assertTrue(data["groups"])
+        members = {frozenset(group["members"]) for group in data["groups"]}
+        self.assertIn(frozenset({"a.asm", "d.asm"}), members)
+
+    def test_json_format_in_batch(self) -> None:
+        """The batch in JSON writes .json reports and no HTML index."""
+        _, _, _ = self.run_cli("analyze", self.batch, "--out", self.output, "--format", "json")
+        files = os.listdir(self.output)
+        self.assertIn("a.report.json", files)
+        self.assertNotIn("index.html", files)
+
+    def test_fail_on_medium(self) -> None:
+        """A file at or above the limit turns into the problem exit code."""
+        code, _, _ = self.run_cli(
+            "analyze", self.batch, "--out", self.output, "--fail-on", "medium"
+        )
+        self.assertEqual(code, EXIT_PROBLEMS)
+
+    def test_empty_folder(self) -> None:
+        """A folder without sources is an input error."""
+        empty = os.path.join(self.dir.name, "empty")
+        os.makedirs(empty)
+        code, _, err = self.run_cli("analyze", empty, "--out", self.output)
+        self.assertEqual(code, EXIT_INPUT)
+        self.assertIn("no assembly file", err)
+
+    def test_single_file(self) -> None:
+        """A single file is analysed like a batch of one."""
+        code, _, _ = self.run_cli("analyze", self.clean, "--out", self.output)
+        self.assertEqual(code, EXIT_OK)
+        self.assertIn("clean.report.html", os.listdir(self.output))
+
+    def test_without_emulation_in_batch(self) -> None:
+        """Without emulation the report of the batch has no execution."""
         _, _, _ = self.run_cli(
-            "analyze", self.limpo, "--out", self.saida, "--no-emulate", "--format", "json"
+            "analyze", self.clean, "--out", self.output, "--no-emulate", "--format", "json"
         )
-        with open(os.path.join(self.saida, "limpo.report.json"), encoding="utf-8") as arquivo:
-            self.assertIsNone(json.load(arquivo)["execution"])
+        with open(os.path.join(self.output, "clean.report.json"), encoding="utf-8") as handle:
+            self.assertIsNone(json.load(handle)["execution"])
 
 
 if __name__ == "__main__":

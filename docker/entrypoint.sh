@@ -33,7 +33,7 @@ ASM X container
 usage: docker run --rm [-it] asmx <command> [arguments...]
 
 commands:
-  check FILE.asm [--json] [--min-severity erro|alerta|info]
+  check FILE.asm [--json] [--min-severity error|warning|info]
                         run the static validator on a source file
   run FILE.asm [...]    emulate the program step by step
   explain FILE.asm --line N | --mnemonic mov

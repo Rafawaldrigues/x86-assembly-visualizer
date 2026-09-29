@@ -65,7 +65,7 @@ RUN python -m pip install --upgrade pip build \
 FROM python:3.11-slim AS runtime
 
 LABEL org.opencontainers.image.title="ASM X" \
-      org.opencontainers.image.description="Ambiente de estudo, validação e depuração de assembly x86-64, sem dependência externa" \
+      org.opencontainers.image.description="Desktop environment to study, validate and debug x86-64 assembly, without external dependency" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.source="https://github.com/Rafawaldrigues/x86-assembly-visualizer" \
       org.opencontainers.image.url="https://github.com/Rafawaldrigues/x86-assembly-visualizer" \
@@ -112,7 +112,11 @@ COPY --chown=analyst:analyst asmx/ ./asmx/
 COPY --chown=analyst:analyst tests/ ./tests/
 COPY --chown=analyst:analyst tools/ ./tools/
 COPY --chown=analyst:analyst examples/ ./examples/
-COPY --chown=analyst:analyst pyproject.toml README.md asmx.py ./
+# The documentation travels with the image because `tools/build_reference.py
+# --check` (part of the quality gate) compares the generated reference with the
+# catalogue, and its tests read docs/REFERENCIA.md.
+COPY --chown=analyst:analyst docs/ ./docs/
+COPY --chown=analyst:analyst pyproject.toml README.md CITATION.cff asmx.py ./
 COPY --chown=analyst:analyst docker/ ./docker/
 RUN chmod +x /app/docker/entrypoint.sh \
     && mkdir -p /app/samples /app/results \

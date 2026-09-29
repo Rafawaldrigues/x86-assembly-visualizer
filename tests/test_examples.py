@@ -1,102 +1,107 @@
-"""Testes dos exemplos embutidos e da sua cópia em ``examples/``."""
+"""Tests of the embedded examples and of their copy in ``examples/``."""
 
 import os
 import unittest
 
 from asmx.analyzer import analyze
 from asmx.examples import EXAMPLES, count_lines, names, title_of
-from asmx.linter import ERRO, validate
+from asmx.linter import ERROR, validate
 from asmx.source import read_source
 
-RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PASTA = os.path.join(RAIZ, "examples")
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FOLDER = os.path.join(ROOT, "examples")
 
-#: Exemplos que precisam passar sem nenhum erro de validação.
-LIMPOS = ("linux-hello", "linux-loop", "linux-funcao", "windows-hello", "bubble", "suspeito")
+#: Examples that need to pass with no validation error at all.
+CLEAN = ("linux-hello", "linux-loop", "linux-function", "windows-hello", "bubble", "suspicious")
 
 
-class TestCatalogo(unittest.TestCase):
-    """O catálogo em memória."""
+class TestCatalog(unittest.TestCase):
+    """The catalog in memory."""
 
-    def test_nove_exemplos(self) -> None:
+    def test_nine_examples(self) -> None:
         self.assertEqual(len(EXAMPLES), 9)
 
-    def test_names_em_ordem(self) -> None:
+    def test_names_in_order(self) -> None:
         self.assertEqual(names(), sorted(EXAMPLES))
-        self.assertEqual(names()[0], "bubble")
+        self.assertEqual(names()[0], "broken")
 
-    def test_todo_exemplo_tem_titulo_e_codigo(self) -> None:
-        for nome, exemplo in EXAMPLES.items():
-            with self.subTest(exemplo=nome):
-                self.assertTrue(exemplo["title"])
-                self.assertTrue(exemplo["code"].strip())
-                self.assertEqual(set(exemplo), {"title", "code"})
+    def test_every_example_has_a_title_and_code(self) -> None:
+        for name, example in EXAMPLES.items():
+            with self.subTest(example=name):
+                self.assertTrue(example["title"])
+                self.assertTrue(example["code"].strip())
+                self.assertEqual(set(example), {"title", "code"})
 
     def test_title_of(self) -> None:
         self.assertIn("Linux", title_of("linux-hello"))
-        self.assertEqual(title_of("nao_existe"), "")
+        self.assertEqual(title_of("does_not_exist"), "")
 
     def test_count_lines(self) -> None:
         self.assertEqual(
             count_lines("linux-hello"), EXAMPLES["linux-hello"]["code"].count("\n") + 1
         )
-        self.assertEqual(count_lines("nao_existe"), 0)
+        self.assertEqual(count_lines("does_not_exist"), 0)
 
 
-class TestAnalise(unittest.TestCase):
-    """Todo exemplo precisa ser analisado e validado sem explodir."""
+class TestAnalysis(unittest.TestCase):
+    """Every example needs to be parsed and validated without blowing up."""
 
-    def test_analisa_e_valida_todos(self) -> None:
-        for nome, exemplo in EXAMPLES.items():
-            with self.subTest(exemplo=nome):
-                analise = analyze(exemplo["code"])
-                self.assertGreater(analise.stats["instructions"], 0)
-                validate(analise)
+    def test_analyzes_and_validates_all(self) -> None:
+        for name, example in EXAMPLES.items():
+            with self.subTest(example=name):
+                analysis = analyze(example["code"])
+                self.assertGreater(analysis.stats["instructions"], 0)
+                validate(analysis)
 
-    def test_exemplos_limpos_sem_erro(self) -> None:
-        for nome in LIMPOS:
-            with self.subTest(exemplo=nome):
-                erros = [p for p in validate(analyze(EXAMPLES[nome]["code"])) if p.severity == ERRO]
-                self.assertEqual(erros, [], "%s tem erro: %s" % (nome, erros))
+    def test_clean_examples_without_errors(self) -> None:
+        for name in CLEAN:
+            with self.subTest(example=name):
+                errors = [
+                    p for p in validate(analyze(EXAMPLES[name]["code"])) if p.severity == ERROR
+                ]
+                self.assertEqual(errors, [], "%s has an error: %s" % (name, errors))
 
-    def test_quebrado_acusa_os_defeitos_esperados(self) -> None:
-        codigos = {p.code for p in validate(analyze(EXAMPLES["quebrado"]["code"]))}
-        for esperado in ("STR001", "STR006", "DIV001", "IMM001", "STK001", "FLOW002", "SYM003"):
-            with self.subTest(codigo=esperado):
-                self.assertIn(esperado, codigos)
+    def test_broken_reports_the_expected_defects(self) -> None:
+        # STR001 (a string with a character outside ASCII) is not in this list on
+        # purpose: the sample text is plain ASCII now, and the rule has its own
+        # fixture in tests/test_linter.py.
+        codes = {p.code for p in validate(analyze(EXAMPLES["broken"]["code"]))}
+        for expected in ("STR006", "DIV001", "IMM001", "STK001", "FLOW002", "SYM003"):
+            with self.subTest(code=expected):
+                self.assertIn(expected, codes)
 
-    def test_plataformas_detectadas(self) -> None:
+    def test_detected_platforms(self) -> None:
         self.assertEqual(analyze(EXAMPLES["linux-hello"]["code"]).platform.os, "linux")
         self.assertEqual(analyze(EXAMPLES["windows-hello"]["code"]).platform.os, "windows")
 
-    def test_dialetos_detectados(self) -> None:
+    def test_detected_dialects(self) -> None:
         self.assertEqual(analyze(EXAMPLES["gcc-att"]["code"]).program.flavor, "att")
         self.assertEqual(analyze(EXAMPLES["linux-hello"]["code"]).program.flavor, "intel")
 
 
-class TestArquivosEmDisco(unittest.TestCase):
-    """Os arquivos em ``examples/`` são a mesma coisa que o catálogo."""
+class TestFilesOnDisk(unittest.TestCase):
+    """The files in ``examples/`` are the same thing as the catalog."""
 
-    def test_pasta_existe(self) -> None:
-        self.assertTrue(os.path.isdir(PASTA), "a pasta examples/ deveria existir")
+    def test_folder_exists(self) -> None:
+        self.assertTrue(os.path.isdir(FOLDER), "the examples/ folder should exist")
 
-    def test_um_arquivo_por_exemplo(self) -> None:
-        esperados = {"%s.asm" % nome for nome in EXAMPLES}
-        encontrados = {f for f in os.listdir(PASTA) if f.endswith(".asm")}
-        self.assertEqual(esperados, encontrados)
+    def test_one_file_per_example(self) -> None:
+        expected = {"%s.asm" % name for name in EXAMPLES}
+        found = {f for f in os.listdir(FOLDER) if f.endswith(".asm")}
+        self.assertEqual(expected, found)
 
-    def test_conteudo_igual_ao_do_pacote(self) -> None:
-        for nome, exemplo in EXAMPLES.items():
-            with self.subTest(exemplo=nome):
-                caminho = os.path.join(PASTA, "%s.asm" % nome)
-                with open(caminho, encoding="utf-8") as arquivo:
-                    self.assertEqual(arquivo.read(), exemplo["code"].rstrip("\n") + "\n")
+    def test_content_matches_the_package(self) -> None:
+        for name, example in EXAMPLES.items():
+            with self.subTest(example=name):
+                path = os.path.join(FOLDER, "%s.asm" % name)
+                with open(path, encoding="utf-8") as file:
+                    self.assertEqual(file.read(), example["code"].rstrip("\n") + "\n")
 
-    def test_arquivos_sao_lidos_pelo_leitor_do_projeto(self) -> None:
-        fonte = read_source(os.path.join(PASTA, "linux-hello.asm"))
-        self.assertEqual(fonte.suffix, ".asm")
-        self.assertEqual(fonte.encoding, "utf-8")
-        self.assertIn("global _start", fonte.text)
+    def test_files_are_read_by_the_project_reader(self) -> None:
+        source = read_source(os.path.join(FOLDER, "linux-hello.asm"))
+        self.assertEqual(source.suffix, ".asm")
+        self.assertEqual(source.encoding, "utf-8")
+        self.assertIn("global _start", source.text)
 
 
 if __name__ == "__main__":

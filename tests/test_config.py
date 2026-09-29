@@ -1,4 +1,4 @@
-"""Testes da configuração: padrões, arquivos, ambiente e validação."""
+"""Tests of the configuration: defaults, files, environment and validation."""
 
 import importlib.util
 import json
@@ -12,14 +12,14 @@ from asmx.config import CANDIDATE_NAMES, CONFIG_ENV_VAR, SandboxConfig
 from asmx.errors import ConfigError
 from asmx.logging_setup import reset_logging
 
-#: O YAML é opcional: os testes dele só rodam quando o PyYAML está instalado.
+#: YAML is optional: its tests only run when PyYAML is installed.
 HAS_YAML = importlib.util.find_spec("yaml") is not None
 
 
-class TestPadroes(unittest.TestCase):
-    """A configuração sem argumento nenhum precisa ser sensata."""
+class TestDefaults(unittest.TestCase):
+    """The configuration with no argument at all needs to be sensible."""
 
-    def test_padroes(self) -> None:
+    def test_defaults(self) -> None:
         config = SandboxConfig()
         self.assertEqual(config.timeout, 30.0)
         self.assertEqual(config.max_steps, 200000)
@@ -28,23 +28,23 @@ class TestPadroes(unittest.TestCase):
         self.assertEqual(config.log_level, "INFO")
         self.assertEqual(config.workers, 4)
 
-    def test_to_dict_e_field_names(self) -> None:
+    def test_to_dict_and_field_names(self) -> None:
         config = SandboxConfig()
         self.assertEqual(tuple(config.to_dict()), config.field_names())
         self.assertEqual(len(config.field_names()), 10)
 
-    def test_describe_em_uma_linha(self) -> None:
-        texto = SandboxConfig(timeout=2, max_steps=10).describe()
-        self.assertIn("timeout=2s", texto)
-        self.assertIn("max_steps=10", texto)
-        self.assertIn("rede=desligada", texto)
+    def test_describe_in_one_line(self) -> None:
+        text = SandboxConfig(timeout=2, max_steps=10).describe()
+        self.assertIn("timeout=2s", text)
+        self.assertIn("max_steps=10", text)
+        self.assertIn("network=off", text)
 
-    def test_repr_usa_describe(self) -> None:
+    def test_repr_uses_describe(self) -> None:
         self.assertTrue(repr(SandboxConfig()).startswith("SandboxConfig(timeout="))
 
-    def test_conversao_de_tipos_na_construcao(self) -> None:
+    def test_type_conversion_at_construction(self) -> None:
         config = SandboxConfig(
-            timeout="5", max_steps="1000", workers="2", log_json="sim", strict="0"
+            timeout="5", max_steps="1000", workers="2", log_json="yes", strict="0"
         )
         self.assertEqual(config.timeout, 5.0)
         self.assertEqual(config.max_steps, 1000)
@@ -52,209 +52,209 @@ class TestPadroes(unittest.TestCase):
         self.assertTrue(config.log_json)
         self.assertFalse(config.strict)
 
-    def test_nivel_de_log_em_minusculas(self) -> None:
+    def test_log_level_in_lowercase(self) -> None:
         self.assertEqual(SandboxConfig(log_level="debug").log_level, "DEBUG")
 
 
-class TestValidacao(unittest.TestCase):
-    """Valores fora da faixa precisam ser recusados com o campo no contexto."""
+class TestValidation(unittest.TestCase):
+    """Values out of range need to be refused with the field in the context."""
 
-    def verifica(self, campo: str, **valores: object) -> ConfigError:
-        with self.assertRaises(ConfigError) as contexto:
-            SandboxConfig(**valores).validate()
-        self.assertEqual(contexto.exception.field, campo)
-        return contexto.exception
+    def check_field(self, field: str, **values: object) -> ConfigError:
+        with self.assertRaises(ConfigError) as context:
+            SandboxConfig(**values).validate()
+        self.assertEqual(context.exception.field, field)
+        return context.exception
 
-    def test_timeout_precisa_ser_positivo(self) -> None:
-        self.verifica("timeout", timeout=0)
+    def test_timeout_needs_to_be_positive(self) -> None:
+        self.check_field("timeout", timeout=0)
 
-    def test_timeout_absurdo(self) -> None:
-        self.verifica("timeout", timeout=100000)
+    def test_absurd_timeout(self) -> None:
+        self.check_field("timeout", timeout=100000)
 
-    def test_max_steps_minimo(self) -> None:
-        self.verifica("max_steps", max_steps=0)
+    def test_minimum_max_steps(self) -> None:
+        self.check_field("max_steps", max_steps=0)
 
-    def test_memoria_minima(self) -> None:
-        self.verifica("max_memory", max_memory=1)
+    def test_minimum_memory(self) -> None:
+        self.check_field("max_memory", max_memory=1)
 
-    def test_nivel_desconhecido(self) -> None:
-        self.verifica("log_level", log_level="BARULHO")
+    def test_unknown_level(self) -> None:
+        self.check_field("log_level", log_level="NOISE")
 
-    def test_workers_fora_da_faixa(self) -> None:
-        self.verifica("workers", workers=0)
-        self.verifica("workers", workers=999)
+    def test_workers_out_of_range(self) -> None:
+        self.check_field("workers", workers=0)
+        self.check_field("workers", workers=999)
 
-    def test_diretorio_de_saida_vazio(self) -> None:
-        self.verifica("output_dir", output_dir="   ")
+    def test_empty_output_directory(self) -> None:
+        self.check_field("output_dir", output_dir="   ")
 
-    def test_validate_devolve_a_propria_config(self) -> None:
+    def test_validate_returns_the_config_itself(self) -> None:
         config = SandboxConfig()
         self.assertIs(config.validate(), config)
 
-    def test_valor_booleano_invalido(self) -> None:
+    def test_invalid_boolean_value(self) -> None:
         with self.assertRaises(ConfigError):
-            SandboxConfig(strict="talvez")
+            SandboxConfig(strict="maybe")
 
-    def test_numero_invalido(self) -> None:
+    def test_invalid_number(self) -> None:
         with self.assertRaises(ConfigError):
-            SandboxConfig(timeout="muito")
+            SandboxConfig(timeout="lots")
 
 
 class TestFromDict(unittest.TestCase):
-    """Leitura de dicionário, com sugestão para campo errado."""
+    """Reading a dictionary, with a suggestion for a wrong field."""
 
-    def test_campos_conhecidos(self) -> None:
+    def test_known_fields(self) -> None:
         config = SandboxConfig.from_dict({"workers": "2", "strict": True})
         self.assertEqual(config.workers, 2)
         self.assertTrue(config.strict)
 
-    def test_dict_vazio(self) -> None:
+    def test_empty_dict(self) -> None:
         self.assertEqual(SandboxConfig.from_dict(None).timeout, 30.0)
 
-    def test_campo_desconhecido_com_sugestao(self) -> None:
-        with self.assertRaises(ConfigError) as contexto:
+    def test_unknown_field_with_a_suggestion(self) -> None:
+        with self.assertRaises(ConfigError) as context:
             SandboxConfig.from_dict({"timeoutt": 5})
-        self.assertIn("timeout", str(contexto.exception))
-        self.assertEqual(contexto.exception.field, "timeoutt")
+        self.assertIn("timeout", str(context.exception))
+        self.assertEqual(context.exception.field, "timeoutt")
 
-    def test_campo_desconhecido_sem_parecido(self) -> None:
-        with self.assertRaises(ConfigError) as contexto:
+    def test_unknown_field_without_a_similar_one(self) -> None:
+        with self.assertRaises(ConfigError) as context:
             SandboxConfig.from_dict({"xyzzy": 1})
-        self.assertNotIn("quis dizer", str(contexto.exception))
+        self.assertNotIn("did you mean", str(context.exception))
 
-    def test_origem_aparece_na_mensagem(self) -> None:
-        with self.assertRaises(ConfigError) as contexto:
-            SandboxConfig.from_dict({"nada": 1}, path="asmx.json")
-        self.assertIn("asmx.json", str(contexto.exception))
+    def test_origin_appears_in_the_message(self) -> None:
+        with self.assertRaises(ConfigError) as context:
+            SandboxConfig.from_dict({"nothing": 1}, path="asmx.json")
+        self.assertIn("asmx.json", str(context.exception))
 
-    def test_valor_invalido_no_dict(self) -> None:
+    def test_invalid_value_in_the_dict(self) -> None:
         with self.assertRaises(ConfigError):
             SandboxConfig.from_dict({"timeout": -1})
 
 
 class TestMerged(unittest.TestCase):
-    """Sobreposição de campos."""
+    """Overriding fields."""
 
-    def test_sobrepoe(self) -> None:
+    def test_overrides(self) -> None:
         config = SandboxConfig().merged(timeout=3, workers=2)
         self.assertEqual(config.timeout, 3.0)
         self.assertEqual(config.workers, 2)
 
-    def test_none_e_ignorado(self) -> None:
+    def test_none_is_ignored(self) -> None:
         config = SandboxConfig(timeout=7).merged(timeout=None, workers=3)
         self.assertEqual(config.timeout, 7.0)
         self.assertEqual(config.workers, 3)
 
-    def test_campo_desconhecido(self) -> None:
+    def test_unknown_field(self) -> None:
         with self.assertRaises(ConfigError):
-            SandboxConfig().merged(inventado=1)
+            SandboxConfig().merged(invented=1)
 
-    def test_nao_muda_o_original(self) -> None:
+    def test_does_not_change_the_original(self) -> None:
         original = SandboxConfig()
         original.merged(timeout=1)
         self.assertEqual(original.timeout, 30.0)
 
 
-class TestArquivos(unittest.TestCase):
-    """Leitura e gravação em JSON e YAML."""
+class TestFiles(unittest.TestCase):
+    """Reading and writing in JSON and YAML."""
 
     def setUp(self) -> None:
         self.dir = tempfile.TemporaryDirectory()
         self.json_path = os.path.join(self.dir.name, "config.json")
-        with open(self.json_path, "w", encoding="utf-8") as arquivo:
-            json.dump({"timeout": 5, "workers": 2, "log_level": "warning"}, arquivo)
+        with open(self.json_path, "w", encoding="utf-8") as file:
+            json.dump({"timeout": 5, "workers": 2, "log_level": "warning"}, file)
 
     def tearDown(self) -> None:
         self.dir.cleanup()
 
-    def test_json_valido(self) -> None:
+    def test_valid_json(self) -> None:
         config = SandboxConfig.from_json_file(self.json_path)
         self.assertEqual(config.timeout, 5.0)
         self.assertEqual(config.workers, 2)
         self.assertEqual(config.log_level, "WARNING")
 
-    def test_json_ausente(self) -> None:
-        with self.assertRaises(ConfigError) as contexto:
-            SandboxConfig.from_json_file(os.path.join(self.dir.name, "nada.json"))
-        self.assertEqual(contexto.exception.path, os.path.join(self.dir.name, "nada.json"))
+    def test_missing_json(self) -> None:
+        with self.assertRaises(ConfigError) as context:
+            SandboxConfig.from_json_file(os.path.join(self.dir.name, "nothing.json"))
+        self.assertEqual(context.exception.path, os.path.join(self.dir.name, "nothing.json"))
 
-    def test_json_invalido(self) -> None:
-        caminho = os.path.join(self.dir.name, "quebrado.json")
-        with open(caminho, "w", encoding="utf-8") as arquivo:
-            arquivo.write("{isso não é json}")
-        with self.assertRaises(ConfigError) as contexto:
-            SandboxConfig.from_json_file(caminho)
-        self.assertIn("JSON inválido", str(contexto.exception))
+    def test_invalid_json(self) -> None:
+        path = os.path.join(self.dir.name, "broken.json")
+        with open(path, "w", encoding="utf-8") as file:
+            file.write("{this is not json}")
+        with self.assertRaises(ConfigError) as context:
+            SandboxConfig.from_json_file(path)
+        self.assertIn("invalid JSON", str(context.exception))
 
-    def test_json_precisa_ser_objeto(self) -> None:
-        caminho = os.path.join(self.dir.name, "lista.json")
-        with open(caminho, "w", encoding="utf-8") as arquivo:
-            json.dump([1, 2], arquivo)
+    def test_json_needs_to_be_an_object(self) -> None:
+        path = os.path.join(self.dir.name, "list.json")
+        with open(path, "w", encoding="utf-8") as file:
+            json.dump([1, 2], file)
         with self.assertRaises(ConfigError):
-            SandboxConfig.from_json_file(caminho)
+            SandboxConfig.from_json_file(path)
 
-    def test_from_file_por_extensao(self) -> None:
+    def test_from_file_by_extension(self) -> None:
         self.assertEqual(SandboxConfig.from_file(self.json_path).timeout, 5.0)
 
-    def test_from_file_extensao_desconhecida(self) -> None:
-        with self.assertRaises(ConfigError) as contexto:
+    def test_from_file_unknown_extension(self) -> None:
+        with self.assertRaises(ConfigError) as context:
             SandboxConfig.from_file(os.path.join(self.dir.name, "config.ini"))
-        self.assertIn("extensão", str(contexto.exception))
+        self.assertIn("extension", str(context.exception))
 
-    @unittest.skipUnless(HAS_YAML, "PyYAML não instalado")
-    def test_yaml_valido(self) -> None:
-        caminho = os.path.join(self.dir.name, "asmx.yaml")
-        with open(caminho, "w", encoding="utf-8") as arquivo:
-            arquivo.write("timeout: 9\nworkers: 3\n")
-        config = SandboxConfig.from_yaml_file(caminho)
+    @unittest.skipUnless(HAS_YAML, "PyYAML is not installed")
+    def test_valid_yaml(self) -> None:
+        path = os.path.join(self.dir.name, "asmx.yaml")
+        with open(path, "w", encoding="utf-8") as file:
+            file.write("timeout: 9\nworkers: 3\n")
+        config = SandboxConfig.from_yaml_file(path)
         self.assertEqual(config.timeout, 9.0)
         self.assertEqual(config.workers, 3)
 
-    @unittest.skipUnless(HAS_YAML, "PyYAML não instalado")
-    def test_yaml_vazio_usa_padroes(self) -> None:
-        caminho = os.path.join(self.dir.name, "vazio.yaml")
-        with open(caminho, "w", encoding="utf-8") as arquivo:
-            arquivo.write("")
-        self.assertEqual(SandboxConfig.from_yaml_file(caminho).timeout, 30.0)
+    @unittest.skipUnless(HAS_YAML, "PyYAML is not installed")
+    def test_empty_yaml_uses_the_defaults(self) -> None:
+        path = os.path.join(self.dir.name, "empty.yaml")
+        with open(path, "w", encoding="utf-8") as file:
+            file.write("")
+        self.assertEqual(SandboxConfig.from_yaml_file(path).timeout, 30.0)
 
-    @unittest.skipUnless(HAS_YAML, "PyYAML não instalado")
-    def test_yaml_invalido(self) -> None:
-        caminho = os.path.join(self.dir.name, "ruim.yaml")
-        with open(caminho, "w", encoding="utf-8") as arquivo:
-            arquivo.write("timeout: [1, 2\n")
+    @unittest.skipUnless(HAS_YAML, "PyYAML is not installed")
+    def test_invalid_yaml(self) -> None:
+        path = os.path.join(self.dir.name, "bad.yaml")
+        with open(path, "w", encoding="utf-8") as file:
+            file.write("timeout: [1, 2\n")
         with self.assertRaises(ConfigError):
-            SandboxConfig.from_yaml_file(caminho)
+            SandboxConfig.from_yaml_file(path)
 
-    def test_yaml_sem_pyyaml_explica_o_caminho(self) -> None:
-        caminho = os.path.join(self.dir.name, "asmx.yaml")
-        with open(caminho, "w", encoding="utf-8") as arquivo:
-            arquivo.write("timeout: 1\n")
+    def test_yaml_without_pyyaml_explains_the_way_out(self) -> None:
+        path = os.path.join(self.dir.name, "asmx.yaml")
+        with open(path, "w", encoding="utf-8") as file:
+            file.write("timeout: 1\n")
         with unittest.mock.patch.dict(sys.modules, {"yaml": None}):
-            with self.assertRaises(ConfigError) as contexto:
-                SandboxConfig.from_yaml_file(caminho)
-        self.assertIn("PyYAML", str(contexto.exception))
+            with self.assertRaises(ConfigError) as context:
+                SandboxConfig.from_yaml_file(path)
+        self.assertIn("PyYAML", str(context.exception))
 
-    def test_salvar_e_reler_json(self) -> None:
-        caminho = os.path.join(self.dir.name, "novo.json")
-        SandboxConfig(timeout=4, workers=5).save(caminho)
-        relido = SandboxConfig.from_file(caminho)
-        self.assertEqual(relido.timeout, 4.0)
-        self.assertEqual(relido.workers, 5)
+    def test_save_and_read_json_again(self) -> None:
+        path = os.path.join(self.dir.name, "new.json")
+        SandboxConfig(timeout=4, workers=5).save(path)
+        reread = SandboxConfig.from_file(path)
+        self.assertEqual(reread.timeout, 4.0)
+        self.assertEqual(reread.workers, 5)
 
-    @unittest.skipUnless(HAS_YAML, "PyYAML não instalado")
-    def test_salvar_yaml(self) -> None:
-        caminho = os.path.join(self.dir.name, "novo.yaml")
-        SandboxConfig(timeout=6).save(caminho)
-        with open(caminho, encoding="utf-8") as arquivo:
-            self.assertIn("timeout", arquivo.read())
+    @unittest.skipUnless(HAS_YAML, "PyYAML is not installed")
+    def test_save_yaml(self) -> None:
+        path = os.path.join(self.dir.name, "new.yaml")
+        SandboxConfig(timeout=6).save(path)
+        with open(path, encoding="utf-8") as file:
+            self.assertIn("timeout", file.read())
 
-    def test_formato_de_salvamento_desconhecido(self) -> None:
+    def test_unknown_save_format(self) -> None:
         with self.assertRaises(ConfigError):
             SandboxConfig().save(os.path.join(self.dir.name, "x.ini"))
 
 
-class TestAmbiente(unittest.TestCase):
-    """Variáveis de ambiente e ordem de precedência."""
+class TestEnvironment(unittest.TestCase):
+    """Environment variables and the precedence order."""
 
     def test_from_env(self) -> None:
         with unittest.mock.patch.dict(
@@ -265,81 +265,81 @@ class TestAmbiente(unittest.TestCase):
         self.assertEqual(config.workers, 7)
         self.assertTrue(config.strict)
 
-    def test_variavel_vazia_e_ignorada(self) -> None:
+    def test_empty_variable_is_ignored(self) -> None:
         with unittest.mock.patch.dict(os.environ, {"ASMX_TIMEOUT": ""}, clear=True):
             self.assertEqual(SandboxConfig.from_env().timeout, 30.0)
 
-    def test_variavel_invalida(self) -> None:
-        with unittest.mock.patch.dict(os.environ, {"ASMX_TIMEOUT": "muito"}, clear=True):
+    def test_invalid_variable(self) -> None:
+        with unittest.mock.patch.dict(os.environ, {"ASMX_TIMEOUT": "lots"}, clear=True):
             with self.assertRaises(ConfigError):
                 SandboxConfig.from_env()
 
-    def test_ambiente_sobrepoe_arquivo(self) -> None:
-        with tempfile.TemporaryDirectory() as pasta:
-            caminho = os.path.join(pasta, "asmx.json")
-            with open(caminho, "w", encoding="utf-8") as arquivo:
-                json.dump({"timeout": 5, "workers": 2}, arquivo)
+    def test_environment_overrides_the_file(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "asmx.json")
+            with open(path, "w", encoding="utf-8") as file:
+                json.dump({"timeout": 5, "workers": 2}, file)
             with unittest.mock.patch.dict(os.environ, {"ASMX_WORKERS": "9"}, clear=True):
-                config = SandboxConfig.load(caminho)
+                config = SandboxConfig.load(path)
         self.assertEqual(config.timeout, 5.0)
         self.assertEqual(config.workers, 9)
 
-    def test_arquivo_indicado_que_nao_existe(self) -> None:
+    def test_indicated_file_that_does_not_exist(self) -> None:
         with self.assertRaises(ConfigError):
-            SandboxConfig.load("/tmp/nao_existe_asmx.json")
+            SandboxConfig.load("/tmp/asmx_does_not_exist.json")
 
-    def test_variavel_de_ambiente_aponta_o_arquivo(self) -> None:
-        with tempfile.TemporaryDirectory() as pasta:
-            caminho = os.path.join(pasta, "config.json")
-            with open(caminho, "w", encoding="utf-8") as arquivo:
-                json.dump({"max_steps": 77}, arquivo)
-            with unittest.mock.patch.dict(os.environ, {CONFIG_ENV_VAR: caminho}, clear=True):
+    def test_environment_variable_points_to_the_file(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "config.json")
+            with open(path, "w", encoding="utf-8") as file:
+                json.dump({"max_steps": 77}, file)
+            with unittest.mock.patch.dict(os.environ, {CONFIG_ENV_VAR: path}, clear=True):
                 self.assertEqual(SandboxConfig.load().max_steps, 77)
 
-    def test_sem_arquivo_usa_padroes(self) -> None:
-        with tempfile.TemporaryDirectory() as pasta:
+    def test_without_a_file_uses_the_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
             with unittest.mock.patch.dict(os.environ, {}, clear=True):
-                config = SandboxConfig.load(start=pasta)
+                config = SandboxConfig.load(start=folder)
         self.assertEqual(config.timeout, 30.0)
 
 
 class TestFindFile(unittest.TestCase):
-    """Busca automática do arquivo de configuração."""
+    """Automatic search of the configuration file."""
 
-    def test_encontra_no_diretorio_indicado(self) -> None:
-        with tempfile.TemporaryDirectory() as pasta:
-            caminho = os.path.join(pasta, CANDIDATE_NAMES[0])
-            with open(caminho, "w", encoding="utf-8") as arquivo:
-                arquivo.write("timeout: 1\n")
+    def test_finds_it_in_the_indicated_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, CANDIDATE_NAMES[0])
+            with open(path, "w", encoding="utf-8") as file:
+                file.write("timeout: 1\n")
             with unittest.mock.patch.dict(os.environ, {}, clear=True):
-                self.assertEqual(SandboxConfig.find_file(pasta), caminho)
+                self.assertEqual(SandboxConfig.find_file(folder), path)
 
-    def test_nada_encontrado(self) -> None:
-        with tempfile.TemporaryDirectory() as pasta:
-            with unittest.mock.patch.dict(os.environ, {"HOME": pasta}, clear=True):
-                self.assertIsNone(SandboxConfig.find_file(pasta))
+    def test_nothing_found(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            with unittest.mock.patch.dict(os.environ, {"HOME": folder}, clear=True):
+                self.assertIsNone(SandboxConfig.find_file(folder))
 
-    def test_variavel_de_ambiente_tem_prioridade(self) -> None:
-        with tempfile.TemporaryDirectory() as pasta:
-            caminho = os.path.join(pasta, "meu.json")
-            with open(caminho, "w", encoding="utf-8") as arquivo:
-                arquivo.write("{}")
-            with unittest.mock.patch.dict(os.environ, {CONFIG_ENV_VAR: caminho}, clear=True):
-                self.assertEqual(SandboxConfig.find_file(pasta), caminho)
+    def test_environment_variable_has_priority(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "mine.json")
+            with open(path, "w", encoding="utf-8") as file:
+                file.write("{}")
+            with unittest.mock.patch.dict(os.environ, {CONFIG_ENV_VAR: path}, clear=True):
+                self.assertEqual(SandboxConfig.find_file(folder), path)
 
 
 class TestApplyLogging(unittest.TestCase):
-    """A configuração manda no logging."""
+    """The configuration rules the logging."""
 
     def tearDown(self) -> None:
         reset_logging()
 
-    def test_aplica_nivel_e_formato(self) -> None:
+    def test_applies_level_and_format(self) -> None:
         import io
 
-        estado = SandboxConfig(log_level="ERROR", log_json=True).apply_logging(io.StringIO())
-        self.assertEqual(estado.level, "ERROR")
-        self.assertTrue(estado.json_output)
+        state = SandboxConfig(log_level="ERROR", log_json=True).apply_logging(io.StringIO())
+        self.assertEqual(state.level, "ERROR")
+        self.assertTrue(state.json_output)
 
 
 if __name__ == "__main__":

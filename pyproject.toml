@@ -101,7 +101,7 @@ include-package-data = false
 version = { attr = "asmx.__init__.__version__" }
 
 [tool.setuptools.package-data]
-asmx = ["data/*.json"]
+asmx = ["data/*.json", "data/rules/*.json"]
 
 # ---------------------------------------------------------------------------
 # Formatting and linting
@@ -134,9 +134,9 @@ max-complexity = 15
 # ---------------------------------------------------------------------------
 
 [tool.mypy]
-# Sem `python_version` fixo de propósito: as versões novas do mypy recusam alvos
-# antigos (3.9), e a compatibilidade real com cada versão do Python é verificada
-# pela matriz do CI, que roda a suíte no 3.9, 3.10, 3.11, 3.12 e 3.13.
+# No fixed `python_version` on purpose: new mypy versions refuse old targets
+# (3.9), and the real compatibility with each Python version is checked by the
+# CI matrix, which runs the suite on 3.9, 3.10, 3.11, 3.12 and 3.13.
 disallow_untyped_defs = true
 check_untyped_defs = true
 no_implicit_optional = true
@@ -145,21 +145,21 @@ warn_redundant_casts = true
 show_error_codes = true
 exclude = ["build", "dist", "\\.venv"]
 
-# O núcleo usa o padrão "campo preenchido em duas fases": o parser cria Line e
-# Operand com campos opcionais (mnemonic, reg, sem, block...) e o analisador e a
-# máquina virtual preenchem depois. Dentro dos laços o mypy não estreita esses
-# Optional, e as mensagens de erro seriam todas do mesmo tipo. As checagens de
-# anotação (disallow_untyped_defs) continuam valendo para esses módulos — é o
-# que garante a promessa de 100% de type hints, reforçada por
-# `tools/quality_gates.py`. Os códigos desligados aqui são só os que dependem
-# desse estreitamento.
+# The core uses the "field filled in two phases" pattern: the parser creates Line
+# and Operand with optional fields (mnemonic, reg, sem, block...) and the
+# analyzer and the virtual machine fill them in later. Inside the loops mypy does
+# not narrow those Optional values, and the error messages would all be of the
+# same kind. The type hint checks (disallow_untyped_defs) still apply to these
+# modules — that is what guarantees the promise of 100% type hints, reinforced by
+# `tools/quality_gates.py`. The codes turned off here are only the ones that
+# depend on that narrowing.
 [[tool.mypy.overrides]]
 module = ["asmx.analyzer", "asmx.emulator", "asmx.linter"]
 disable_error_code = ["union-attr", "arg-type", "index", "operator", "attr-defined", "assignment"]
 
-# A interface Tkinter passa estado entre métodos (`self.analysis`, `self.machine`)
-# e os widgets são dinâmicos, então os stubs do Tk não descrevem o que o código
-# garante em tempo de execução.
+# The Tkinter interface passes state between methods (`self.analysis`,
+# `self.machine`) and the widgets are dynamic, so the Tk stubs do not describe
+# what the code guarantees at runtime.
 [[tool.mypy.overrides]]
 module = ["asmx.ui.*"]
 disable_error_code = ["union-attr", "arg-type", "index", "operator", "attr-defined", "call-arg", "assignment", "var-annotated", "misc"]

@@ -1,4 +1,4 @@
-"""Cores e fontes da interface."""
+"""Colors and fonts of the interface."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ STRING = "#BFD46B"
 COMMENT = "#5A748C"
 MISC = "#8AA0B8"
 
-SEV_COLOR = {"erro": "#EF7D9D", "alerta": "#E3A44B", "info": "#79A6E8"}
+SEV_COLOR = {"error": "#EF7D9D", "warning": "#E3A44B", "info": "#79A6E8"}
 
 TAG_COLOR = {
     "store": DATA,
@@ -57,14 +57,14 @@ TAG_COLOR = {
 
 
 def mono(size: int = 11, weight: str = "normal") -> tkfont.Font:
-    """Escolhe a primeira fonte monoespaçada disponível no sistema.
+    """Pick the first monospaced font available on the system.
 
     Args:
-        size: tamanho da fonte em pontos.
-        weight: peso da fonte ("normal" ou "bold").
+        size: Font size in points.
+        weight: Font weight ("normal" or "bold").
 
     Returns:
-        A fonte criada; Courier é o último recurso.
+        The created font; Courier is the last resort.
     """
     for family in (
         "JetBrains Mono",
@@ -84,14 +84,14 @@ def mono(size: int = 11, weight: str = "normal") -> tkfont.Font:
 
 
 def ui(size: int = 10, weight: str = "normal") -> tkfont.Font:
-    """Escolhe a primeira fonte de interface disponível no sistema.
+    """Pick the first interface font available on the system.
 
     Args:
-        size: tamanho da fonte em pontos.
-        weight: peso da fonte ("normal" ou "bold").
+        size: Font size in points.
+        weight: Font weight ("normal" or "bold").
 
     Returns:
-        A fonte criada; a fonte padrão do Tk é o último recurso.
+        The created font; the Tk default font is the last resort.
     """
     for family in ("Segoe UI", "DejaVu Sans", "Liberation Sans", "Helvetica", "TkDefaultFont"):
         try:
@@ -104,13 +104,13 @@ def ui(size: int = 10, weight: str = "normal") -> tkfont.Font:
 
 
 def apply_ttk_theme(root: tk.Misc) -> ttk.Style:
-    """Aplica o tema escuro do ASM X aos widgets ttk.
+    """Apply the ASM X dark theme to the ttk widgets.
 
     Args:
-        root: janela dona do estilo, normalmente a janela principal.
+        root: Window that owns the style, usually the main window.
 
     Returns:
-        O estilo já configurado.
+        The configured style.
     """
     from tkinter import ttk
 
@@ -148,6 +148,17 @@ def apply_ttk_theme(root: tk.Misc) -> ttk.Style:
     style.configure("TPanedwindow", background=LINE)
     style.configure("TEntry", fieldbackground=BG, foreground=FG, insertcolor=FG)
     style.configure("TCombobox", fieldbackground=BG, foreground=FG, background=PANEL2)
+    # A read-only combobox draws its text through the "readonly" state map, not
+    # through the base style: without this the branch name is invisible on the
+    # dark field (and the selection would be dark on dark).
+    style.map(
+        "TCombobox",
+        fieldbackground=[("readonly", BG)],
+        foreground=[("readonly", FG)],
+        selectbackground=[("readonly", PANEL2)],
+        selectforeground=[("readonly", FG)],
+        arrowcolor=[("readonly", FG)],
+    )
     style.configure("TCheckbutton", background=PANEL, foreground=FG)
     style.configure("Status.TLabel", background=PANEL2, foreground=DIM, font=ui(9))
     return style

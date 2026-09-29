@@ -1,339 +1,341 @@
-# Guia do ASM X
+# ASM X Manual
 
-Ferramenta de desktop para ler, validar, testar e depurar assembly x86-64.
-Escrita em Python com Tkinter — a mesma base gráfica do IDLE.
+Desktop tool to read, validate, test and debug x86-64 assembly.
+Written in Python with Tkinter — the same GUI toolkit IDLE uses.
 
-## Rodando
+## Running
 
 ```bash
-python3 asmx.py                       # interface gráfica
-python3 -m asmx check programa.asm    # linha de comando
+python3 asmx.py                       # graphical interface
+python3 -m asmx check program.asm     # command line
 ```
 
-Único requisito além do Python 3.9+: o Tkinter (e só para a interface — a linha
-de comando funciona sem ele, o que também vale para um contêiner mínimo).
+The only requirement beyond Python 3.9+: Tkinter (and only for the interface —
+the command line works without it, which also holds for a minimal container).
 
-| Sistema | Como instalar |
+| System | How to install |
 |---|---|
 | Debian/Ubuntu | `sudo apt install python3-tk` |
 | Fedora | `sudo dnf install python3-tkinter` |
 | Arch | `sudo pacman -S tk` |
-| Windows/macOS | já vem com o instalador oficial do Python |
+| Windows/macOS | ships with the official Python installer |
 
-Nada é baixado, nada sai da máquina, não existe servidor.
+Nothing is downloaded, nothing leaves the machine, there is no server.
 
-## Linha de comando
+## Command line
 
-A mesma análise da interface, sem interface — e com saída em JSON para CI.
-
-```bash
-asmx check programa.asm                      # valida; sai com 1 se achar problema
-asmx check a.asm b.asm --min-severity erro   # só erro reprova
-asmx check programa.asm --json               # relatório estruturado
-asmx run programa.asm                        # executa na máquina virtual
-asmx run programa.asm --entry soma_ate       # começa numa função, com pilha limpa
-asmx run programa.asm --stdin "texto" --trace --max-trace 20
-asmx run lento.asm --timeout 2 --limit 500000
-asmx explain programa.asm --line 12          # explica a linha 12
-asmx explain programa.asm --mnemonic div     # documenta a instrução
-asmx examples --list                         # os 8 exemplos
-asmx examples --dump exemplos/               # grava todos como .asm
-asmx info --json                             # versão, acervo e configuração
-```
-
-Códigos de saída: `0` tudo certo, `1` problemas encontrados, `2` erro de uso,
-`3` erro de entrada (arquivo, formato, configuração, rótulo), `4` tempo limite.
-
-Opções globais, antes ou depois do comando: `-v` (log de depuração), `-q`
-(silencioso), `--log-json`, `--log-file CAMINHO`, `--config CAMINHO`,
-`--no-color`.
-
-## Relatório
-
-`asmx report prog.asm` junta tudo o que a análise descobriu num arquivo HTML
-autocontido: CSS, JavaScript e os grafos em SVG vão embutidos, então ele abre
-offline, sem CDN e sem servidor — pode ser anexado a um e-mail ou commit.
+The same analysis as the interface, without the interface — and with JSON output
+for CI.
 
 ```bash
-asmx report prog.asm                        # grava results/prog.report.html
-asmx report prog.asm --open                 # grava e abre no navegador
-asmx report prog.asm --out - --format md    # Markdown na tela
-asmx report prog.asm --format json          # dados crus (esquema asmx-report/1)
-asmx report prog.asm --format dot | dot -Tsvg -o grafo.svg
-asmx report prog.asm --no-emulate           # só estático, sem linha do tempo
-asmx report prog.asm --fail-on alto         # sai com 1 se o risco for alto ou maior
+asmx check program.asm                       # validates; exits 1 when it finds a problem
+asmx check a.asm b.asm --min-severity error  # only error fails the check
+asmx check program.asm --json                # structured report
+asmx run program.asm                         # runs on the virtual machine
+asmx run program.asm --entry sum_until       # starts at a function, with a clean stack
+asmx run program.asm --stdin "text" --trace --max-trace 20
+asmx run slow.asm --timeout 2 --limit 500000
+asmx explain program.asm --line 12           # explains line 12
+asmx explain program.asm --mnemonic div      # documents the instruction
+asmx examples --list                         # the 9 examples
+asmx examples --dump examples/               # writes them all as .asm
+asmx info --json                             # version, instruction set and configuration
 ```
 
-As abas do relatório:
+Exit codes: `0` all good, `1` problems found, `2` usage error, `3` input error
+(file, format, configuration, label), `4` time limit.
 
-| Aba | O que mostra |
+Global options, before or after the command: `-v` (debug log), `-q` (quiet),
+`--log-json`, `--log-file PATH`, `--config PATH`, `--no-color`.
+
+## Report
+
+`asmx report prog.asm` puts everything the analysis found into one self-contained
+HTML file: CSS, JavaScript and the SVG graphs are embedded, so it opens offline,
+without a CDN and without a server — it can be attached to an e-mail or a commit.
+
+```bash
+asmx report prog.asm                        # writes results/prog.report.html
+asmx report prog.asm --open                 # writes and opens it in the browser
+asmx report prog.asm --out - --format md    # Markdown on the screen
+asmx report prog.asm --format json          # raw data (asmx-report/1 schema)
+asmx report prog.asm --format dot | dot -Tsvg -o graph.svg
+asmx report prog.asm --no-emulate           # static only, no timeline
+asmx report prog.asm --fail-on high         # exits 1 if the risk is high or higher
+```
+
+The report tabs:
+
+| Tab | What it shows |
 |---|---|
-| Resumo | hashes, tamanho, dialeto, plataforma e ABI, pistas da detecção, resumo executivo e a nota de risco (0–100) |
-| Fluxo | grafo de fluxo de controle e grafo de chamadas em SVG, blocos básicos com "vem de"/"vai para" e o DOT para copiar |
-| Comportamentos | o que o programa faz: severidade, confiança, evidência por linha e o mapeamento MITRE ATT&CK (indício, não prova) |
-| Indicadores | strings, URLs, IPv4, domínios, caminhos, chaves de registro, comandos e extensões sensíveis |
-| Instruções | cada instrução com a explicação em português, com filtro de busca |
-| Validação | os problemas por severidade, com a dica de correção |
-| Execução | saída, código de saída, registradores, flags, problemas e a linha do tempo passo a passo |
-| Dados | o JSON completo, para copiar ou consumir |
+| Summary | hashes, size, dialect, platform and ABI, detection hints, executive summary and the risk score (0–100) |
+| Flow | control-flow graph and call graph in SVG, basic blocks with "comes from"/"goes to" and the DOT to copy |
+| Behaviors | what the program does: severity, confidence, per-line evidence and the MITRE ATT&CK mapping (an indicator, not proof) |
+| Indicators | strings, URLs, IPv4, domains, paths, registry keys, commands and sensitive extensions |
+| Instructions | every instruction with its explanation, with a search filter |
+| Validation | the problems by severity, with the fix hint |
+| Execution | output, exit code, registers, flags, problems and the step-by-step timeline |
+| Data | the full JSON, to copy or consume |
 
-### Vários arquivos de uma vez
+### Several files at once
 
 ```bash
-asmx analyze exemplos/ --out resultados/          # um relatório por arquivo + index.html
-asmx analyze exemplos/ --format json --no-index   # lote em JSON
-asmx analyze exemplos/ --fail-on medio            # reprova se algum passar de médio
+asmx analyze examples/ --out results/             # one report per file + index.html
+asmx analyze examples/ --format json --no-index   # batch as JSON
+asmx analyze examples/ --fail-on medium           # fails if any of them goes above medium
 ```
 
-O `index.html` compara os arquivos numa tabela — risco, plataforma, instruções,
-comportamentos, indicadores e problemas — que é o jeito mais rápido de ver o que
-chama atenção numa pasta antes de abrir arquivo por arquivo.
+The `index.html` compares the files in a table — risk, platform, instructions,
+behaviors, indicators and problems — which is the fastest way to see what stands
+out in a directory before opening file after file.
 
-Na interface gráfica o mesmo relatório sai por *Executar › Gerar relatório...*
-(`Ctrl+R`): escolha o caminho, o arquivo é gravado e aberto no navegador.
+In the interface the same report comes from *Run › Generate report...*
+(`Ctrl+R`): pick the path, the file is written and opened in the browser.
 
-## Configuração
+## Configuration
 
-O ASM X funciona sem nenhum arquivo de configuração. Quando você quiser fixar
-limites, crie um `asmx.yaml`, `asmx.json` ou `~/.config/asmx/config.yaml` — ou
-aponte com `--config`.
+ASM X works without any configuration file. When you want to pin limits, create
+an `asmx.yaml`, an `asmx.json` or a `~/.config/asmx/config.yaml` — or point to
+one with `--config`.
 
-Ordem de precedência: linha de comando → variáveis de ambiente → arquivo →
-padrões.
+Precedence order: command line → environment variables → file → defaults.
 
-| Campo | Padrão | Para que serve |
+| Field | Default | What it is for |
 |---|---|---|
-| `timeout` | 30 | segundos de parede antes de parar uma execução |
-| `max_steps` | 200000 | limite de instruções executadas |
-| `max_memory` | 512 | memória reservada ao sandbox, em MB |
-| `enable_network` | false | reservado: a máquina virtual nunca acessa a rede |
-| `log_level` | INFO | DEBUG, INFO, WARNING, ERROR ou CRITICAL |
-| `log_json` | false | log em JSON, uma linha por evento |
-| `log_file` | — | arquivo que recebe cópia dos logs |
-| `workers` | 4 | paralelismo em análises futuras de vários arquivos |
-| `output_dir` | results | diretório dos relatórios |
-| `strict` | false | transforma problema detectado em exceção |
+| `timeout` | 30 | wall-clock seconds before a run is stopped |
+| `max_steps` | 200000 | limit of executed instructions |
+| `max_memory` | 512 | memory reserved for the sandbox, in MB |
+| `enable_network` | false | reserved: the virtual machine never accesses the network |
+| `log_level` | INFO | DEBUG, INFO, WARNING, ERROR or CRITICAL |
+| `log_json` | false | JSON log, one line per event |
+| `log_file` | — | file that receives a copy of the logs |
+| `workers` | 4 | parallelism in future multi-file analyses |
+| `output_dir` | results | directory for the reports |
+| `strict` | false | turns a detected problem into an exception |
 
 ```bash
-ASMX_TIMEOUT=5 ASMX_LOG_JSON=1 asmx run programa.asm
-asmx --config asmx.json check programa.asm
+ASMX_TIMEOUT=5 ASMX_LOG_JSON=1 asmx run program.asm
+asmx --config asmx.json check program.asm
 ```
 
-YAML exige o PyYAML instalado; JSON funciona sempre, porque o projeto não tem
-dependência obrigatória.
+YAML requires PyYAML to be installed; JSON always works, because the project has
+no mandatory dependency.
 
 ## Logging
 
-O log é estruturado: cada linha é um evento com nome (`check_finished`,
-`project_saved`, `scenario_finished`...) e campos próprios. Em texto ele fica
-legível; em JSON vira dado para `jq`, para o CI e para o Docker.
+The log is structured: each line is a named event (`check_finished`,
+`project_saved`, `scenario_finished`...) with its own fields. As text it stays
+readable; as JSON it becomes data for `jq`, for CI and for Docker.
 
 ```bash
-asmx -v check programa.asm
-asmx -v --log-json check programa.asm 2>&1 | jq -c '{event, path, errors}'
-asmx -v --log-file asmx.log check programa.asm
+asmx -v check program.asm
+asmx -v --log-json check program.asm 2>&1 | jq -c '{event, path, errors}'
+asmx -v --log-file asmx.log check program.asm
 ```
 
-Na biblioteca, use `asmx.configure_logging(...)` e `asmx.get_logger(__name__)`;
-a função `asmx.log_event(logger, "meu_evento", campo=1)` emite um evento.
+In the library, use `asmx.configure_logging(...)` and
+`asmx.get_logger(__name__)`; the function
+`asmx.log_event(logger, "my_event", field=1)` emits an event.
 
-## Erros
+## Errors
 
-Toda exceção da biblioteca tem código estável e contexto, e continua sendo
-`ValueError`, `KeyError`, `FileNotFoundError` ou `TimeoutError` para quem já
-tratava assim:
+Every library exception has a stable code and context, and is still a
+`ValueError`, `KeyError`, `FileNotFoundError` or `TimeoutError` for code that
+already handled it that way:
 
-| Código | Quando acontece |
+| Code | When it happens |
 |---|---|
-| `ERR_SOURCE_NOT_FOUND` | o arquivo não existe |
-| `ERR_SOURCE_READ` / `ERR_SOURCE_WRITE` | falha de leitura ou gravação |
-| `ERR_UNSUPPORTED_SOURCE` | extensão fora das aceitas |
-| `ERR_PROJECT_FORMAT` | `.asmproj` corrompido ou de outro programa |
+| `ERR_SOURCE_NOT_FOUND` | the file does not exist |
+| `ERR_SOURCE_READ` / `ERR_SOURCE_WRITE` | read or write failure |
+| `ERR_UNSUPPORTED_SOURCE` | extension outside the accepted ones |
+| `ERR_PROJECT_FORMAT` | `.asmproj` corrupted or from another program |
 | `ERR_BRANCH_NOT_FOUND` / `ERR_BRANCH_EXISTS` / `ERR_BRANCH_LAST` | branches |
-| `ERR_SCENARIO` | cenário inválido ou com rótulo inexistente |
-| `ERR_CONFIG` | configuração ausente ou fora da faixa |
-| `ERR_EMULATION` | execução que não pôde começar |
-| `ERR_TIMEOUT` | tempo limite estourado |
-| `ERR_UNKNOWN_MNEMONIC` / `ERR_LINE_NOT_FOUND` | consultas do `explain` |
+| `ERR_SCENARIO` | invalid scenario or one with a label that does not exist |
+| `ERR_CONFIG` | missing configuration or out of range |
+| `ERR_EMULATION` | a run that could not start |
+| `ERR_TIMEOUT` | time limit exceeded |
+| `ERR_UNKNOWN_MNEMONIC` / `ERR_LINE_NOT_FOUND` | `explain` queries |
 
 ```python
 from asmx.errors import AsmxError
 
 try:
-    analise = asmx.analyze(open(caminho, encoding="utf-8").read())
-except AsmxError as erro:
-    print(erro.code, erro.message, erro.context)
+    analysis = asmx.analyze(open(path, encoding="utf-8").read())
+except AsmxError as error:
+    print(error.code, error.message, error.context)
 ```
 
-## A tela
+## The screen
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│ menu · branch atual · Validar · Passo · Rodar · Reiniciar · plataforma    │
+│ menu · current branch · Validate · Step · Run · Reset · platform         │
 ├───────────────┬────────────────────────────────────┬─────────────────────┤
-│ Estrutura     │ editor com números, breakpoints    │ Máquina             │
-│ do código     │ e realce                           │ Docs                │
-│               ├────────────────────────────────────┤ Notas               │
-│ dados         │ Problemas · Saída · Testes ·       │                     │
-│ funções       │ Histórico da execução              │                     │
-│ blocos        │                                    │                     │
+│ Structure     │ editor with numbers, breakpoints   │ Machine             │
+│ of the code   │ and highlighting                   │ Docs                │
+│               ├────────────────────────────────────┤ Notes               │
+│ data          │ Problems · Output · Tests ·        │                     │
+│ functions     │ Execution history                  │                     │
+│ blocks        │                                    │                     │
 ├───────────────┴────────────────────────────────────┴─────────────────────┤
-│ Ln, Col · branch · contagem · resumo dos problemas · última ação         │
+│ Ln, Col · branch · count · problem summary · last action                 │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Estrutura do código** mostra dados, funções e blocos básicos. Cada bloco traz
-"vem de" e "vai para" em português, com o motivo do desvio. Clique duas vezes
-para pular até a linha.
+**Code structure** shows data, functions and basic blocks. Each block shows
+"comes from" and "goes to", with the reason for the branch. Double-click to jump
+to the line.
 
-**Editor**: realce de sintaxe, número de linha, ponto vermelho de breakpoint
-(clique na calha), fundo verde na linha que vai executar, fundo vermelho nas
-linhas com erro, ✎ nas linhas anotadas.
+**Editor**: syntax highlighting, line numbers, a red breakpoint dot (click the
+gutter), a green background on the line about to execute, a red background on
+the lines with an error, ✎ on annotated lines.
 
-**Máquina**: os 16 registradores (o que mudou no último passo fica dourado),
-flags, topo da pilha com marcação de endereço de retorno, e o conteúdo de cada
-variável em bytes e em texto.
+**Machine**: the 16 registers (whatever changed in the last step turns gold),
+flags, the top of the stack with the return address marked, and the content of
+each variable in bytes and as text.
 
-**Docs**: ao mover o cursor, mostra o que aquela linha faz — instrução, rótulo,
-diretiva ou dado — junto com a ficha do mnemônico e a explicação dos
-registradores envolvidos. Há busca por prefixo entre os 148 mnemônicos.
+**Docs**: as you move the cursor, it shows what that line does — instruction,
+label, directive or data — together with the mnemonic entry and the explanation
+of the registers involved. There is prefix search across the 148 mnemonics.
 
-## Atalhos
+## Shortcuts
 
-| Tecla | O que faz |
+| Key | What it does |
 |---|---|
-| F5 | validar o código |
-| F7 | rodar até a linha do cursor |
-| F8 | executar um passo |
-| F9 | rodar até o fim ou até o próximo breakpoint |
-| F10 | reiniciar a máquina |
-| F11 | rodar todos os cenários de teste |
-| Ctrl+R | gerar o relatório da análise e abrir no navegador |
-| Ctrl+/ | comentar ou descomentar a seleção |
-| Ctrl+E | anotar a linha atual |
-| Ctrl+B | nova branch |
-| Ctrl+S / Ctrl+O / Ctrl+N | salvar / abrir / novo projeto |
-| Ctrl+F / Ctrl+G | procurar / ir para a linha |
+| F5 | validate the code |
+| F7 | run up to the cursor line |
+| F8 | execute one step |
+| F9 | run to the end or to the next breakpoint |
+| F10 | reset the machine |
+| F11 | run all test scenarios |
+| Ctrl+R | generate the analysis report and open it in the browser |
+| Ctrl+/ | comment or uncomment the selection |
+| Ctrl+E | annotate the current line |
+| Ctrl+B | new branch |
+| Ctrl+S / Ctrl+O / Ctrl+N | save / open / new project |
+| Ctrl+F / Ctrl+G | find / go to line |
 
-## Projeto, branches e anotações
+## Project, branches and notes
 
-Tudo vive em um arquivo `.asmproj` (JSON legível). Dentro dele:
+Everything lives in a single `.asmproj` file (readable JSON). Inside it:
 
-- **branches**: variações do mesmo programa. `Ctrl+B` copia o código atual para
-  uma branch nova, com as anotações e os cenários juntos. Trocar de branch pela
-  caixa na barra de cima. *Branch › Comparar* mostra o diff colorido.
-- **anotações**: comentários que não sujam o `.asm`. `Ctrl+E` na linha, e ela
-  ganha um ✎ na calha. Ficam listadas na aba Notas.
-- **breakpoints**: gravados junto com a branch.
-- **cenários de teste**: descritos abaixo.
+- **branches**: variations of the same program. `Ctrl+B` copies the current code
+  into a new branch, with the notes and the scenarios along with it. Switch
+  branches with the box in the top bar. *Branch › Compare with another branch...* shows
+  the colored diff.
+- **notes**: comments that do not pollute the `.asm`. `Ctrl+E` on the line, and
+  it gets a ✎ in the gutter. They are listed in the Notes tab.
+- **breakpoints**: saved together with the branch.
+- **test scenarios**: described below.
 
-Para levar o código para o NASM, use *Arquivo › Exportar branch como .asm*.
+To take the code to NASM, use *File › Export branch as .asm...*.
 
-## Cenários de teste
+## Test scenarios
 
-Um cenário é um estado inicial mais uma expectativa:
+A scenario is an initial state plus an expectation:
 
-| Campo | Para que serve |
+| Field | What it is for |
 |---|---|
-| Começar em | rótulo onde a execução começa. Vazio = o programa todo. Escolher uma função executa **só ela**, com a pilha limpa |
-| Registradores iniciais | `rdi=1000000, rsi=0x20` — é assim que se passa argumento para a função em teste |
-| Entrada simulada | o que a syscall `read` vai devolver |
-| Saída esperada | compara com o que o programa escreveu |
-| Código de saída esperado | compara com o valor passado ao `exit` |
-| Passa se acusar problema | inverte a lógica: o teste passa quando a execução detecta estouro, laço infinito, divisão por zero… |
-| Limite de instruções | trava de segurança contra laço infinito |
+| Start at | label where the execution starts. Empty = the whole program. Choosing a function runs **only it**, with a clean stack |
+| Initial registers | `rdi=1000000, rsi=0x20` — this is how you pass an argument to the function under test |
+| Simulated input | what the `read` syscall returns |
+| Expected output | compares with what the program wrote |
+| Expected exit code | compares with the value passed to `exit` |
+| Passes if it reports a problem | inverts the logic: the test passes when the run detects overflow, an infinite loop, division by zero… |
+| Instruction limit | safety catch against an infinite loop |
 
-O fluxo típico do "e se o número for muito alto":
+The typical flow for "what if the number is too high":
 
-1. `Ctrl+B` → branch `valor-alto`.
-2. Aba **Testes** › **Novo** → começa em `soma_ate`, `rdi=0xFFFFFFFFFFFFFFFF`,
-   limite 3000, marcar *passa se acusar problema*.
-3. **Rodar todos** (F11). O detalhe embaixo mostra em que linha a soma estourou
-   64 bits e quantas instruções rodaram até lá.
-4. A branch `principal` continua intacta.
+1. `Ctrl+B` → branch `high-value`.
+2. **Tests** tab › **New** → start at `sum_until`, `rdi=0xFFFFFFFFFFFFFFFF`,
+   limit 3000, check *passes if it reports a problem*.
+3. **Run all** (F11). The detail below shows on which line the sum overflowed
+   64 bits and how many instructions ran until then.
+4. The `main` branch stays untouched.
 
-## O validador
+## The validator
 
-F5 roda 30 regras sobre o código. Cada achado tem código, linha, explicação e
-uma dica de correção (clique no item para ler a dica na barra abaixo da lista).
+F5 runs 15 checks over the code, producing 34 problem codes. Every finding has a
+code, a line, an explanation and a fix hint (click the item to read the hint in the
+bar below the list).
 
 ### Strings
 
-| Código | O que pega |
+| Code | What it catches |
 |---|---|
-| STR001 | caractere fora do ASCII na string (acento vira 2+ bytes; `$ - msg` não bate com o número de letras) |
-| STR002 | aspas não fechadas |
-| STR003 | string sem `0` no fim entregue a `printf`, `MessageBox` e parecidos |
-| STR004 | caractere de controle literal dentro da string |
-| STR005 | barra invertida que talvez não seja escape nessa sintaxe |
-| STR006 | string sem terminador e sem `equ $ - rótulo`: ninguém sabe onde ela acaba |
+| STR001 | non-ASCII character in the string (an accent becomes 2+ bytes; `$ - msg` will not match the number of letters) |
+| STR002 | unterminated quotes |
+| STR003 | string without a trailing `0` handed to `printf`, `MessageBox` and the like |
+| STR004 | literal control character inside the string |
+| STR005 | backslash that may not be an escape in this syntax |
+| STR006 | string without a terminator and without `equ $ - label`: nobody knows where it ends |
 
-### Aritmética e operandos
+### Arithmetic and operands
 
-| Código | O que pega |
+| Code | What it catches |
 |---|---|
-| DIV001 | `div`/`idiv` sem `xor rdx, rdx` ou `cqo` antes |
-| DIV002 | divisão por zero literal |
-| DIV003 | `div` com operando imediato (não existe) |
-| IMM001 | o valor não cabe no destino — `mov al, 300` |
-| IMM002 | imediato de 64 bits fora do `mov` |
-| SHF001 | deslocamento maior que o tamanho do operando |
-| MEM001 | `mov [x], 1` sem `byte`/`qword`: tamanho ambíguo |
-| MEM002 | memória dos dois lados |
-| UNK001 | mnemônico que a ferramenta não conhece |
+| DIV001 | `div`/`idiv` without `xor rdx, rdx` or `cqo` before it |
+| DIV002 | literal division by zero |
+| DIV003 | `div` with an immediate operand (it does not exist) |
+| IMM001 | the value does not fit the destination — `mov al, 300` |
+| IMM002 | 64-bit immediate outside `mov` |
+| SHF001 | shift larger than the operand size |
+| MEM001 | `mov [x], 1` without `byte`/`qword`: ambiguous size |
+| MEM002 | memory on both sides |
+| UNK001 | mnemonic the tool does not know |
 
-### Pilha, funções e ABI
+### Stack, functions and ABI
 
-| Código | O que pega |
+| Code | What it catches |
 |---|---|
-| STK001 | `push` sem `pop` antes do `ret` |
-| STK002 | `pop` a mais: a função come a pilha de quem chamou |
-| STK003 | função chamada com `call` que não tem `ret` |
-| ABI001 | chamada no Windows sem os 32 bytes de shadow space |
-| ABI002 | registrador callee-saved alterado sem salvar |
-| REG001 | registrador lido antes de receber qualquer valor |
+| STK001 | `push` without `pop` before the `ret` |
+| STK002 | one `pop` too many: the function eats the caller's stack |
+| STK003 | function called with `call` that has no `ret` |
+| ABI001 | Windows call without the 32 bytes of shadow space |
+| ABI002 | callee-saved register changed without saving it |
+| REG001 | register read before it receives any value |
 
-### Símbolos, fluxo e sistema
+### Symbols, flow and system
 
-| Código | O que pega |
+| Code | What it catches |
 |---|---|
-| SYM001 | `jmp`/`call` para rótulo inexistente |
-| SYM002 | rótulo nunca usado |
-| SYM003 | símbolo usado em operando de memória e nunca definido |
-| ENT001 / ENT002 | sem ponto de entrada / `_start` sem `global` |
-| EXIT001 | programa sem saída explícita |
-| FLOW001 | bloco que nada alcança |
-| FLOW002 | laço que não altera nada: infinito |
-| SYS001 | `syscall` sem definir RAX no bloco |
-| SYS002 | RCX ou R11 lidos depois do `syscall` (são destruídos) |
-| SEC001 / SEC002 | código fora de `.text` / escrita em `.rodata` |
+| SYM001 | `jmp`/`call` to a label that does not exist |
+| SYM002 | label never used |
+| SYM003 | symbol used in a memory operand and never defined |
+| ENT001 / ENT002 | no entry point / `_start` without `global` |
+| EXIT001 | program with no explicit exit |
+| FLOW001 | block that nothing reaches |
+| FLOW002 | loop that changes nothing: infinite |
+| SYS001 | `syscall` without setting RAX in the block |
+| SYS002 | RCX or R11 read after the `syscall` (they are destroyed) |
+| SEC001 / SEC002 | code outside `.text` / write to `.rodata` |
 
-## Depurar uma função sozinha
+## Debugging a function in isolation
 
-*Executar › Depurar função isolada* começa a execução no rótulo escolhido com a
-pilha limpa. O `ret` dela encerra a simulação em vez de acusar erro de pilha.
-Combine com um cenário para preparar os registradores de entrada.
+*Run › Debug single function...* starts execution at the chosen label with a clean
+stack. Its `ret` ends the simulation instead of reporting a stack error. Combine
+it with a scenario to set up the input registers.
 
-## Limites honestos
+## Honest limits
 
-A máquina virtual é didática, não um emulador de CPU:
+The virtual machine is didactic, not a CPU emulator:
 
-- não monta nem liga nada; não gera `.o` nem executável;
-- executa o essencial de inteiros: SSE/ponto flutuante aparece na documentação
-  mas não é simulado;
-- macros do NASM (`%macro`, `%define`) e `struc` são lidos como diretivas, sem
-  expansão;
-- syscalls do Linux emuladas: `write`, `read`, `exit`, `exit_group`, `getpid`,
-  `time`, `brk`, `getrandom`, `nanosleep`. As demais devolvem 0 e avisam;
-- API do Windows: `ExitProcess`, `GetStdHandle`, `WriteConsoleA`, `WriteFile`,
-  `MessageBoxA/W`, `Sleep`, `GetLastError`. As demais viram stub;
-- memória é um dicionário de bytes: não há paginação, proteção real nem
-  segmentação — o validador avisa sobre `.rodata`, a execução não;
-- o resultado de uma execução aqui **não** garante que o binário real funcione.
-  Serve para entender e para achar defeito cedo;
-- o classificador de comportamento e o mapeamento MITRE ATT&CK são **indícios**
-  lidos de padrões estáticos (syscalls, APIs, laços, strings), com evidência e
-  confiança. Não são prova de intenção e não substituem um analista;
-- o relatório é um arquivo só e **não faz requisição de rede**: sem CDN, sem
-  fonte remota, sem telemetria. Os links do MITRE são referência, não recurso
-  carregado.
+- it does not assemble or link anything; it generates neither `.o` nor an
+  executable;
+- it executes the integer essentials: SSE/floating point appears in the
+  documentation but is not simulated;
+- NASM macros (`%macro`, `%define`) and `struc` are read as directives, without
+  expansion;
+- emulated Linux syscalls: `write`, `read`, `exit`, `exit_group`, `getpid`,
+  `time`, `brk`, `getrandom`, `nanosleep`. The others return 0 and warn;
+- Windows API: `ExitProcess`, `GetStdHandle`, `WriteConsoleA`, `WriteFile`,
+  `MessageBoxA/W`, `Sleep`, `GetLastError`. The others become stubs;
+- memory is a dictionary of bytes: there is no paging, no real protection and no
+  segmentation — the validator warns about `.rodata`, the execution does not;
+- the result of a run here **does not** guarantee that the real binary works. It
+  is there to help you understand and to find defects early;
+- the behavior classifier and the MITRE ATT&CK mapping are **indicators** read
+  from static patterns (syscalls, APIs, loops, strings), with evidence and
+  confidence. They are not proof of intent and do not replace an analyst;
+- the report is a single file and **makes no network request**: no CDN, no remote
+  font, no telemetry. The MITRE links are references, not loaded resources.

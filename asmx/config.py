@@ -1,15 +1,16 @@
-"""Configuração do ASM X: um dataclass, arquivo opcional e variáveis de ambiente.
+"""ASM X configuration: one dataclass, an optional file and environment variables.
 
-A ordem de precedência é sempre a mesma, do mais específico para o mais geral:
+The precedence order is always the same, from the most specific to the most
+general:
 
-1. argumento explícito (``--timeout 5`` na linha de comando);
-2. variáveis de ambiente (``ASMX_TIMEOUT=5``);
-3. arquivo de configuração (``asmx.yaml``, ``asmx.json`` ou ``--config``);
-4. padrões do :class:`SandboxConfig`.
+1. explicit argument (``--timeout 5`` on the command line);
+2. environment variables (``ASMX_TIMEOUT=5``);
+3. configuration file (``asmx.yaml``, ``asmx.json`` or ``--config``);
+4. defaults of :class:`SandboxConfig`.
 
-YAML é opcional de propósito: o ASM X não tem dependência obrigatória, então
-``from_yaml_file`` só funciona se o PyYAML estiver instalado. JSON usa só a
-biblioteca padrão e sempre funciona.
+YAML is optional on purpose: ASM X has no mandatory dependency, so
+``from_yaml_file`` only works when PyYAML is installed. JSON uses only the
+standard library and always works.
 
 Example:
     >>> from asmx.config import SandboxConfig
@@ -36,10 +37,10 @@ __all__ = [
     "USER_DIRS",
 ]
 
-#: Variável de ambiente que aponta para o arquivo de configuração.
+#: Environment variable that points to the configuration file.
 CONFIG_ENV_VAR = "ASMX_CONFIG"
 
-#: Nomes procurados no diretório atual, nesta ordem.
+#: Names searched in the current directory, in this order.
 CANDIDATE_NAMES: Tuple[str, ...] = (
     "asmx.yaml",
     "asmx.yml",
@@ -48,91 +49,93 @@ CANDIDATE_NAMES: Tuple[str, ...] = (
     ".asmx.json",
 )
 
-#: Diretórios do usuário procurados depois do diretório atual.
+#: User directories searched after the current directory.
 USER_DIRS: Tuple[str, ...] = ("~/.config/asmx", "~/.asmx")
 
-#: Extensões reconhecidas por :meth:`SandboxConfig.from_file`.
+#: Extensions recognized by :meth:`SandboxConfig.from_file`.
 YAML_SUFFIXES = (".yaml", ".yml")
 
-#: Menor memória aceita, em MB.
+#: Smallest accepted memory, in MB.
 MIN_MEMORY_MB = 16
 
 
 def _as_bool(value: Any) -> bool:
-    """Converte valores de arquivo/ambiente em booleano.
+    """Converts file/environment values into a boolean.
 
     Args:
-        value: Valor bruto (``True``, ``"sim"``, ``"0"``, ``1``...).
+        value: Raw value (``True``, ``"yes"``, ``"0"``, ``1``...). The
+            Portuguese words ``sim`` and ``nao`` are also accepted, as a
+            courtesy for existing files.
 
     Returns:
-        O booleano correspondente, usando as mesmas palavras de
+        The corresponding boolean, using the same words as
         :func:`asmx.logging_setup.env_flag`.
 
     Raises:
-        ConfigError: Quando o texto não é um booleano reconhecido.
+        ConfigError: When the text is not a recognized boolean.
     """
     if isinstance(value, bool):
         return value
     if isinstance(value, (int, float)):
         return bool(value)
-    texto = str(value).strip().lower()
-    if texto in ("1", "true", "yes", "on", "sim"):
+    text = str(value).strip().lower()
+    if text in ("1", "true", "yes", "on", "sim"):
         return True
-    if texto in ("0", "false", "no", "off", "", "nao", "não"):
+    if text in ("0", "false", "no", "off", "", "nao", "n\u00e3o"):
         return False
-    raise ConfigError("valor booleano inválido: %r (use true/false)" % (value,))
+    raise ConfigError("invalid boolean value: %r (use true/false)" % (value,))
 
 
 def _as_float(value: Any, field_name: str) -> float:
-    """Converte para ``float`` explicando o campo em caso de erro.
+    """Converts to ``float``, naming the field when it fails.
 
     Returns:
-        O valor convertido.
+        The converted value.
 
     Raises:
-        ConfigError: Quando o texto não é um número.
+        ConfigError: When the text is not a number.
     """
     try:
         return float(value)
-    except (TypeError, ValueError) as erro:
+    except (TypeError, ValueError) as error:
         raise ConfigError(
-            "o campo %s precisa ser um número (recebi %r)" % (field_name, value), field=field_name
-        ) from erro
+            "the field %s needs to be a number (got %r)" % (field_name, value), field=field_name
+        ) from error
 
 
 def _as_int(value: Any, field_name: str) -> int:
-    """Converte para ``int`` explicando o campo em caso de erro.
+    """Converts to ``int``, naming the field when it fails.
 
     Returns:
-        O valor convertido, aceitando hexadecimal e octal.
+        The converted value, accepting hexadecimal and octal.
 
     Raises:
-        ConfigError: Quando o texto não é um inteiro.
+        ConfigError: When the text is not an integer.
     """
     try:
         return int(str(value).strip(), 0)
-    except (TypeError, ValueError) as erro:
+    except (TypeError, ValueError) as error:
         raise ConfigError(
-            "o campo %s precisa ser um inteiro (recebi %r)" % (field_name, value), field=field_name
-        ) from erro
+            "the field %s needs to be an integer (got %r)" % (field_name, value), field=field_name
+        ) from error
 
 
 @dataclass
 class SandboxConfig:
-    """Parâmetros que controlam análise e execução.
+    """Parameters that control analysis and execution.
 
     Attributes:
-        timeout: Tempo máximo de parede, em segundos, para uma execução.
-        max_steps: Limite de instruções por execução (protege de laço infinito).
-        max_memory: Memória reservada ao sandbox, em MB (informativo).
-        enable_network: Reservado para integrações externas; a máquina virtual
-            do ASM X nunca acessa a rede.
-        log_level: ``DEBUG``, ``INFO``, ``WARNING``, ``ERROR`` ou ``CRITICAL``.
-        log_json: Emite o log em JSON (uma linha por evento).
-        log_file: Arquivo que recebe a cópia dos logs.
-        workers: Processos paralelos usados em análise de vários arquivos.
-        output_dir: Diretório onde os relatórios são gravados.
-        strict: Transforma problema detectado em exceção, em vez de aviso.
+        timeout: Maximum wall clock time, in seconds, for one run.
+        max_steps: Instruction limit per run (protects against infinite loops).
+        max_memory: Memory reserved for the sandbox, in MB (informative).
+        enable_network: Reserved for external integrations; the ASM X virtual
+            machine never accesses the network.
+        log_level: ``DEBUG``, ``INFO``, ``WARNING``, ``ERROR`` or ``CRITICAL``.
+        log_json: Emits the log as JSON (one line per event).
+        log_file: File that receives a copy of the logs.
+        workers: Parallel processes used when analyzing several files.
+        output_dir: Directory where the reports are written.
+        strict: Turns a detected problem into an exception, instead of a warning.
     """
 
     timeout: float = 30.0
@@ -146,7 +149,7 @@ class SandboxConfig:
     output_dir: str = "results"
     strict: bool = False
 
-    #: Nomes dos campos, na ordem em que aparecem nos relatórios.
+    #: Names of the fields, in the order they appear in the reports.
     FIELD_NAMES: ClassVar[Tuple[str, ...]] = (
         "timeout",
         "max_steps",
@@ -160,7 +163,7 @@ class SandboxConfig:
         "strict",
     )
 
-    #: Variáveis de ambiente reconhecidas, por campo.
+    #: Environment variables recognized, by field.
     ENV_NAMES: ClassVar[Dict[str, str]] = {
         "timeout": "ASMX_TIMEOUT",
         "max_steps": "ASMX_MAX_STEPS",
@@ -175,7 +178,7 @@ class SandboxConfig:
     }
 
     def __post_init__(self) -> None:
-        """Normaliza tipos e caixa do nível de log depois da construção."""
+        """Normalizes types and the case of the log level after construction."""
         self.timeout = _as_float(self.timeout, "timeout")
         self.max_steps = _as_int(self.max_steps, "max_steps")
         self.max_memory = _as_int(self.max_memory, "max_memory")
@@ -188,16 +191,16 @@ class SandboxConfig:
             self.log_file = str(self.log_file)
         self.output_dir = str(self.output_dir)
 
-    # ----------------------------------------------------------- validação -
+    # ------------------------------------------------------------ validation -
     def validate(self) -> "SandboxConfig":
-        """Confere as faixas de cada campo.
+        """Checks the range of every field.
 
         Returns:
-            O próprio objeto, para encadear chamadas.
+            The object itself, to chain calls.
 
         Raises:
-            ConfigError: No primeiro campo fora da faixa, com o nome do campo
-                em ``context["field"]``.
+            ConfigError: On the first field out of range, with the field name
+                in ``context["field"]``.
 
         Example:
             >>> SandboxConfig(timeout=1).validate().timeout
@@ -205,56 +208,55 @@ class SandboxConfig:
         """
         if not 0 < self.timeout <= 86_400:
             raise ConfigError(
-                "timeout precisa ficar entre 0 e 86400 segundos (recebi %g)" % self.timeout,
+                "timeout needs to be between 0 and 86400 seconds (got %g)" % self.timeout,
                 field="timeout",
             )
         if self.max_steps < 1:
             raise ConfigError(
-                "max_steps precisa ser pelo menos 1 (recebi %d)" % self.max_steps, field="max_steps"
+                "max_steps needs to be at least 1 (got %d)" % self.max_steps, field="max_steps"
             )
         if self.max_memory < MIN_MEMORY_MB:
             raise ConfigError(
-                "max_memory precisa ser pelo menos %d MB (recebi %d)"
-                % (MIN_MEMORY_MB, self.max_memory),
+                "max_memory needs to be at least %d MB (got %d)" % (MIN_MEMORY_MB, self.max_memory),
                 field="max_memory",
             )
         if self.log_level not in LOG_LEVELS:
             raise ConfigError(
-                "log_level desconhecido: %s (use %s)" % (self.log_level, ", ".join(LOG_LEVELS)),
+                "unknown log_level: %s (use %s)" % (self.log_level, ", ".join(LOG_LEVELS)),
                 field="log_level",
             )
         if not 1 <= self.workers <= 256:
             raise ConfigError(
-                "workers precisa ficar entre 1 e 256 (recebi %d)" % self.workers, field="workers"
+                "workers needs to be between 1 and 256 (got %d)" % self.workers, field="workers"
             )
         if not self.output_dir.strip():
-            raise ConfigError("output_dir não pode ficar vazio", field="output_dir")
+            raise ConfigError("output_dir cannot be empty", field="output_dir")
         return self
 
-    # -------------------------------------------------------- serialização -
+    # -------------------------------------------------------- serialization -
     def to_dict(self) -> Dict[str, Any]:
-        """Converte a configuração em dicionário.
+        """Converts the configuration into a dictionary.
 
         Returns:
-            Dicionário com todos os :data:`FIELD_NAMES` em tipos simples.
+            Dictionary with all :data:`FIELD_NAMES` in simple types.
         """
-        return {nome: getattr(self, nome) for nome in self.FIELD_NAMES}
+        return {name: getattr(self, name) for name in self.FIELD_NAMES}
 
     def describe(self) -> str:
-        """Resume a configuração em uma linha legível.
+        """Summarizes the configuration in one readable line.
 
         Returns:
-            Texto com os campos que mudam o comportamento da execução.
+            Text with the fields that change the behavior of the run.
 
         Example:
             >>> SandboxConfig(timeout=2, max_steps=10).describe()
-            'timeout=2s · max_steps=10 · memória=512MB · rede=desligada · log=INFO · workers=4'
+            'timeout=2s · max_steps=10 · memory=512MB · network=off · log=INFO · workers=4'
         """
-        return "timeout=%gs · max_steps=%d · memória=%dMB · rede=%s · log=%s · workers=%d" % (
+        return "timeout=%gs · max_steps=%d · memory=%dMB · network=%s · log=%s · workers=%d" % (
             self.timeout,
             self.max_steps,
             self.max_memory,
-            "ligada" if self.enable_network else "desligada",
+            "on" if self.enable_network else "off",
             self.log_level,
             self.workers,
         )
@@ -263,184 +265,182 @@ class SandboxConfig:
     def from_dict(
         cls, data: Optional[Mapping[str, Any]] = None, *, path: Optional[str] = None
     ) -> "SandboxConfig":
-        """Cria a configuração a partir de um mapeamento.
+        """Creates the configuration from a mapping.
 
         Args:
-            data: Campos a sobrepor aos padrões. ``None`` equivale a ``{}``.
-            path: Arquivo de origem, usado nas mensagens de erro.
+            data: Fields that override the defaults. ``None`` means ``{}``.
+            path: Source file, used in the error messages.
 
         Returns:
-            Configuração validada.
+            Validated configuration.
 
         Raises:
-            ConfigError: Se houver campo desconhecido (com sugestão do nome
-                parecido) ou valor fora da faixa.
+            ConfigError: On an unknown field (with a suggestion of a similar
+                name) or a value out of range.
 
         Example:
             >>> SandboxConfig.from_dict({"workers": "2"}).workers
             2
         """
-        valores: Dict[str, Any] = dict(data or {})
-        conhecidos = set(cls.FIELD_NAMES)
-        desconhecidos = [chave for chave in valores if chave not in conhecidos]
-        if desconhecidos:
-            chave = desconhecidos[0]
-            parecidos = difflib.get_close_matches(chave, sorted(conhecidos), n=1)
-            dica = " (você quis dizer %s?)" % parecidos[0] if parecidos else ""
-            origem = " em %s" % path if path else ""
-            raise ConfigError(
-                "campo desconhecido%s: %s%s" % (origem, chave, dica), path=path, field=chave
-            )
+        values: Dict[str, Any] = dict(data or {})
+        known = set(cls.FIELD_NAMES)
+        unknown = [key for key in values if key not in known]
+        if unknown:
+            key = unknown[0]
+            similar = difflib.get_close_matches(key, sorted(known), n=1)
+            hint = " (did you mean %s?)" % similar[0] if similar else ""
+            origin = " in %s" % path if path else ""
+            raise ConfigError("unknown field%s: %s%s" % (origin, key, hint), path=path, field=key)
         try:
-            config = cls(**valores)
-        except TypeError as erro:
+            config = cls(**values)
+        except TypeError as error:
             raise ConfigError(
-                "configuração inválida%s: %s" % (" em %s" % path if path else "", erro), path=path
-            ) from erro
+                "invalid configuration%s: %s" % (" in %s" % path if path else "", error), path=path
+            ) from error
         return config.validate()
 
-    # ------------------------------------------------------------- arquivos -
+    # --------------------------------------------------------------- files -
     @classmethod
     def from_json_file(cls, path: str) -> "SandboxConfig":
-        """Lê a configuração de um arquivo JSON.
+        """Reads the configuration from a JSON file.
 
         Args:
-            path: Caminho do ``.json``.
+            path: Path of the ``.json``.
 
         Returns:
-            Configuração validada.
+            Validated configuration.
 
         Raises:
-            ConfigError: Arquivo ausente, JSON inválido ou campo desconhecido.
+            ConfigError: Missing file, invalid JSON or unknown field.
         """
         try:
-            with open(path, encoding="utf-8") as arquivo:
-                dados = json.load(arquivo)
-        except OSError as erro:
+            with open(path, encoding="utf-8") as file:
+                data = json.load(file)
+        except OSError as error:
             raise ConfigError(
-                "não consegui abrir a configuração %s: %s" % (path, erro), path=path
-            ) from erro
-        except json.JSONDecodeError as erro:
+                "could not open the configuration %s: %s" % (path, error), path=path
+            ) from error
+        except json.JSONDecodeError as error:
             raise ConfigError(
-                "JSON inválido em %s (linha %d, coluna %d): %s"
-                % (path, erro.lineno, erro.colno, erro.msg),
+                "invalid JSON in %s (line %d, column %d): %s"
+                % (path, error.lineno, error.colno, error.msg),
                 path=path,
-            ) from erro
-        if not isinstance(dados, dict):
-            raise ConfigError("a configuração em %s precisa ser um objeto JSON" % path, path=path)
-        return cls.from_dict(dados, path=path)
+            ) from error
+        if not isinstance(data, dict):
+            raise ConfigError("the configuration in %s needs to be a JSON object" % path, path=path)
+        return cls.from_dict(data, path=path)
 
     @classmethod
     def from_yaml_file(cls, path: str) -> "SandboxConfig":
-        """Lê a configuração de um arquivo YAML (exige PyYAML instalado).
+        """Reads the configuration from a YAML file (requires PyYAML installed).
 
         Args:
-            path: Caminho do ``.yaml`` ou ``.yml``.
+            path: Path of the ``.yaml`` or ``.yml``.
 
         Returns:
-            Configuração validada.
+            Validated configuration.
 
         Raises:
-            ConfigError: PyYAML ausente, arquivo ilegível ou conteúdo inválido.
+            ConfigError: PyYAML missing, unreadable file or invalid content.
         """
         try:
             import yaml  # type: ignore[import-untyped]
-        except ImportError as erro:
+        except ImportError as error:
             raise ConfigError(
-                "para ler %s instale o PyYAML (pip install pyyaml) ou use um "
-                "arquivo .json, que não precisa de dependência" % path,
+                "to read %s install PyYAML (pip install pyyaml) or use a "
+                ".json file, which needs no dependency" % path,
                 path=path,
-            ) from erro
+            ) from error
         try:
-            with open(path, encoding="utf-8") as arquivo:
-                dados = yaml.safe_load(arquivo)
-        except OSError as erro:
+            with open(path, encoding="utf-8") as file:
+                data = yaml.safe_load(file)
+        except OSError as error:
             raise ConfigError(
-                "não consegui abrir a configuração %s: %s" % (path, erro), path=path
-            ) from erro
-        except yaml.YAMLError as erro:
-            raise ConfigError("YAML inválido em %s: %s" % (path, erro), path=path) from erro
-        if dados is None:
-            dados = {}
-        if not isinstance(dados, dict):
-            raise ConfigError("a configuração em %s precisa ser um mapa YAML" % path, path=path)
-        return cls.from_dict(dados, path=path)
+                "could not open the configuration %s: %s" % (path, error), path=path
+            ) from error
+        except yaml.YAMLError as error:
+            raise ConfigError("invalid YAML in %s: %s" % (path, error), path=path) from error
+        if data is None:
+            data = {}
+        if not isinstance(data, dict):
+            raise ConfigError("the configuration in %s needs to be a YAML map" % path, path=path)
+        return cls.from_dict(data, path=path)
 
     @classmethod
     def from_file(cls, path: str) -> "SandboxConfig":
-        """Lê a configuração escolhendo o formato pela extensão.
+        """Reads the configuration, choosing the format by the extension.
 
         Args:
-            path: ``.json``, ``.yaml`` ou ``.yml``.
+            path: ``.json``, ``.yaml`` or ``.yml``.
 
         Returns:
-            Configuração validada.
+            Validated configuration.
 
         Raises:
-            ConfigError: Extensão não reconhecida ou conteúdo inválido.
+            ConfigError: Unrecognized extension or invalid content.
 
         Example:
-            >>> SandboxConfig.from_file("nao_existe.json")   # doctest: +SKIP
+            >>> SandboxConfig.from_file("does_not_exist.json")   # doctest: +SKIP
         """
-        extensao = os.path.splitext(path)[1].lower()
-        if extensao in YAML_SUFFIXES:
+        extension = os.path.splitext(path)[1].lower()
+        if extension in YAML_SUFFIXES:
             return cls.from_yaml_file(path)
-        if extensao == ".json":
+        if extension == ".json":
             return cls.from_json_file(path)
         raise ConfigError(
-            "extensão de configuração não reconhecida: %s (use .json, .yaml ou .yml)"
-            % (extensao or path),
+            "unrecognized configuration extension: %s (use .json, .yaml or .yml)"
+            % (extension or path),
             path=path,
         )
 
     @classmethod
     def find_file(cls, start: Optional[str] = None) -> Optional[str]:
-        """Procura um arquivo de configuração nos lugares convencionais.
+        """Searches for a configuration file in the conventional places.
 
-        Olha primeiro ``$ASMX_CONFIG``, depois :data:`CANDIDATE_NAMES` no
-        diretório ``start`` (padrão: diretório atual) e por fim
-        ``config.yaml``/``config.json`` dentro de :data:`USER_DIRS`.
+        It looks first at ``$ASMX_CONFIG``, then at :data:`CANDIDATE_NAMES` in
+        the ``start`` directory (default: the current directory) and finally at
+        ``config.yaml``/``config.json`` inside :data:`USER_DIRS`.
 
         Args:
-            start: Diretório inicial da busca.
+            start: Initial directory of the search.
 
         Returns:
-            Caminho do primeiro arquivo encontrado, ou ``None``.
+            Path of the first file found, or ``None``.
         """
-        apontado = os.environ.get(CONFIG_ENV_VAR)
-        if apontado and os.path.isfile(apontado):
-            return apontado
+        pointed = os.environ.get(CONFIG_ENV_VAR)
+        if pointed and os.path.isfile(pointed):
+            return pointed
         base = os.path.abspath(os.path.expanduser(start or os.getcwd()))
-        candidatos = [os.path.join(base, nome) for nome in CANDIDATE_NAMES]
-        for pasta in USER_DIRS:
-            raiz = os.path.expanduser(pasta)
-            candidatos += [os.path.join(raiz, nome) for nome in CANDIDATE_NAMES]
-            candidatos += [os.path.join(raiz, "config.yaml"), os.path.join(raiz, "config.json")]
-        for caminho in candidatos:
-            if os.path.isfile(caminho):
-                return caminho
+        candidates = [os.path.join(base, name) for name in CANDIDATE_NAMES]
+        for folder in USER_DIRS:
+            root = os.path.expanduser(folder)
+            candidates += [os.path.join(root, name) for name in CANDIDATE_NAMES]
+            candidates += [os.path.join(root, "config.yaml"), os.path.join(root, "config.json")]
+        for candidate in candidates:
+            if os.path.isfile(candidate):
+                return candidate
         return None
 
-    # ------------------------------------------------------------ ambiente -
+    # ----------------------------------------------------------- environment -
     @classmethod
     def from_env(cls, environ: Optional[Mapping[str, str]] = None) -> "SandboxConfig":
-        """Monta a configuração só com variáveis de ambiente.
+        """Builds the configuration from environment variables only.
 
         Args:
-            environ: Mapa de ambiente; padrão ``os.environ``.
+            environ: Environment map; default ``os.environ``.
 
         Returns:
-            Configuração validada (padrões quando nenhuma variável existe).
+            Validated configuration (defaults when no variable exists).
 
         Raises:
-            ConfigError: Variável presente com valor inválido.
+            ConfigError: Variable present with an invalid value.
         """
-        fonte = os.environ if environ is None else environ
-        valores: Dict[str, Any] = {}
-        for campo, variavel in cls.ENV_NAMES.items():
-            if variavel in fonte and str(fonte[variavel]).strip() != "":
-                valores[campo] = fonte[variavel]
-        return cls.from_dict(valores)
+        source = os.environ if environ is None else environ
+        values: Dict[str, Any] = {}
+        for field_name, variable in cls.ENV_NAMES.items():
+            if variable in source and str(source[variable]).strip() != "":
+                values[field_name] = source[variable]
+        return cls.from_dict(values)
 
     @classmethod
     def load(
@@ -450,114 +450,114 @@ class SandboxConfig:
         environ: Optional[Mapping[str, str]] = None,
         start: Optional[str] = None,
     ) -> "SandboxConfig":
-        """Carrega a configuração completa (arquivo + ambiente).
+        """Loads the complete configuration (file + environment).
 
-        Sem ``path``, procura um arquivo com :meth:`find_file`. As variáveis de
-        ambiente sobrepõem o arquivo, e o resultado é validado.
+        Without ``path``, it searches for a file with :meth:`find_file`. The
+        environment variables override the file, and the result is validated.
 
         Args:
-            path: Arquivo explícito de configuração.
-            environ: Mapa de ambiente usado na sobreposição.
-            start: Diretório inicial da busca automática.
+            path: Explicit configuration file.
+            environ: Environment map used in the override.
+            start: Initial directory of the automatic search.
 
         Returns:
-            Configuração validada.
+            Validated configuration.
 
         Raises:
-            ConfigError: Arquivo indicado inexistente ou conteúdo inválido.
+            ConfigError: Indicated file missing or invalid content.
         """
-        fonte = os.environ if environ is None else environ
-        escolhido = path or fonte.get(CONFIG_ENV_VAR)
+        source = os.environ if environ is None else environ
+        chosen = path or source.get(CONFIG_ENV_VAR)
         base = cls()
-        if escolhido:
-            if not os.path.isfile(escolhido):
-                raise ConfigError("configuração não encontrada: %s" % escolhido, path=escolhido)
-            base = cls.from_file(escolhido)
+        if chosen:
+            if not os.path.isfile(chosen):
+                raise ConfigError("configuration not found: %s" % chosen, path=chosen)
+            base = cls.from_file(chosen)
         else:
-            encontrado = cls.find_file(start)
-            if encontrado:
-                base = cls.from_file(encontrado)
-        do_ambiente = cls.from_env(fonte)
-        return base.merged(**cls._only_set(do_ambiente, fonte))
+            found = cls.find_file(start)
+            if found:
+                base = cls.from_file(found)
+        from_environment = cls.from_env(source)
+        return base.merged(**cls._only_set(from_environment, source))
 
     @staticmethod
     def _only_set(config: "SandboxConfig", environ: Mapping[str, str]) -> Dict[str, Any]:
-        """Descobre quais campos vieram mesmo do ambiente.
+        """Finds out which fields really came from the environment.
 
         Returns:
-            Dicionário apenas com os campos cuja variável está definida.
+            Dictionary with only the fields whose variable is defined.
         """
         return {
-            campo: getattr(config, campo)
-            for campo, variavel in SandboxConfig.ENV_NAMES.items()
-            if variavel in environ and str(environ[variavel]).strip() != ""
+            field_name: getattr(config, field_name)
+            for field_name, variable in SandboxConfig.ENV_NAMES.items()
+            if variable in environ and str(environ[variable]).strip() != ""
         }
 
     def merged(self, **overrides: Any) -> "SandboxConfig":
-        """Devolve uma cópia com campos trocados.
+        """Returns a copy with swapped fields.
 
         Args:
-            **overrides: Campos a substituir (``None`` é ignorado).
+            **overrides: Fields to replace (``None`` is ignored).
 
         Returns:
-            Nova configuração validada.
+            New validated configuration.
 
         Raises:
-            ConfigError: Campo desconhecido ou valor inválido.
+            ConfigError: Unknown field or invalid value.
 
         Example:
             >>> SandboxConfig().merged(timeout=3).timeout
             3.0
         """
-        limpos = {chave: valor for chave, valor in overrides.items() if valor is not None}
-        desconhecidos = [chave for chave in limpos if chave not in self.FIELD_NAMES]
-        if desconhecidos:
-            raise ConfigError("campo desconhecido: %s" % desconhecidos[0], field=desconhecidos[0])
-        return replace(self, **limpos).validate()
+        cleaned = {key: value for key, value in overrides.items() if value is not None}
+        unknown = [key for key in cleaned if key not in self.FIELD_NAMES]
+        if unknown:
+            raise ConfigError("unknown field: %s" % unknown[0], field=unknown[0])
+        return replace(self, **cleaned).validate()
 
     def save(self, path: str, *, fmt: Optional[str] = None) -> str:
-        """Grava a configuração em disco.
+        """Writes the configuration to disk.
 
         Args:
-            path: Arquivo de destino.
-            fmt: ``"json"`` ou ``"yaml"``; por padrão a extensão decide.
+            path: Destination file.
+            fmt: ``"json"`` or ``"yaml"``; by default the extension decides.
 
         Returns:
-            O caminho gravado.
+            The path that was written.
 
         Raises:
-            ConfigError: Formato desconhecido, PyYAML ausente ou falha de I/O.
+            ConfigError: Unknown format, PyYAML missing or I/O failure.
         """
-        formato = (fmt or os.path.splitext(path)[1].lstrip(".") or "json").lower()
-        if formato in ("yml", "yaml"):
+        fmt_name = (fmt or os.path.splitext(path)[1].lstrip(".") or "json").lower()
+        if fmt_name in ("yml", "yaml"):
             try:
                 import yaml
-            except ImportError as erro:
+            except ImportError as error:
                 raise ConfigError(
-                    "para gravar YAML instale o PyYAML; use .json como alternativa", path=path
-                ) from erro
-            conteudo = yaml.safe_dump(self.to_dict(), allow_unicode=True, sort_keys=False)
-        elif formato == "json":
-            conteudo = json.dumps(self.to_dict(), indent=2, ensure_ascii=False) + "\n"
+                    "to write YAML install PyYAML; use .json as an alternative", path=path
+                ) from error
+            content = yaml.safe_dump(self.to_dict(), allow_unicode=True, sort_keys=False)
+        elif fmt_name == "json":
+            content = json.dumps(self.to_dict(), indent=2, ensure_ascii=False) + "\n"
         else:
-            raise ConfigError("formato de configuração não suportado: %s" % formato, path=path)
+            raise ConfigError("unsupported configuration format: %s" % fmt_name, path=path)
         try:
-            with open(path, "w", encoding="utf-8") as arquivo:
-                arquivo.write(conteudo)
-        except OSError as erro:
-            raise ConfigError("não consegui gravar %s: %s" % (path, erro), path=path) from erro
+            with open(path, "w", encoding="utf-8") as file:
+                file.write(content)
+        except OSError as error:
+            raise ConfigError("could not write %s: %s" % (path, error), path=path) from error
         return path
 
-    # --------------------------------------------------------------- extra -
+    # -------------------------------------------------------------- extra --
     def apply_logging(self, stream: Any = None, *, force: bool = True) -> LoggingState:
-        """Aplica os campos de log desta configuração ao logging da aplicação.
+        """Applies the log fields of this configuration to the application logging.
 
         Args:
-            stream: Fluxo de saída (padrão ``sys.stderr``); útil nos testes.
-            force: Reconfigura mesmo que já exista configuração aplicada.
+            stream: Output stream (default ``sys.stderr``); useful in tests.
+            force: Reconfigures even when a configuration is already applied.
 
         Returns:
-            O :class:`~asmx.logging_setup.LoggingState` resultante.
+            The resulting :class:`~asmx.logging_setup.LoggingState`.
         """
         return configure_logging(
             self.log_level,
@@ -568,18 +568,18 @@ class SandboxConfig:
         )
 
     def __repr__(self) -> str:
-        """Representação curta com os campos que importam na execução.
+        """Short representation with the fields that matter in a run.
 
         Returns:
-            Texto como ``SandboxConfig(timeout=30s · ...)``.
+            Text such as ``SandboxConfig(timeout=30s · ...)``.
         """
         return "SandboxConfig(%s)" % self.describe()
 
     def field_names(self) -> Tuple[str, ...]:
-        """Lista os campos na ordem de :data:`FIELD_NAMES`.
+        """Lists the fields in the order of :data:`FIELD_NAMES`.
 
         Returns:
-            Tupla com os nomes dos campos.
+            Tuple with the names of the fields.
 
         Example:
             >>> len(SandboxConfig().field_names())

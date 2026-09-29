@@ -1,4 +1,4 @@
-"""Interface gráfica (Tkinter) do ASM X."""
+"""Tkinter graphical interface of ASM X."""
 
 from __future__ import annotations
 

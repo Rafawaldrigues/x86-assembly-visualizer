@@ -1,55 +1,52 @@
-"""Comportamentos: o que o programa faz, com mapeamento honesto para o ATT&CK.
+"""Behaviors: what the program does, with honest mapping to ATT&CK.
 
-Esta é a camada que responde "o que este programa faz?" a partir da
-:class:`~asmx.analyzer.Analysis`: cada :class:`Behavior` reúne evidências
-concretas (linha + mnemônico, syscall ou API) e, quando existe sinal de
-verdade, um ou mais identificadores do MITRE ATT&CK.
+This is the layer that answers "what does this program do?" from the
+:class:`~asmx.analyzer.Analysis`: each :class:`Behavior` gathers concrete
+evidence (line + mnemonic, syscall or API) and, when there is a real signal,
+one or more MITRE ATT&CK identifiers.
 
-**Isto é indício, não veredito.** Toda detecção sai de padrões estáticos do
-fonte — nomes de syscalls, APIs chamadas, texto das strings e o formato dos
-laços — e nenhuma delas prova comportamento malicioso: um programa didático
-que abre um arquivo e um coletor de dados usam exatamente a mesma chamada. O
-mapeamento para o ATT&CK é uma pista para o analista, com a mesma ressalva, e
-por isso toda descrição de técnica diz que se trata de indício derivado de
-padrões estáticos, não de prova.
+**This is a hint, not a verdict.** Every detection comes from static patterns in
+the source — syscall names, called APIs, the text of the strings and the shape
+of the loops — and none of them proves malicious behavior: a didactic program
+that opens a file and a data collector use exactly the same call. The mapping to
+ATT&CK is a clue for the analyst, with the same caveat, and that is why every
+technique description says it is a hint derived from static patterns, not proof.
 
-Regras de honestidade aplicadas aqui:
+Honesty rules applied here:
 
-* todo comportamento tem pelo menos uma evidência que cita a linha e o
-  mnemônico, a syscall ou a API observada;
-* a confiança vem da quantidade de evidências (1-2 -> 60, 3-5 -> 80, 6+ -> 95)
-  e indícios fracos (cifra caseira, espera ou medição de tempo em laço, avisos
-  do validador) ficam limitados a 50;
-* categoria sem sinal nenhum não aparece: é melhor uma lista vazia do que uma
-  suspeita inventada;
-* :func:`classify` nunca levanta exceção — um programa vazio devolve ``[]``.
+* every behavior has at least one piece of evidence citing the line and the
+  mnemonic, the syscall or the API observed;
+* confidence comes from the number of evidence items (1-2 -> 60, 3-5 -> 80,
+  6+ -> 95) and weak hints (home-made cipher, waiting or measuring time in a
+  loop, validator warnings) are capped at 50;
+* a category with no signal at all does not appear: an empty list is better
+  than an invented suspicion;
+* :func:`classify` never raises — an empty program returns ``[]``.
 
-Limitações conhecidas, para ninguém ler a saída como algo que ela não é:
+Known limitations, so that nobody reads the output as something it is not:
 
-* ``process`` exige execução, criação ou manipulação de processo de verdade;
-  terminar o próprio programa (``ExitProcess``, ``exit``, ``exit_group``) não
-  conta, porque todo programa termina — chamada externa só entra na categoria
-  quando a função externa é de execução (``system``, ``execve``...);
-* a detecção por syscall só enxerga os serviços presentes em
-  :data:`asmx.isa.LINUX_SYSCALLS`; nomes como ``chmod``, ``clone``,
-  ``mremap`` ou ``clock_gettime`` não estão naquela tabela e por isso nunca
-  disparam (a lista de cada categoria continua lá, para o dia em que a tabela
-  crescer);
-* ``string-handling`` também marca laços que carregam e descarregam memória
-  por registrador indexado, porque é assim que se copia um bloco de bytes sem
-  as instruções ``rep movs*`` — é um indício fraco e o texto diz isso;
-* ``self-modifying`` só reconhece escrita cujo endereço é um rótulo de código
-  declarado; o mesmo acesso feito por um ponteiro calculado antes não é
-  rastreável estaticamente;
-* nada é executado: quem quiser comportamento de verdade precisa da máquina
-  virtual.
+* ``process`` requires real execution, creation or manipulation of a process;
+  ending the program itself (``ExitProcess``, ``exit``, ``exit_group``) does not
+  count, because every program ends — an external call only enters the category
+  when the external function is one of execution (``system``, ``execve``...);
+* syscall detection only sees the services present in
+  :data:`asmx.isa.LINUX_SYSCALLS`; names such as ``chmod``, ``clone``,
+  ``mremap`` or ``clock_gettime`` are not in that table and therefore never
+  fire (the list of each category stays there, for the day the table grows);
+* ``string-handling`` also marks loops that load and store memory through an
+  indexed register, because that is how a block of bytes is copied without the
+  ``rep movs*`` instructions — it is a weak hint and the text says so;
+* ``self-modifying`` only recognizes a write whose address is a declared code
+  label; the same access made through a pointer computed earlier is not
+  statically traceable;
+* nothing is executed: whoever wants real behavior needs the virtual machine.
 
 Example:
     >>> from asmx.analyzer import analyze
     >>> from asmx.behavior import classify, summary
-    >>> fonte = "section .text\\n_start:\\n mov rax, 1\\n syscall"
-    >>> summary(classify(analyze(fonte)))
-    '1 comportamento(s): console (baixo)'
+    >>> source = "section .text\\n_start:\\n mov rax, 1\\n syscall"
+    >>> summary(classify(analyze(source)))
+    '1 behavior(s): console (low)'
 """
 
 from __future__ import annotations
@@ -66,277 +63,269 @@ from .parser import Operand
 
 logger = get_logger(__name__)
 
-# ---------------------------------------------------------------- catálogo --
+# ----------------------------------------------------------------- catalog --
 
-#: Categorias de comportamento: chave -> rótulo, descrição e gravidade.
+#: Behavior categories: key -> label, description and severity.
 BEHAVIOR_CATEGORIES: Dict[str, Dict[str, str]] = {
     "console-io": {
-        "label": "Entrada e saída de console",
-        "description": "Lê ou escreve texto no console: write/read no Linux, "
-        "GetStdHandle/WriteConsoleA/ReadConsoleA/MessageBoxA no Windows.",
-        "severity": "baixo",
+        "label": "Console input and output",
+        "description": "Reads or writes text on the console: write/read on "
+        "Linux, GetStdHandle/WriteConsoleA/ReadConsoleA/MessageBoxA on Windows.",
+        "severity": "low",
     },
     "network": {
-        "label": "Comunicação de rede",
-        "description": "Abre sockets, conecta, escuta ou usa APIs de rede "
-        "(WinINet/WinHTTP) e carrega strings com cara de host, IP ou URL.",
-        "severity": "alto",
+        "label": "Network communication",
+        "description": "Opens sockets, connects, listens or uses network APIs "
+        "(WinINet/WinHTTP) and loads strings that look like a host, IP or URL.",
+        "severity": "high",
     },
     "filesystem": {
-        "label": "Acesso a arquivos",
-        "description": "Abre, cria, apaga ou renomeia arquivos e cita caminhos "
-        "do sistema (/etc/, /tmp/, C:\\).",
-        "severity": "medio",
+        "label": "File access",
+        "description": "Opens, creates, deletes or renames files and mentions "
+        "system paths (/etc/, /tmp/, C:\\).",
+        "severity": "medium",
     },
     "process": {
-        "label": "Manipulação de processos",
-        "description": "Executa ou cria processos, envia sinais, depura com "
-        "ptrace ou chama função de execução (system, execve, CreateProcessA).",
-        "severity": "alto",
+        "label": "Process manipulation",
+        "description": "Runs or creates processes, sends signals, debugs with "
+        "ptrace or calls an execution function (system, execve, CreateProcessA).",
+        "severity": "high",
     },
     "memory": {
-        "label": "Manipulação de memória",
-        "description": "Mapeia ou protege regiões de memória (mmap, mprotect, "
-        "VirtualAlloc) e escreve em endereço calculado em tempo de execução.",
-        "severity": "medio",
+        "label": "Memory manipulation",
+        "description": "Maps or protects memory regions (mmap, mprotect, "
+        "VirtualAlloc) and writes to an address computed at run time.",
+        "severity": "medium",
     },
     "anti-analysis": {
-        "label": "Evasão de análise",
-        "description": "Breakpoint (int 3), identificação da máquina "
-        "(cpuid/rdtsc), ptrace e espera ou medição de tempo dentro de laço.",
-        "severity": "alto",
+        "label": "Analysis evasion",
+        "description": "Breakpoint (int 3), machine identification "
+        "(cpuid/rdtsc), ptrace and waiting or measuring time inside a loop.",
+        "severity": "high",
     },
     "crypto": {
-        "label": "Criptografia ou ofuscação",
-        "description": "Pede bytes aleatórios ao kernel e laços com muitas "
-        "operações de bits — indício de cifra caseira ou de ofuscação.",
-        "severity": "medio",
+        "label": "Cryptography or obfuscation",
+        "description": "Asks the kernel for random bytes and loops with many "
+        "bit operations — a hint of a home-made cipher or of obfuscation.",
+        "severity": "medium",
     },
     "persistence": {
-        "label": "Persistência",
-        "description": "Cita inicialização automática (Run, RunOnce, cron, "
-        "systemd, .bashrc) ou repete operação de arquivo dentro de laço.",
-        "severity": "alto",
+        "label": "Persistence",
+        "description": "Mentions autostart (Run, RunOnce, cron, systemd, "
+        ".bashrc) or repeats a file operation inside a loop.",
+        "severity": "high",
     },
     "environment": {
-        "label": "Informações do sistema",
-        "description": "Consulta PID, usuário, versão do sistema, módulo "
-        "carregado ou último erro da API.",
-        "severity": "baixo",
+        "label": "System information",
+        "description": "Queries the PID, the user, the system version, a "
+        "loaded module or the last API error.",
+        "severity": "low",
     },
     "data-processing": {
-        "label": "Processamento de dados",
-        "description": "Laços que só mexem em registradores e memória, sem "
-        "chamada externa: é o algoritmo do programa (soma, ordenação, "
-        "conversão).",
-        "severity": "baixo",
+        "label": "Data processing",
+        "description": "Loops that only touch registers and memory, with no "
+        "external call: it is the algorithm of the program (sum, sorting, "
+        "conversion).",
+        "severity": "low",
     },
     "string-handling": {
-        "label": "Manipulação de blocos de bytes",
-        "description": "Copia, preenche ou compara regiões de memória "
-        "(rep movs*/stos*/lods*/scas*) ou movimenta bytes indexados em laço.",
-        "severity": "baixo",
+        "label": "Byte block handling",
+        "description": "Copies, fills or compares memory regions "
+        "(rep movs*/stos*/lods*/scas*) or moves indexed bytes in a loop.",
+        "severity": "low",
     },
     "self-modifying": {
-        "label": "Código automodificável",
-        "description": "Escreve em endereço que pertence a um rótulo de "
-        "código: o programa altera as próprias instruções.",
-        "severity": "alto",
+        "label": "Self-modifying code",
+        "description": "Writes to an address that belongs to a code label: "
+        "the program changes its own instructions.",
+        "severity": "high",
     },
 }
 
-#: Técnicas do MITRE ATT&CK usadas pelo módulo: id -> ficha da técnica.
+#: MITRE ATT&CK techniques used by the module: id -> technique record.
 MITRE_TECHNIQUES: Dict[str, Dict[str, str]] = {
     "T1005": {
         "name": "Data from Local System",
-        "tactic": "Coleta",
+        "tactic": "Collection",
         "url": "https://attack.mitre.org/techniques/T1005/",
-        "description": "Coleta de dados guardados na máquina local. Indício "
-        "derivado de padrões estáticos, não prova de comportamento malicioso.",
+        "description": "Collection of data stored on the local machine. A hint "
+        "derived from static patterns, not proof of malicious behavior.",
     },
     "T1012": {
         "name": "Query Registry",
-        "tactic": "Descoberta",
+        "tactic": "Discovery",
         "url": "https://attack.mitre.org/techniques/T1012/",
-        "description": "Consulta ao Registro do Windows para descobrir "
-        "configurações. Indício derivado de padrões estáticos, não prova de "
-        "comportamento malicioso.",
+        "description": "Query to the Windows Registry to discover settings. A "
+        "hint derived from static patterns, not proof of malicious behavior.",
     },
     "T1027": {
         "name": "Obfuscated Files or Information",
-        "tactic": "Evasão de Defesa",
+        "tactic": "Defense Evasion",
         "url": "https://attack.mitre.org/techniques/T1027/",
-        "description": "Dificulta a leitura do próprio código ou dos dados. "
-        "Indício derivado de padrões estáticos, não prova de comportamento "
-        "malicioso.",
+        "description": "Makes the code itself or the data harder to read. A "
+        "hint derived from static patterns, not proof of malicious behavior.",
     },
     "T1041": {
         "name": "Exfiltration Over C2 Channel",
-        "tactic": "Exfiltração",
+        "tactic": "Exfiltration",
         "url": "https://attack.mitre.org/techniques/T1041/",
-        "description": "Envio de dados para fora pelo canal de comando e "
-        "controle. Indício derivado de padrões estáticos, não prova de "
-        "comportamento malicioso.",
+        "description": "Sending data out through the command and control "
+        "channel. A hint derived from static patterns, not proof of malicious "
+        "behavior.",
     },
     "T1055": {
         "name": "Process Injection",
-        "tactic": "Evasão de Defesa",
+        "tactic": "Defense Evasion",
         "url": "https://attack.mitre.org/techniques/T1055/",
-        "description": "Injeção de código em outro processo, típica de quem "
-        "aloca e protege memória executável. Indício derivado de padrões "
-        "estáticos, não prova de comportamento malicioso.",
+        "description": "Injection of code into another process, typical of "
+        "whoever allocates and protects executable memory. A hint derived from "
+        "static patterns, not proof of malicious behavior.",
     },
     "T1057": {
         "name": "Process Discovery",
-        "tactic": "Descoberta",
+        "tactic": "Discovery",
         "url": "https://attack.mitre.org/techniques/T1057/",
-        "description": "Descoberta de processos e de identificadores em "
-        "execução. Indício derivado de padrões estáticos, não prova de "
-        "comportamento malicioso.",
+        "description": "Discovery of running processes and identifiers. A hint "
+        "derived from static patterns, not proof of malicious behavior.",
     },
     "T1059": {
         "name": "Command and Scripting Interpreter",
-        "tactic": "Execução",
+        "tactic": "Execution",
         "url": "https://attack.mitre.org/techniques/T1059/",
-        "description": "Execução de comandos ou de outro programa. Indício "
-        "derivado de padrões estáticos, não prova de comportamento malicioso.",
+        "description": "Execution of commands or of another program. A hint "
+        "derived from static patterns, not proof of malicious behavior.",
     },
     "T1071": {
         "name": "Application Layer Protocol",
-        "tactic": "Comando e Controle",
+        "tactic": "Command and Control",
         "url": "https://attack.mitre.org/techniques/T1071/",
-        "description": "Comunicação por protocolo de aplicação (HTTP e "
-        "afins). Indício derivado de padrões estáticos, não prova de "
-        "comportamento malicioso.",
+        "description": "Communication over an application protocol (HTTP and "
+        "the like). A hint derived from static patterns, not proof of "
+        "malicious behavior.",
     },
     "T1082": {
         "name": "System Information Discovery",
-        "tactic": "Descoberta",
+        "tactic": "Discovery",
         "url": "https://attack.mitre.org/techniques/T1082/",
-        "description": "Levantamento de versão, arquitetura e configuração do "
-        "sistema. Indício derivado de padrões estáticos, não prova de "
-        "comportamento malicioso.",
+        "description": "Survey of the version, architecture and configuration "
+        "of the system. A hint derived from static patterns, not proof of "
+        "malicious behavior.",
     },
     "T1083": {
         "name": "File and Directory Discovery",
-        "tactic": "Descoberta",
+        "tactic": "Discovery",
         "url": "https://attack.mitre.org/techniques/T1083/",
-        "description": "Varredura de arquivos e diretórios de interesse. "
-        "Indício derivado de padrões estáticos, não prova de comportamento "
-        "malicioso.",
+        "description": "Scan of files and directories of interest. A hint "
+        "derived from static patterns, not proof of malicious behavior.",
     },
     "T1095": {
         "name": "Non-Application Layer Protocol",
-        "tactic": "Comando e Controle",
+        "tactic": "Command and Control",
         "url": "https://attack.mitre.org/techniques/T1095/",
-        "description": "Comunicação por protocolo cru, sem camada de "
-        "aplicação. Indício derivado de padrões estáticos, não prova de "
-        "comportamento malicioso.",
+        "description": "Communication over a raw protocol, with no application "
+        "layer. A hint derived from static patterns, not proof of malicious "
+        "behavior.",
     },
     "T1105": {
         "name": "Ingress Tool Transfer",
-        "tactic": "Comando e Controle",
+        "tactic": "Command and Control",
         "url": "https://attack.mitre.org/techniques/T1105/",
-        "description": "Transferência de arquivo de fora para a máquina "
-        "analisada. Indício derivado de padrões estáticos, não prova de "
-        "comportamento malicioso.",
+        "description": "Transfer of a file from outside into the analyzed "
+        "machine. A hint derived from static patterns, not proof of malicious "
+        "behavior.",
     },
     "T1486": {
         "name": "Data Encrypted for Impact",
-        "tactic": "Impacto",
+        "tactic": "Impact",
         "url": "https://attack.mitre.org/techniques/T1486/",
-        "description": "Cifra de dados locais para prejudicar o dono. Indício "
-        "derivado de padrões estáticos, não prova de comportamento malicioso.",
+        "description": "Encryption of local data to harm the owner. A hint "
+        "derived from static patterns, not proof of malicious behavior.",
     },
     "T1497": {
         "name": "Virtualization/Sandbox Evasion",
-        "tactic": "Evasão de Defesa",
+        "tactic": "Defense Evasion",
         "url": "https://attack.mitre.org/techniques/T1497/",
-        "description": "Detecção de máquina virtual, sandbox ou ambiente de "
-        "análise. Indício derivado de padrões estáticos, não prova de "
-        "comportamento malicioso.",
+        "description": "Detection of a virtual machine, sandbox or analysis "
+        "environment. A hint derived from static patterns, not proof of "
+        "malicious behavior.",
     },
     "T1543": {
         "name": "Create or Modify System Process",
-        "tactic": "Persistência",
+        "tactic": "Persistence",
         "url": "https://attack.mitre.org/techniques/T1543/",
-        "description": "Criação ou alteração de serviço do sistema para "
-        "sobreviver ao reinício. Indício derivado de padrões estáticos, não "
-        "prova de comportamento malicioso.",
+        "description": "Creation or change of a system service to survive a "
+        "reboot. A hint derived from static patterns, not proof of malicious "
+        "behavior.",
     },
     "T1547": {
         "name": "Boot or Logon Autostart Execution",
-        "tactic": "Persistência",
+        "tactic": "Persistence",
         "url": "https://attack.mitre.org/techniques/T1547/",
-        "description": "Configuração de execução automática no boot ou no "
-        "logon. Indício derivado de padrões estáticos, não prova de "
-        "comportamento malicioso.",
+        "description": "Configuration of automatic execution at boot or logon. "
+        "A hint derived from static patterns, not proof of malicious behavior.",
     },
     "T1622": {
         "name": "Debugger Evasion",
-        "tactic": "Evasão de Defesa",
+        "tactic": "Defense Evasion",
         "url": "https://attack.mitre.org/techniques/T1622/",
-        "description": "Detecção ou atrapalho de depurador. Indício derivado "
-        "de padrões estáticos, não prova de comportamento malicioso.",
+        "description": "Detection of or interference with a debugger. A hint "
+        "derived from static patterns, not proof of malicious behavior.",
     },
 }
 
-#: Rótulo curto de cada categoria, usado por :func:`summary`.
+#: Short label of each category, used by :func:`summary`.
 _SHORT_LABELS: Dict[str, str] = {
     "console-io": "console",
-    "network": "rede",
-    "filesystem": "arquivos",
-    "process": "processos",
-    "memory": "memória",
-    "anti-analysis": "anti-análise",
-    "crypto": "criptografia",
-    "persistence": "persistência",
-    "environment": "ambiente",
-    "data-processing": "processamento de dados",
-    "string-handling": "blocos de bytes",
-    "self-modifying": "código automodificável",
+    "network": "network",
+    "filesystem": "files",
+    "process": "processes",
+    "memory": "memory",
+    "anti-analysis": "anti-analysis",
+    "crypto": "crypto",
+    "persistence": "persistence",
+    "environment": "environment",
+    "data-processing": "data processing",
+    "string-handling": "byte blocks",
+    "self-modifying": "self-modifying code",
 }
 
-#: Gravidade -> posição na ordenação (menor vem primeiro).
-_SEVERITY_RANK: Dict[str, int] = {"alto": 0, "medio": 1, "baixo": 2}
+#: Severity -> position in the ordering (the smallest comes first).
+_SEVERITY_RANK: Dict[str, int] = {"high": 0, "medium": 1, "low": 2}
 
-#: Táticas na ordem em que o relatório deve mostrá-las.
+#: Tactics in the order the report must show them.
 _TACTIC_ORDER: Tuple[str, ...] = (
-    "Execução",
-    "Comando e Controle",
-    "Descoberta",
-    "Evasão de Defesa",
-    "Persistência",
-    "Coleta",
-    "Exfiltração",
-    "Impacto",
+    "Execution",
+    "Command and Control",
+    "Discovery",
+    "Defense Evasion",
+    "Persistence",
+    "Collection",
+    "Exfiltration",
+    "Impact",
 )
 
-#: Acentuação removida antes de comparar gravidades (``médio`` -> ``medio``).
-_ACCENTS = str.maketrans("áàâãäéèêëíìîïóòôõöúùûüç", "aaaaaeeeeiiiiooooouuuuc")
-
-#: Confiança máxima de um comportamento sustentado só por indício fraco.
+#: Maximum confidence of a behavior supported only by a weak hint.
 _WEAK_CONFIDENCE = 50
 
-#: Seções cujos rótulos contam como código.
+#: Sections whose labels count as code.
 _CODE_SECTIONS = frozenset({"text", "code"})
 
-#: Registradores que ancoram variáveis locais, não blocos de memória.
+#: Registers that anchor local variables, not memory blocks.
 _FRAME_REGS = frozenset({"rbp", "rsp", "rip"})
 
-#: Operações de bits que contam para o indício de cifra caseira.
+#: Bit operations that count towards the home-made cipher hint.
 _BIT_OPS: Tuple[str, ...] = ("xor", "shl", "sal", "shr", "sar", "rol", "ror")
 
-#: Quantas operações de bits no mesmo laço já sugerem cifra ou ofuscação.
+#: How many bit operations in the same loop already suggest cipher or obfuscation.
 _BIT_OPS_MIN = 3
 
-#: Raízes dos mnemônicos que movem blocos de memória (movsb, stosq, lodsb...).
+#: Stems of the mnemonics that move memory blocks (movsb, stosq, lodsb...).
 _STRING_STEMS: Tuple[str, ...] = ("movs", "stos", "lods", "scas", "cmps")
 
-#: Avisos do validador que entram como indício fraco de evasão de análise.
+#: Validator warnings that enter as a weak hint of analysis evasion.
 _WEAK_PROBLEMS = frozenset({"INT001", "FLOW002"})
 
-#: Nomes de syscall (conforme :data:`asmx.isa.LINUX_SYSCALLS`) por categoria.
+#: Syscall names (according to :data:`asmx.isa.LINUX_SYSCALLS`) per category.
 _SYSCALLS_BY_CATEGORY: Dict[str, Tuple[str, ...]] = {
     "console-io": ("write", "read"),
     "network": (
@@ -351,15 +340,15 @@ _SYSCALLS_BY_CATEGORY: Dict[str, Tuple[str, ...]] = {
     ),
     "filesystem": ("open", "openat", "creat", "unlink", "rename", "mkdir", "chmod"),
     "process": ("execve", "fork", "clone", "kill", "ptrace"),
-    # Em anti-analysis, só ptrace conta fora de laço; as syscalls de tempo e os
-    # mnemônicos (int 3, cpuid, rdtsc) têm regras próprias.
+    # In anti-analysis, only ptrace counts outside a loop; the time syscalls and
+    # the mnemonics (int 3, cpuid, rdtsc) have rules of their own.
     "anti-analysis": ("ptrace",),
     "memory": ("brk", "mmap", "mprotect", "mremap"),
     "crypto": ("getrandom", "getentropy"),
     "environment": ("getpid", "getuid", "uname", "sysinfo", "time"),
 }
 
-#: APIs do Windows (minúsculas) que caracterizam cada categoria.
+#: Windows APIs (lowercase) that characterize each category.
 _APIS_BY_CATEGORY: Dict[str, Tuple[str, ...]] = {
     "console-io": (
         "getstdhandle",
@@ -408,13 +397,13 @@ _APIS_BY_CATEGORY: Dict[str, Tuple[str, ...]] = {
     ),
 }
 
-#: Texto curto de algumas syscalls, mais específico que a descrição do acervo.
+#: Short text of some syscalls, more specific than the collection description.
 _SYSCALL_HINTS: Dict[str, str] = {
-    "write": "saída para console ou arquivo",
-    "read": "entrada de console ou arquivo",
+    "write": "output to console or file",
+    "read": "input from console or file",
 }
 
-#: Técnicas sugeridas por cada syscall, quando existe sinal de verdade.
+#: Techniques suggested by each syscall, when there is a real signal.
 _SYSCALL_MITRE: Dict[str, Tuple[str, ...]] = {
     "socket": ("T1095",),
     "connect": ("T1095",),
@@ -439,40 +428,40 @@ _SYSCALL_MITRE: Dict[str, Tuple[str, ...]] = {
     "time": ("T1082",),
 }
 
-#: Descrição curta das APIs que não estão no acervo :data:`asmx.isa.WIN_APIS`.
+#: Short description of the APIs that are not in the :data:`asmx.isa.WIN_APIS` collection.
 _API_HINTS: Dict[str, str] = {
-    "writeconsolew": "escreve no console (Unicode)",
-    "readconsolew": "lê do console (Unicode)",
-    "wsastartup": "inicializa a biblioteca de sockets do Windows",
-    "wsasocketa": "cria socket pela Winsock",
-    "internetopena": "abre uma sessão WinINet",
-    "internetopenw": "abre uma sessão WinINet",
-    "internetopenurla": "abre uma URL pela WinINet",
-    "internetopenurlw": "abre uma URL pela WinINet",
-    "winhttpopen": "abre uma sessão WinHTTP",
-    "urldownloadtofilea": "baixa um arquivo de uma URL",
-    "urldownloadtofilew": "baixa um arquivo de uma URL",
-    "createfilew": "abre ou cria arquivo (Unicode)",
-    "deletefilea": "apaga arquivo",
-    "deletefilew": "apaga arquivo (Unicode)",
-    "gettemppatha": "descobre a pasta temporária",
-    "gettempathw": "descobre a pasta temporária (Unicode)",
-    "createprocessw": "cria um processo (Unicode)",
-    "shellexecutea": "abre programa ou documento pelo shell",
-    "shellexecutew": "abre programa ou documento pelo shell (Unicode)",
-    "winexec": "executa um programa",
-    "getmodulehandlew": "handle do módulo carregado (Unicode)",
-    "getversion": "versão do Windows",
-    "heapalloc": "reserva memória no heap do processo",
-    "rtlmovememory": "copia bytes na memória do processo",
-    "regopenkeyexa": "abre uma chave do Registro",
-    "regqueryvalueexa": "lê um valor do Registro",
-    "regsetvalueexa": "grava um valor no Registro",
-    "regcreatekeyexa": "cria uma chave do Registro",
-    "regcreatekeyw": "cria uma chave do Registro (Unicode)",
+    "writeconsolew": "writes to the console (Unicode)",
+    "readconsolew": "reads from the console (Unicode)",
+    "wsastartup": "initializes the Windows socket library",
+    "wsasocketa": "creates a socket through Winsock",
+    "internetopena": "opens a WinINet session",
+    "internetopenw": "opens a WinINet session",
+    "internetopenurla": "opens a URL through WinINet",
+    "internetopenurlw": "opens a URL through WinINet",
+    "winhttpopen": "opens a WinHTTP session",
+    "urldownloadtofilea": "downloads a file from a URL",
+    "urldownloadtofilew": "downloads a file from a URL",
+    "createfilew": "opens or creates a file (Unicode)",
+    "deletefilea": "deletes a file",
+    "deletefilew": "deletes a file (Unicode)",
+    "gettemppatha": "finds the temporary folder",
+    "gettempathw": "finds the temporary folder (Unicode)",
+    "createprocessw": "creates a process (Unicode)",
+    "shellexecutea": "opens a program or document through the shell",
+    "shellexecutew": "opens a program or document through the shell (Unicode)",
+    "winexec": "runs a program",
+    "getmodulehandlew": "handle of the loaded module (Unicode)",
+    "getversion": "Windows version",
+    "heapalloc": "reserves memory in the process heap",
+    "rtlmovememory": "copies bytes in the process memory",
+    "regopenkeyexa": "opens a registry key",
+    "regqueryvalueexa": "reads a registry value",
+    "regsetvalueexa": "writes a registry value",
+    "regcreatekeyexa": "creates a registry key",
+    "regcreatekeyw": "creates a registry key (Unicode)",
 }
 
-#: Técnicas sugeridas por cada API, quando existe sinal de verdade.
+#: Techniques suggested by each API, when there is a real signal.
 _API_MITRE: Dict[str, Tuple[str, ...]] = {
     "wsastartup": ("T1095",),
     "wsasocketa": ("T1095",),
@@ -504,10 +493,10 @@ _API_MITRE: Dict[str, Tuple[str, ...]] = {
     "regcreatekeyw": ("T1547",),
 }
 
-#: Syscalls de tempo ou espera: só viram indício dentro de um laço.
+#: Time or wait syscalls: they only become a hint inside a loop.
 _LOOP_TIME_SYSCALLS: Tuple[str, ...] = ("nanosleep", "clock_gettime", "time", "gettimeofday")
 
-#: Funções externas de execução (libc), que contam como ``process``.
+#: External execution functions (libc), which count as ``process``.
 _EXEC_NAMES: frozenset = frozenset(
     {
         "system",
@@ -527,13 +516,13 @@ _EXEC_NAMES: frozenset = frozenset(
     }
 )
 
-#: IP no formato decimal, como aparece em strings de configuração.
+#: IP in decimal format, as it appears in configuration strings.
 _RE_IPV4 = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
 
-#: URL completa com esquema HTTP ou HTTPS.
+#: Full URL with the HTTP or HTTPS scheme.
 _RE_URL = re.compile(r"https?://[^\s\"']+", re.I)
 
-#: Domínio com TLD conhecido (evita casar com ``.text`` ou ``nome.asm``).
+#: Domain with a known TLD (avoids matching ``.text`` or ``name.asm``).
 _TLDS: Tuple[str, ...] = (
     "com",
     "net",
@@ -572,31 +561,31 @@ _RE_DOMAIN = re.compile(
     r"\b[a-z0-9][a-z0-9-]{0,62}(?:\.[a-z0-9-]{1,63})*\.(?:%s)\b" % "|".join(_TLDS), re.I
 )
 
-#: Caminho de diretório típico de Unix, escrito no fonte.
+#: Typical Unix directory path, written in the source.
 _RE_UNIX_PATH = re.compile(r"/(?:etc|tmp|var|usr|home|root|proc|dev|opt|bin|sbin|boot|srv|sys)/")
 
-#: Caminho no estilo Windows (``C:\``) ou UNC (``\\servidor\``).
+#: Windows-style path (``C:\``) or UNC path (``\\server\``).
 _RE_WIN_PATH = re.compile(r"[A-Za-z]:\\|\\\\[A-Za-z0-9_.-]+\\")
 
-#: Strings de execução automática no logon ou no boot.
+#: Autostart strings for logon or boot.
 _RE_AUTOSTART = re.compile(r"runonce|currentversion\\run|\brun\\|\.bashrc", re.I)
 
-#: Strings de serviço, tarefa agendada ou inicialização do sistema.
+#: Service, scheduled task or system startup strings.
 _RE_SERVICE = re.compile(r"\bcron|systemd|\bservices\b", re.I)
 
-#: Diretório de configuração do sistema: persistência possível, sem técnica
-#: própria, porque ``/etc/passwd`` e ``/etc/cron.d`` não são a mesma coisa.
+#: System configuration directory: possible persistence, with no technique of
+#: its own, because ``/etc/passwd`` and ``/etc/cron.d`` are not the same thing.
 _RE_SYSCONF = re.compile(r"/etc/", re.I)
 
 
 def _invert(table: Dict[str, Tuple[str, ...]]) -> Dict[str, Tuple[str, ...]]:
-    """Inverte um mapa ``chave -> nomes`` em ``nome -> chaves``.
+    """Inverts a ``key -> names`` map into a ``name -> keys`` map.
 
     Args:
-        table: Mapa cujos valores são sequências de nomes.
+        table: Map whose values are sequences of names.
 
     Returns:
-        Mapa de cada nome para as chaves onde ele aparece, na ordem original.
+        Map from each name to the keys where it appears, in the original order.
     """
     out: Dict[str, List[str]] = {}
     for key, names in table.items():
@@ -605,37 +594,38 @@ def _invert(table: Dict[str, Tuple[str, ...]]) -> Dict[str, Tuple[str, ...]]:
     return {name: tuple(keys) for name, keys in out.items()}
 
 
-#: Syscall -> categorias a que ela pertence.
+#: Syscall -> categories it belongs to.
 _SYSCALL_CATEGORIES: Dict[str, Tuple[str, ...]] = _invert(_SYSCALLS_BY_CATEGORY)
 
-#: API -> categorias a que ela pertence.
+#: API -> categories it belongs to.
 _API_CATEGORIES: Dict[str, Tuple[str, ...]] = _invert(_APIS_BY_CATEGORY)
 
-#: Número da syscall -> nome, montado a partir do acervo (nada escrito à mão).
+#: Syscall number -> name, built from the collection (nothing hand-written).
 _SYSCALL_NAMES_BY_NUMBER: Dict[int, str] = {
     number: data[0] for number, data in LINUX_SYSCALLS.items() if data
 }
 
-#: Nome da syscall -> descrição do acervo.
+#: Syscall name -> collection description.
 _SYSCALL_DOC: Dict[str, str] = {
     data[0]: data[1] for data in LINUX_SYSCALLS.values() if len(data) > 1
 }
 
 
-# ------------------------------------------------------------------ modelo --
+# ------------------------------------------------------------------- model --
 @dataclass(frozen=True)
 class Behavior:
-    """Um comportamento observado no programa, com as evidências que o sustentam.
+    """A behavior observed in the program, with the evidence that supports it.
 
     Attributes:
-        category: Chave de :data:`BEHAVIOR_CATEGORIES`.
-        label: Rótulo legível da categoria.
-        description: O que a categoria significa em uma frase.
-        severity: ``alto``, ``medio`` ou ``baixo``.
-        confidence: Confiança de 0 a 100, derivada da quantidade de evidências.
-        lines: Linhas de evidência, em ordem crescente e sem repetição.
-        evidence: Frases curtas em pt-BR, cada uma citando linha e sinal.
-        mitre: Identificadores presentes em :data:`MITRE_TECHNIQUES`.
+        category: Key of :data:`BEHAVIOR_CATEGORIES`.
+        label: Readable label of the category.
+        description: What the category means in one sentence.
+        severity: ``high``, ``medium`` or ``low``.
+        confidence: Confidence from 0 to 100, derived from the number of evidence
+            items.
+        lines: Evidence lines, in increasing order and without repetition.
+        evidence: Short sentences, each one citing line and signal.
+        mitre: Identifiers present in :data:`MITRE_TECHNIQUES`.
     """
 
     category: str
@@ -648,12 +638,12 @@ class Behavior:
     mitre: Tuple[str, ...]
 
     def to_dict(self) -> Dict[str, Any]:
-        """Converte o comportamento em dicionário pronto para JSON.
+        """Converts the behavior into a dictionary ready for JSON.
 
         Returns:
-            Dicionário com ``category``, ``label``, ``description``,
-            ``severity``, ``confidence``, ``lines``, ``evidence`` e ``mitre``,
-            com as sequências já convertidas em listas.
+            Dictionary with ``category``, ``label``, ``description``,
+            ``severity``, ``confidence``, ``lines``, ``evidence`` and ``mitre``,
+            with the sequences already converted into lists.
         """
         return {
             "category": self.category,
@@ -669,15 +659,15 @@ class Behavior:
 
 @dataclass
 class _Evidence:
-    """Uma evidência isolada, com o sinal que a gerou.
+    """One isolated piece of evidence, with the signal that produced it.
 
     Attributes:
-        line: Linha do fonte onde o padrão foi visto.
-        text: Frase pronta em pt-BR, já começando por ``linha N:``.
-        signal: Nome curto do sinal (``syscall socket``, ``API WriteFile``),
-            usado nas evidências de combinação.
-        weak: Se é indício fraco (limita a confiança do comportamento a 50).
-        mitre: Técnicas sugeridas por esta evidência.
+        line: Source line where the pattern was seen.
+        text: Ready sentence, already starting with ``line N:``.
+        signal: Short name of the signal (``syscall socket``, ``API WriteFile``),
+            used in the combination evidence.
+        weak: Whether it is a weak hint (caps the behavior confidence at 50).
+        mitre: Techniques suggested by this evidence.
     """
 
     line: int
@@ -688,14 +678,14 @@ class _Evidence:
 
 
 class _Collector:
-    """Junta evidências por categoria e monta os comportamentos.
+    """Gathers evidence per category and builds the behaviors.
 
     Attributes:
-        items: Categoria -> evidências, na ordem em que foram encontradas.
+        items: Category -> evidence, in the order they were found.
     """
 
     def __init__(self) -> None:
-        """Cria um coletor vazio."""
+        """Creates an empty collector."""
         self.items: Dict[str, List[_Evidence]] = {}
 
     def add(
@@ -707,15 +697,15 @@ class _Collector:
         weak: bool = False,
         mitre: Sequence[str] = (),
     ) -> None:
-        """Registra uma evidência, ignorando categoria ou texto inválidos.
+        """Records a piece of evidence, ignoring an invalid category or text.
 
         Args:
-            category: Chave de :data:`BEHAVIOR_CATEGORIES`.
-            line: Linha do fonte da evidência.
-            text: Frase pronta, começando por ``linha N:``.
-            signal: Nome curto do sinal, para as combinações.
-            weak: Marca a evidência como indício fraco.
-            mitre: Técnicas sugeridas por esta evidência.
+            category: Key of :data:`BEHAVIOR_CATEGORIES`.
+            line: Source line of the evidence.
+            text: Ready sentence, starting with ``line N:``.
+            signal: Short name of the signal, for the combinations.
+            weak: Marks the evidence as a weak hint.
+            mitre: Techniques suggested by this evidence.
         """
         if category not in BEHAVIOR_CATEGORIES or not text:
             return
@@ -724,13 +714,13 @@ class _Collector:
         )
 
     def mark(self, category: str, mitre: str, text: str, signal: str) -> None:
-        """Acrescenta uma evidência de combinação a uma categoria já existente.
+        """Adds a combination evidence to a category that already exists.
 
         Args:
-            category: Categoria que já tem pelo menos uma evidência.
-            mitre: Técnica acrescentada pela combinação.
-            text: Frase da evidência de combinação.
-            signal: Nome curto do sinal combinado.
+            category: Category that already has at least one evidence item.
+            mitre: Technique added by the combination.
+            text: Sentence of the combination evidence.
+            signal: Short name of the combined signal.
         """
         found = self.items.get(category)
         if not found:
@@ -738,23 +728,23 @@ class _Collector:
         found.append(_Evidence(line=found[0].line, text=text, signal=signal, mitre=(mitre,)))
 
     def first(self, category: str) -> Optional[_Evidence]:
-        """Devolve a evidência de menor linha de uma categoria.
+        """Returns the evidence with the smallest line of a category.
 
         Args:
-            category: Chave da categoria.
+            category: Category key.
 
         Returns:
-            A evidência, ou ``None`` quando a categoria não tem nenhuma.
+            The evidence, or ``None`` when the category has none.
         """
         found = self.items.get(category) or []
         return min(found, key=lambda item: item.line) if found else None
 
     def behaviors(self) -> List[Behavior]:
-        """Monta a lista final de comportamentos.
+        """Builds the final list of behaviors.
 
         Returns:
-            Comportamentos sem evidência repetida, ordenados por gravidade,
-            confiança (maior primeiro) e chave da categoria.
+            Behaviors without repeated evidence, ordered by severity, confidence
+            (highest first) and category key.
         """
         out: List[Behavior] = []
         for category, found in self.items.items():
@@ -795,13 +785,13 @@ class _Collector:
 
 @dataclass
 class _Context:
-    """Dados derivados da análise que todas as detecções consultam.
+    """Data derived from the analysis that every detection consults.
 
     Attributes:
-        analysis: Análise do fonte.
-        syscalls: Índice da instrução -> nome da syscall, quando resolvido.
-        loops: Laços do programa; cada laço é a lista dos seus blocos.
-        code_labels: Rótulos que apontam para código (``.text``/``code``).
+        analysis: Source analysis.
+        syscalls: Instruction index -> syscall name, when resolved.
+        loops: Loops of the program; each loop is the list of its blocks.
+        code_labels: Labels that point to code (``.text``/``code``).
     """
 
     analysis: Analysis
@@ -810,16 +800,16 @@ class _Context:
     code_labels: Set[str]
 
 
-# ------------------------------------------------------------- utilidades --
+# -------------------------------------------------------------- utilities --
 def _confidence(count: int) -> int:
-    """Traduz a quantidade de evidências em confiança de 0 a 100.
+    """Translates the number of evidence items into confidence from 0 to 100.
 
     Args:
-        count: Número de evidências do comportamento.
+        count: Number of evidence items of the behavior.
 
     Returns:
-        ``60`` para 1 ou 2 evidências, ``80`` para 3 a 5, ``95`` para 6 ou mais
-        e ``0`` quando não há nenhuma.
+        ``60`` for 1 or 2 evidence items, ``80`` for 3 to 5, ``95`` for 6 or
+        more and ``0`` when there is none.
     """
     if count <= 0:
         return 0
@@ -831,13 +821,13 @@ def _confidence(count: int) -> int:
 
 
 def _mitre_of(items: Sequence[_Evidence]) -> Tuple[str, ...]:
-    """Reúne as técnicas citadas pelas evidências, sem repetição.
+    """Gathers the techniques cited by the evidence, without repetition.
 
     Args:
-        items: Evidências de um comportamento.
+        items: Evidence items of one behavior.
 
     Returns:
-        Identificadores em ordem alfabética, restritos a
+        Identifiers in alphabetical order, restricted to
         :data:`MITRE_TECHNIQUES`.
     """
     ids: Set[str] = set()
@@ -849,13 +839,13 @@ def _mitre_of(items: Sequence[_Evidence]) -> Tuple[str, ...]:
 
 
 def _instruction_text(ins: Line) -> str:
-    """Monta o texto curto de uma instrução, com prefixo e operandos.
+    """Builds the short text of an instruction, with prefix and operands.
 
     Args:
-        ins: Instrução a descrever.
+        ins: Instruction to describe.
 
     Returns:
-        Texto como ``rep movsb`` ou ``mov [vetor + rsi], bl``.
+        Text like ``rep movsb`` or ``mov [array + rsi], bl``.
     """
     parts = [ins.mnemonic or "?"]
     parts.extend(operand.text for operand in ins.operands)
@@ -864,31 +854,31 @@ def _instruction_text(ins: Line) -> str:
 
 
 def _tag_of(ins: Line) -> str:
-    """Devolve a etiqueta semântica de uma instrução.
+    """Returns the semantic tag of an instruction.
 
     Args:
-        ins: Instrução a examinar.
+        ins: Instruction to examine.
 
     Returns:
-        O ``tag`` do :class:`~asmx.analyzer.Semantic` (``arith``, ``load``...)
-        ou string vazia quando a semântica não foi preenchida.
+        The ``tag`` of the :class:`~asmx.analyzer.Semantic` (``arith``,
+        ``load``...) or an empty string when the semantics was not filled in.
     """
     sem = ins.sem
     return str(getattr(sem, "tag", "") or "") if sem is not None else ""
 
 
 def _clean_name(raw: str) -> str:
-    """Limpa um nome de função para comparar com as tabelas do módulo.
+    """Cleans a function name to compare it with the module tables.
 
-    Tira o ``%`` do AT&T, o prefixo ``_``/``__imp_`` do MASM, o sufixo ``@N``
-    das funções decoradas e o ``@plt``/``@got`` do GAS, e passa para
-    minúsculas.
+    Removes the AT&T ``%``, the MASM ``_``/``__imp_`` prefix, the ``@N`` suffix
+    of decorated functions and the GAS ``@plt``/``@got``, and switches to
+    lowercase.
 
     Args:
-        raw: Texto do símbolo como apareceu no fonte.
+        raw: Symbol text as it appeared in the source.
 
     Returns:
-        O nome normalizado em minúsculas.
+        The normalized name in lowercase.
     """
     name = str(raw or "").strip().lstrip("%")
     name = re.sub(r"^_+", "", name)
@@ -898,15 +888,15 @@ def _clean_name(raw: str) -> str:
 
 
 def _api_label(clean: str, raw: str) -> str:
-    """Escolhe como mostrar o nome de uma API.
+    """Chooses how to display the name of an API.
 
     Args:
-        clean: Nome normalizado (minúsculas, sem decoração).
-        raw: Símbolo como apareceu no fonte.
+        clean: Normalized name (lowercase, without decoration).
+        raw: Symbol as it appeared in the source.
 
     Returns:
-        O nome oficial vindo de :data:`asmx.isa.WIN_APIS` quando existe; caso
-        contrário, o símbolo original sem decoração.
+        The official name coming from :data:`asmx.isa.WIN_APIS` when it exists;
+        otherwise, the original symbol without decoration.
     """
     data = WIN_APIS.get(clean)
     if data:
@@ -915,32 +905,32 @@ def _api_label(clean: str, raw: str) -> str:
 
 
 def _api_hint(clean: str) -> str:
-    """Descreve em poucas palavras o que a API faz.
+    """Describes in a few words what the API does.
 
     Args:
-        clean: Nome normalizado da API.
+        clean: Normalized name of the API.
 
     Returns:
-        A descrição do acervo :data:`asmx.isa.WIN_APIS`, um texto próprio do
-        módulo, ou ``"API externa"``.
+        The description from the :data:`asmx.isa.WIN_APIS` collection, a text of
+        the module itself, or ``"external API"``.
     """
     if clean in _API_HINTS:
         return _API_HINTS[clean]
     data = WIN_APIS.get(clean)
     if data and len(data) > 1:
         return data[1]
-    return "API externa"
+    return "external API"
 
 
 def _call_api(ins: Line) -> Optional[Tuple[str, str]]:
-    """Reconhece uma chamada a API que interessa ao relatório.
+    """Recognizes a call to an API that interests the report.
 
     Args:
-        ins: Instrução a examinar.
+        ins: Instruction to examine.
 
     Returns:
-        A tupla ``(nome normalizado, rótulo)``, ou ``None`` quando não é uma
-        chamada ou o alvo não está em :data:`_APIS_BY_CATEGORY`.
+        The tuple ``(normalized name, label)``, or ``None`` when it is not a
+        call or the target is not in :data:`_APIS_BY_CATEGORY`.
     """
     if ins.mnemonic != "call" or not ins.operands:
         return None
@@ -952,28 +942,28 @@ def _call_api(ins: Line) -> Optional[Tuple[str, str]]:
 
 
 def _syscall_hint(name: str) -> str:
-    """Descreve em poucas palavras o que a syscall faz.
+    """Describes in a few words what the syscall does.
 
     Args:
-        name: Nome da syscall, como está em :data:`asmx.isa.LINUX_SYSCALLS`.
+        name: Syscall name, as it is in :data:`asmx.isa.LINUX_SYSCALLS`.
 
     Returns:
-        O texto próprio do módulo, a descrição do acervo, ou
-        ``"chamada de sistema"``.
+        The text of the module itself, the collection description, or
+        ``"system call"``.
     """
     if name in _SYSCALL_HINTS:
         return _SYSCALL_HINTS[name]
-    return _SYSCALL_DOC.get(name, "chamada de sistema")
+    return _SYSCALL_DOC.get(name, "system call")
 
 
 def _pending_number(ins: Line) -> Optional[int]:
-    """Interpreta ``mov rax, N`` ou ``xor rax, rax`` como número de serviço.
+    """Interprets ``mov rax, N`` or ``xor rax, rax`` as a service number.
 
     Args:
-        ins: Instrução que escreve em RAX ou EAX.
+        ins: Instruction that writes to RAX or EAX.
 
     Returns:
-        O número do serviço, ou ``None`` quando o valor não é conhecido.
+        The service number, or ``None`` when the value is not known.
     """
     ops = ins.operands
     if len(ops) > 1 and ops[1].type == "imm":
@@ -984,18 +974,18 @@ def _pending_number(ins: Line) -> Optional[int]:
 
 
 def _resolve_syscalls(analysis: Analysis) -> Dict[int, str]:
-    """Resolve o nome da syscall de cada instrução pelo número em RAX.
+    """Resolves the syscall name of each instruction from the number in RAX.
 
-    O analisador já faz isso na maioria dos casos; esta passagem repete o
-    trabalho para que a classificação continue funcionando mesmo quando a
-    semântica não veio preenchida. Os números saem de
-    :data:`asmx.isa.LINUX_SYSCALLS`, nunca de constantes escritas à mão.
+    The analyzer already does this in most cases; this pass repeats the work so
+    that the classification keeps working even when the semantics was not filled
+    in. The numbers come from :data:`asmx.isa.LINUX_SYSCALLS`, never from
+    hand-written constants.
 
     Args:
-        analysis: Análise do fonte.
+        analysis: Source analysis.
 
     Returns:
-        Dicionário ``índice da instrução -> nome da syscall``.
+        Dictionary ``instruction index -> syscall name``.
     """
     out: Dict[int, str] = {}
     pending: Optional[int] = None
@@ -1019,18 +1009,18 @@ def _resolve_syscalls(analysis: Analysis) -> Dict[int, str]:
 
 
 def _syscall_name(ctx: _Context, ins: Line) -> Optional[str]:
-    """Descobre o nome da syscall de uma instrução.
+    """Finds the syscall name of an instruction.
 
-    Usa o nome resolvido pelo analisador e, quando ele não existe, o mapa
-    montado por :func:`_resolve_syscalls`.
+    Uses the name resolved by the analyzer and, when it does not exist, the map
+    built by :func:`_resolve_syscalls`.
 
     Args:
-        ctx: Dados derivados da análise.
-        ins: Instrução a examinar.
+        ctx: Data derived from the analysis.
+        ins: Instruction to examine.
 
     Returns:
-        O nome do serviço, ou ``None`` quando a instrução não é uma chamada de
-        sistema reconhecida.
+        The service name, or ``None`` when the instruction is not a recognized
+        system call.
     """
     if ins.mnemonic not in ("syscall", "int", "sysenter"):
         return None
@@ -1044,19 +1034,19 @@ def _syscall_name(ctx: _Context, ins: Line) -> Optional[str]:
 
 
 def _loop_groups(analysis: Analysis) -> List[List[Block]]:
-    """Agrupa os blocos de cada laço do programa.
+    """Groups the blocks of each loop of the program.
 
-    Um laço existe quando uma aresta volta para um bloco de índice menor ou
-    igual; o laço reúne todos os blocos entre o destino e a origem da aresta.
-    Olhar o laço inteiro, e não um bloco só, é o que permite reconhecer a troca
-    de bytes que uma decisão no meio divide em dois blocos.
+    A loop exists when an edge goes back to a block with a smaller or equal
+    index; the loop gathers every block between the target and the origin of the
+    edge. Looking at the whole loop, and not at a single block, is what allows
+    recognizing the byte swap that a decision in the middle splits into two
+    blocks.
 
     Args:
-        analysis: Análise do fonte.
+        analysis: Source analysis.
 
     Returns:
-        Lista de laços; cada laço é a lista dos seus blocos, na ordem do
-        código.
+        List of loops; each loop is the list of its blocks, in code order.
     """
     blocks = list(getattr(analysis, "blocks", None) or [])
     by_id = {block.id: block for block in blocks}
@@ -1072,14 +1062,14 @@ def _loop_groups(analysis: Analysis) -> List[List[Block]]:
 
 
 def _instruction_at(analysis: Analysis, line: int) -> Optional[Line]:
-    """Procura a instrução que está numa linha do fonte.
+    """Looks for the instruction that is on a source line.
 
     Args:
-        analysis: Análise do fonte.
-        line: Número da linha.
+        analysis: Source analysis.
+        line: Line number.
 
     Returns:
-        A instrução daquela linha, ou ``None``.
+        The instruction of that line, or ``None``.
     """
     for ins in analysis.instrs:
         if ins.n == line:
@@ -1088,13 +1078,13 @@ def _instruction_at(analysis: Analysis, line: int) -> Optional[Line]:
 
 
 def _context(analysis: Analysis) -> _Context:
-    """Monta os dados derivados usados pelas detecções.
+    """Builds the derived data used by the detections.
 
     Args:
-        analysis: Análise do fonte.
+        analysis: Source analysis.
 
     Returns:
-        O :class:`_Context` com syscalls resolvidas, laços e rótulos de código.
+        The :class:`_Context` with resolved syscalls, loops and code labels.
     """
     code_labels: Set[str] = set()
     for name, info in analysis.symbols.items():
@@ -1112,13 +1102,13 @@ def _context(analysis: Analysis) -> _Context:
 
 
 def _is_int3(ins: Line) -> bool:
-    """Diz se a instrução é um breakpoint ``int 3``.
+    """Tells whether the instruction is an ``int 3`` breakpoint.
 
     Args:
-        ins: Instrução a examinar.
+        ins: Instruction to examine.
 
     Returns:
-        ``True`` para ``int 3`` e ``int3``.
+        ``True`` for ``int 3`` and ``int3``.
     """
     if ins.mnemonic == "int3":
         return True
@@ -1128,16 +1118,16 @@ def _is_int3(ins: Line) -> bool:
 
 
 def _is_bit_op(ins: Line) -> bool:
-    """Diz se a instrução é uma operação de bits que conta para cifra caseira.
+    """Tells whether the instruction is a bit operation that counts for a cipher.
 
-    ``xor r, r`` fica de fora: é o jeito idiomático de zerar registrador e não
-    tem nada a ver com cifra.
+    ``xor r, r`` stays out: it is the idiomatic way to zero a register and has
+    nothing to do with a cipher.
 
     Args:
-        ins: Instrução a examinar.
+        ins: Instruction to examine.
 
     Returns:
-        ``True`` para deslocamento, rotação e XOR entre operandos diferentes.
+        ``True`` for shift, rotate and XOR between different operands.
     """
     mnemonic = ins.mnemonic or ""
     if mnemonic not in _BIT_OPS:
@@ -1149,17 +1139,17 @@ def _is_bit_op(ins: Line) -> bool:
 
 
 def _indexed_memory(instrs: Sequence[Line], tag: str) -> Optional[Line]:
-    """Acha o primeiro acesso à memória por registrador indexado.
+    """Finds the first memory access through an indexed register.
 
-    Endereços ancorados em RBP/RSP são variáveis locais, não um bloco de
-    memória; só contam bases como RSI, RDI, RBX ou R12.
+    Addresses anchored in RBP/RSP are local variables, not a memory block; only
+    bases such as RSI, RDI, RBX or R12 count.
 
     Args:
-        instrs: Instruções do laço.
-        tag: Etiqueta procurada (``load`` ou ``store``).
+        instrs: Instructions of the loop.
+        tag: Tag being searched for (``load`` or ``store``).
 
     Returns:
-        A instrução encontrada, ou ``None`` quando nenhuma serve.
+        The instruction found, or ``None`` when none qualifies.
     """
     for ins in instrs:
         if _tag_of(ins) != tag or not ins.operands:
@@ -1175,13 +1165,13 @@ def _indexed_memory(instrs: Sequence[Line], tag: str) -> Optional[Line]:
 
 
 def _code_text(linha: Line) -> str:
-    """Devolve a linha do fonte sem o comentário.
+    """Returns the source line without the comment.
 
     Args:
-        linha: Linha do fonte.
+        linha: Source line.
 
     Returns:
-        O trecho de código, já aparado; string vazia quando não sobra nada.
+        The code stretch, already trimmed; an empty string when nothing is left.
     """
     raw = linha.raw or ""
     comment = linha.comment or ""
@@ -1190,13 +1180,13 @@ def _code_text(linha: Line) -> str:
 
 
 def _host_token(code: str) -> str:
-    """Extrai o primeiro trecho com cara de host, IP ou URL.
+    """Extracts the first stretch that looks like a host, IP or URL.
 
     Args:
-        code: Linha já sem comentário.
+        code: Line already without the comment.
 
     Returns:
-        O trecho encontrado (até 60 caracteres), ou string vazia.
+        The stretch found (up to 60 characters), or an empty string.
     """
     for pattern in (_RE_URL, _RE_IPV4, _RE_DOMAIN):
         found = pattern.search(code)
@@ -1205,56 +1195,56 @@ def _host_token(code: str) -> str:
     return ""
 
 
-# --------------------------------------------------------------- detecções --
+# -------------------------------------------------------------- detections --
 def _scan_syscall(ctx: _Context, ins: Line, collector: _Collector) -> None:
-    """Marca a syscall da instrução nas categorias a que ela pertence.
+    """Marks the syscall of the instruction in the categories it belongs to.
 
     Args:
-        ctx: Dados derivados da análise.
-        ins: Instrução a examinar.
-        collector: Coletor onde as evidências entram.
+        ctx: Data derived from the analysis.
+        ins: Instruction to examine.
+        collector: Collector where the evidence enters.
     """
     name = _syscall_name(ctx, ins)
     if not name:
         return
-    text = "linha %d: syscall %s (%s)" % (ins.n, name, _syscall_hint(name))
+    text = "line %d: syscall %s (%s)" % (ins.n, name, _syscall_hint(name))
     for category in _SYSCALL_CATEGORIES.get(name, ()):
         collector.add(category, ins.n, text, "syscall " + name, mitre=_SYSCALL_MITRE.get(name, ()))
 
 
 def _scan_api(ins: Line, collector: _Collector) -> None:
-    """Marca chamadas às APIs do Windows que interessam ao relatório.
+    """Marks calls to the Windows APIs that interest the report.
 
     Args:
-        ins: Instrução a examinar.
-        collector: Coletor onde as evidências entram.
+        ins: Instruction to examine.
+        collector: Collector where the evidence enters.
     """
     found = _call_api(ins)
     if found is None:
         return
     clean, label = found
-    text = "linha %d: chamada à API %s (%s)" % (ins.n, label, _api_hint(clean))
+    text = "line %d: call to API %s (%s)" % (ins.n, label, _api_hint(clean))
     for category in _API_CATEGORIES.get(clean, ()):
         collector.add(category, ins.n, text, "API " + label, mitre=_API_MITRE.get(clean, ()))
 
 
 def _scan_mnemonic(ins: Line, collector: _Collector) -> None:
-    """Reconhece instruções que não são syscall nem API, mas dizem muito.
+    """Recognizes instructions that are neither a syscall nor an API, but say a lot.
 
-    São elas: ``int 3`` (breakpoint de depurador), ``cpuid``/``rdtsc``/
-    ``rdtscp`` (identificação ou cronometragem da máquina) e ``rep movs*`` com
-    companhia (movimentação de bloco de bytes).
+    They are: ``int 3`` (debugger breakpoint), ``cpuid``/``rdtsc``/``rdtscp``
+    (machine identification or timing) and ``rep movs*`` with company (byte
+    block movement).
 
     Args:
-        ins: Instrução a examinar.
-        collector: Coletor onde as evidências entram.
+        ins: Instruction to examine.
+        collector: Collector where the evidence enters.
     """
     mnemonic = ins.mnemonic or ""
     if _is_int3(ins):
         collector.add(
             "anti-analysis",
             ins.n,
-            "linha %d: int 3 (breakpoint de depurador)" % ins.n,
+            "line %d: int 3 (debugger breakpoint)" % ins.n,
             "int 3",
             mitre=("T1622",),
         )
@@ -1263,8 +1253,7 @@ def _scan_mnemonic(ins: Line, collector: _Collector) -> None:
         collector.add(
             "anti-analysis",
             ins.n,
-            "linha %d: %s (identifica ou cronometra a máquina — indício de evasão)"
-            % (ins.n, mnemonic),
+            "line %d: %s (identifies or times the machine — a hint of evasion)" % (ins.n, mnemonic),
             mnemonic,
             mitre=("T1497",),
         )
@@ -1274,18 +1263,18 @@ def _scan_mnemonic(ins: Line, collector: _Collector) -> None:
         collector.add(
             "string-handling",
             ins.n,
-            "linha %d: %s (cópia, preenchimento ou varredura de bloco de bytes)" % (ins.n, text),
+            "line %d: %s (copy, fill or scan of a byte block)" % (ins.n, text),
             text,
         )
 
 
 def _scan_memory_write(ctx: _Context, ins: Line, collector: _Collector) -> None:
-    """Marca escrita em memória por ponteiro ou em símbolo não declarado.
+    """Marks a memory write through a pointer or to an undeclared symbol.
 
     Args:
-        ctx: Dados derivados da análise.
-        ins: Instrução a examinar.
-        collector: Coletor onde as evidências entram.
+        ctx: Data derived from the analysis.
+        ins: Instruction to examine.
+        collector: Collector where the evidence enters.
     """
     sem = ins.sem
     if sem is None or getattr(sem, "tag", None) != "store" or not ins.operands:
@@ -1294,13 +1283,13 @@ def _scan_memory_write(ctx: _Context, ins: Line, collector: _Collector) -> None:
     if operand.type != "mem":
         return
     detail = str(getattr(sem, "detail", "") or "")
-    if "endereço apontado" in detail:
+    if "address pointed to" in detail:
         collector.add(
             "memory",
             ins.n,
-            "linha %d: %s (escrita em endereço apontado, calculado em execução)"
+            "line %d: %s (write to an address pointed to, computed at run time)"
             % (ins.n, _instruction_text(ins)),
-            "escrita por ponteiro",
+            "write through pointer",
         )
         return
     symbol = operand.symbol
@@ -1308,19 +1297,19 @@ def _scan_memory_write(ctx: _Context, ins: Line, collector: _Collector) -> None:
         collector.add(
             "memory",
             ins.n,
-            "linha %d: %s (escrita em %s, símbolo que o fonte não declara)"
+            "line %d: %s (write to %s, a symbol the source does not declare)"
             % (ins.n, _instruction_text(ins), symbol),
-            "escrita em símbolo desconhecido",
+            "write to unknown symbol",
         )
 
 
 def _scan_self_modifying(ctx: _Context, ins: Line, collector: _Collector) -> None:
-    """Marca escrita em endereço que pertence a um rótulo de código.
+    """Marks a write to an address that belongs to a code label.
 
     Args:
-        ctx: Dados derivados da análise.
-        ins: Instrução a examinar.
-        collector: Coletor onde as evidências entram.
+        ctx: Data derived from the analysis.
+        ins: Instruction to examine.
+        collector: Collector where the evidence enters.
     """
     sem = ins.sem
     if sem is None or getattr(sem, "tag", None) != "store" or not ins.operands:
@@ -1333,25 +1322,25 @@ def _scan_self_modifying(ctx: _Context, ins: Line, collector: _Collector) -> Non
     collector.add(
         "self-modifying",
         ins.n,
-        "linha %d: %s (escreve em %s, rótulo de código em .%s)"
+        "line %d: %s (writes to %s, a code label in .%s)"
         % (ins.n, _instruction_text(ins), operand.symbol, section),
-        "escrita em código",
+        "write to code",
         mitre=("T1027",),
     )
 
 
 def _scan_external_call(ctx: _Context, ins: Line, collector: _Collector) -> None:
-    """Marca chamadas a funções externas de execução.
+    """Marks calls to external execution functions.
 
-    Encerrar o próprio programa (``ExitProcess``, ``exit``, ``exit_group``) não
-    entra aqui: todo programa termina, e contar isso como manipulação de
-    processo seria alarme falso. Funções externas que não executam nada também
-    ficam de fora — o que interessa é o efeito, não a ligação.
+    Ending the program itself (``ExitProcess``, ``exit``, ``exit_group``) does
+    not enter here: every program ends, and counting that as process
+    manipulation would be a false alarm. External functions that execute nothing
+    are also left out — what matters is the effect, not the link.
 
     Args:
-        ctx: Dados derivados da análise.
-        ins: Instrução a examinar.
-        collector: Coletor onde as evidências entram.
+        ctx: Data derived from the analysis.
+        ins: Instruction to examine.
+        collector: Collector where the evidence enters.
     """
     if ins.mnemonic != "call" or not ins.operands:
         return
@@ -1364,18 +1353,18 @@ def _scan_external_call(ctx: _Context, ins: Line, collector: _Collector) -> None
     collector.add(
         "process",
         ins.n,
-        "linha %d: call %s (função externa de execução, resolvida na ligação)" % (ins.n, name),
+        "line %d: call %s (external execution function, resolved at link time)" % (ins.n, name),
         "call " + name,
         mitre=("T1059",),
     )
 
 
 def _scan_instructions(ctx: _Context, collector: _Collector) -> None:
-    """Percorre as instruções aplicando as regras por syscall, API e mnemônico.
+    """Walks the instructions applying the rules per syscall, API and mnemonic.
 
     Args:
-        ctx: Dados derivados da análise.
-        collector: Coletor onde as evidências entram.
+        ctx: Data derived from the analysis.
+        collector: Collector where the evidence enters.
     """
     for ins in ctx.analysis.instrs:
         _scan_syscall(ctx, ins, collector)
@@ -1387,16 +1376,16 @@ def _scan_instructions(ctx: _Context, collector: _Collector) -> None:
 
 
 def _scan_loop_memory(instrs: Sequence[Line], collector: _Collector) -> None:
-    """Procura carga e descarga indexadas dentro do mesmo laço.
+    """Looks for indexed load and store inside the same loop.
 
-    É assim que se movimenta um bloco de bytes sem as instruções ``rep movs*``;
-    por ser uma leitura mais ampla, a evidência entra como indício fraco. O
-    laço inteiro é considerado porque uma decisão no meio costuma separar a
-    carga da descarga em dois blocos.
+    That is how a block of bytes is moved without the ``rep movs*``
+    instructions; because it is a broader reading, the evidence enters as a weak
+    hint. The whole loop is considered because a decision in the middle usually
+    separates the load from the store into two blocks.
 
     Args:
-        instrs: Instruções de todos os blocos do laço.
-        collector: Coletor onde as evidências entram.
+        instrs: Instructions of every block of the loop.
+        collector: Collector where the evidence enters.
     """
     if not instrs:
         return
@@ -1406,21 +1395,20 @@ def _scan_loop_memory(instrs: Sequence[Line], collector: _Collector) -> None:
     collector.add(
         "string-handling",
         store.n,
-        "linha %d: %s — carga e descarga indexadas no laço das linhas %d-%d "
-        "(movimentação byte a byte)"
-        % (store.n, _instruction_text(store), instrs[0].n, instrs[-1].n),
-        "laço sobre memória",
+        "line %d: %s — indexed load and store in the loop of lines %d-%d "
+        "(byte by byte movement)" % (store.n, _instruction_text(store), instrs[0].n, instrs[-1].n),
+        "loop over memory",
         weak=True,
     )
 
 
 def _scan_loop_time(ctx: _Context, instrs: Sequence[Line], collector: _Collector) -> None:
-    """Marca espera ou medição de tempo dentro de laço.
+    """Marks waiting or measuring time inside a loop.
 
     Args:
-        ctx: Dados derivados da análise.
-        instrs: Instruções de todos os blocos do laço.
-        collector: Coletor onde as evidências entram.
+        ctx: Data derived from the analysis.
+        instrs: Instructions of every block of the loop.
+        collector: Collector where the evidence enters.
     """
     for ins in instrs:
         name = _syscall_name(ctx, ins)
@@ -1429,8 +1417,8 @@ def _scan_loop_time(ctx: _Context, instrs: Sequence[Line], collector: _Collector
         collector.add(
             "anti-analysis",
             ins.n,
-            "linha %d: syscall %s no laço das linhas %d-%d "
-            "(espera ou medição de tempo — indício)" % (ins.n, name, instrs[0].n, instrs[-1].n),
+            "line %d: syscall %s in the loop of lines %d-%d "
+            "(waiting or measuring time — a hint)" % (ins.n, name, instrs[0].n, instrs[-1].n),
             "syscall " + name,
             weak=True,
             mitre=("T1497",),
@@ -1439,11 +1427,11 @@ def _scan_loop_time(ctx: _Context, instrs: Sequence[Line], collector: _Collector
 
 
 def _scan_loop_bits(block: Block, collector: _Collector) -> None:
-    """Conta operações de bits no bloco; muitas delas sugerem cifra caseira.
+    """Counts bit operations in the block; many of them suggest a home-made cipher.
 
     Args:
-        block: Bloco que faz parte de um laço.
-        collector: Coletor onde as evidências entram.
+        block: Block that is part of a loop.
+        collector: Collector where the evidence enters.
     """
     instrs = list(getattr(block, "instrs", None) or [])
     ops = [ins for ins in instrs if _is_bit_op(ins)]
@@ -1453,22 +1441,22 @@ def _scan_loop_bits(block: Block, collector: _Collector) -> None:
     collector.add(
         "crypto",
         sample.n,
-        "linha %d: %s — %d operações de bits no mesmo bloco de laço "
-        "(indício de cifra caseira ou de ofuscação)"
+        "line %d: %s — %d bit operations in the same loop block "
+        "(a hint of a home-made cipher or of obfuscation)"
         % (sample.n, _instruction_text(sample), len(ops)),
-        "laço de bits",
+        "bit loop",
         weak=True,
         mitre=("T1027",),
     )
 
 
 def _scan_loop_files(ctx: _Context, instrs: Sequence[Line], collector: _Collector) -> None:
-    """Marca operação de arquivo repetida dentro de laço.
+    """Marks a file operation repeated inside a loop.
 
     Args:
-        ctx: Dados derivados da análise.
-        instrs: Instruções de todos os blocos do laço.
-        collector: Coletor onde as evidências entram.
+        ctx: Data derived from the analysis.
+        instrs: Instructions of every block of the loop.
+        collector: Collector where the evidence enters.
     """
     for ins in instrs:
         signal = ""
@@ -1484,7 +1472,7 @@ def _scan_loop_files(ctx: _Context, instrs: Sequence[Line], collector: _Collecto
         collector.add(
             "persistence",
             ins.n,
-            "linha %d: %s no laço das linhas %d-%d (operação de arquivo repetida)"
+            "line %d: %s in the loop of lines %d-%d (repeated file operation)"
             % (ins.n, signal, instrs[0].n, instrs[-1].n),
             signal,
         )
@@ -1492,17 +1480,17 @@ def _scan_loop_files(ctx: _Context, instrs: Sequence[Line], collector: _Collecto
 
 
 def _scan_loop(group: Sequence[Block], ctx: _Context, collector: _Collector) -> None:
-    """Aplica todas as regras que dependem de um laço inteiro.
+    """Applies every rule that depends on a whole loop.
 
-    Um laço pode render quatro leituras diferentes: algoritmo puro
-    (``data-processing``, bloco a bloco), movimentação byte a byte
-    (``string-handling``), espera ou medição de tempo (``anti-analysis``) e
-    cifra caseira (``crypto``).
+    A loop can yield four different readings: pure algorithm
+    (``data-processing``, block by block), byte by byte movement
+    (``string-handling``), waiting or measuring time (``anti-analysis``) and
+    home-made cipher (``crypto``).
 
     Args:
-        group: Blocos que formam o laço, na ordem do código.
-        ctx: Dados derivados da análise.
-        collector: Coletor onde as evidências entram.
+        group: Blocks that form the loop, in code order.
+        ctx: Data derived from the analysis.
+        collector: Collector where the evidence enters.
     """
     blocks = [block for block in group if getattr(block, "instrs", None)]
     if not blocks:
@@ -1518,11 +1506,11 @@ def _scan_loop(group: Sequence[Block], ctx: _Context, collector: _Collector) -> 
 
 
 def _scan_loop_block(block: Block, collector: _Collector) -> None:
-    """Marca o bloco de laço que só manipula registradores e memória.
+    """Marks the loop block that only manipulates registers and memory.
 
     Args:
-        block: Bloco que faz parte de um laço.
-        collector: Coletor onde as evidências entram.
+        block: Block that is part of a loop.
+        collector: Collector where the evidence enters.
     """
     instrs = list(getattr(block, "instrs", None) or [])
     if not instrs or any(ins.mnemonic in ("syscall", "int", "call") for ins in instrs):
@@ -1534,31 +1522,31 @@ def _scan_loop_block(block: Block, collector: _Collector) -> None:
     collector.add(
         "data-processing",
         sample.n,
-        "linha %d: %s — laço das linhas %d-%d sem chamada externa "
-        "(só registradores e memória)"
+        "line %d: %s — loop of lines %d-%d with no external call "
+        "(only registers and memory)"
         % (sample.n, _instruction_text(sample), instrs[0].n, instrs[-1].n),
-        "laço de cálculo",
+        "calculation loop",
     )
 
 
 def _scan_loops(ctx: _Context, collector: _Collector) -> None:
-    """Examina cada laço do programa.
+    """Examines each loop of the program.
 
     Args:
-        ctx: Dados derivados da análise.
-        collector: Coletor onde as evidências entram.
+        ctx: Data derived from the analysis.
+        collector: Collector where the evidence enters.
     """
     for group in ctx.loops:
         _scan_loop(group, ctx, collector)
 
 
 def _scan_text_network(code: str, line: int, collector: _Collector) -> None:
-    """Marca strings com cara de host, IP ou URL.
+    """Marks strings that look like a host, IP or URL.
 
     Args:
-        code: Linha do fonte sem o comentário.
-        line: Número da linha.
-        collector: Coletor onde as evidências entram.
+        code: Source line without the comment.
+        line: Line number.
+        collector: Collector where the evidence enters.
     """
     token = _host_token(code)
     if not token:
@@ -1566,19 +1554,19 @@ def _scan_text_network(code: str, line: int, collector: _Collector) -> None:
     collector.add(
         "network",
         line,
-        "linha %d: string com possível host/URL: %s" % (line, token),
+        "line %d: string with a possible host/URL: %s" % (line, token),
         "string " + token,
         mitre=("T1071",),
     )
 
 
 def _scan_text_paths(code: str, line: int, collector: _Collector) -> None:
-    """Marca caminhos de sistema citados no fonte.
+    """Marks system paths mentioned in the source.
 
     Args:
-        code: Linha do fonte sem o comentário.
-        line: Número da linha.
-        collector: Coletor onde as evidências entram.
+        code: Source line without the comment.
+        line: Line number.
+        collector: Collector where the evidence enters.
     """
     found = _RE_UNIX_PATH.search(code) or _RE_WIN_PATH.search(code)
     if found is None:
@@ -1587,19 +1575,19 @@ def _scan_text_paths(code: str, line: int, collector: _Collector) -> None:
     collector.add(
         "filesystem",
         line,
-        "linha %d: caminho de sistema no fonte: %s" % (line, token),
-        "caminho " + token,
+        "line %d: system path in the source: %s" % (line, token),
+        "path " + token,
         mitre=("T1083",),
     )
 
 
 def _scan_text_persistence(code: str, line: int, collector: _Collector) -> None:
-    """Marca strings típicas de execução automática ou de serviço.
+    """Marks strings typical of autostart or of a service.
 
     Args:
-        code: Linha do fonte sem o comentário.
-        line: Número da linha.
-        collector: Coletor onde as evidências entram.
+        code: Source line without the comment.
+        line: Line number.
+        collector: Collector where the evidence enters.
     """
     for pattern, mitre in (
         (_RE_AUTOSTART, ("T1547",)),
@@ -1613,21 +1601,21 @@ def _scan_text_persistence(code: str, line: int, collector: _Collector) -> None:
         collector.add(
             "persistence",
             line,
-            "linha %d: string de persistência no fonte: %s" % (line, token),
+            "line %d: persistence string in the source: %s" % (line, token),
             "string " + token,
             mitre=mitre,
         )
 
 
 def _scan_text(ctx: _Context, collector: _Collector) -> None:
-    """Procura hosts, caminhos e nomes de persistência no texto do fonte.
+    """Looks for hosts, paths and persistence names in the source text.
 
-    Comentários ficam de fora de propósito: a ideia é ver o que o programa
-    carrega, não o que o autor escreveu sobre ele.
+    Comments stay out on purpose: the idea is to see what the program loads, not
+    what the author wrote about it.
 
     Args:
-        ctx: Dados derivados da análise.
-        collector: Coletor onde as evidências entram.
+        ctx: Data derived from the analysis.
+        collector: Collector where the evidence enters.
     """
     for linha in ctx.analysis.program.lines:
         code = _code_text(linha)
@@ -1639,12 +1627,12 @@ def _scan_text(ctx: _Context, collector: _Collector) -> None:
 
 
 def _scan_problems(ctx: _Context, problems: Sequence[Problem], collector: _Collector) -> None:
-    """Usa avisos do validador como indício fraco de evasão de análise.
+    """Uses validator warnings as a weak hint of analysis evasion.
 
     Args:
-        ctx: Dados derivados da análise.
-        problems: Problemas devolvidos por :func:`asmx.linter.validate`.
-        collector: Coletor onde as evidências entram.
+        ctx: Data derived from the analysis.
+        problems: Issues returned by :func:`asmx.linter.validate`.
+        collector: Collector where the evidence enters.
     """
     for problem in problems:
         code = str(getattr(problem, "code", "") or "")
@@ -1656,17 +1644,17 @@ def _scan_problems(ctx: _Context, problems: Sequence[Problem], collector: _Colle
         collector.add(
             "anti-analysis",
             line,
-            "linha %d: %s — aviso %s do validador (indício fraco)" % (line, quoted, code),
-            "aviso " + code,
+            "line %d: %s — %s warning from the validator (weak hint)" % (line, quoted, code),
+            "warning " + code,
             weak=True,
         )
 
 
 def _apply_combinations(collector: _Collector) -> None:
-    """Acrescenta as técnicas que só aparecem na combinação de categorias.
+    """Adds the techniques that only appear in the combination of categories.
 
     Args:
-        collector: Coletor já preenchido pelas detecções.
+        collector: Collector already filled in by the detections.
     """
     network = collector.first("network")
     files = collector.first("filesystem")
@@ -1675,57 +1663,57 @@ def _apply_combinations(collector: _Collector) -> None:
         collector.mark(
             "network",
             "T1041",
-            "linha %d: %s junto de %s (linha %d) — indício de envio de dados locais para fora"
+            "line %d: %s together with %s (line %d) — a hint of sending local data out"
             % (network.line, network.signal, files.signal, files.line),
-            "rede + arquivos",
+            "network + files",
         )
     if crypto is not None and files is not None:
         collector.mark(
             "crypto",
             "T1486",
-            "linha %d: %s junto de %s (linha %d) — indício de cifra de dados locais"
+            "line %d: %s together with %s (line %d) — a hint of encryption of local data"
             % (crypto.line, crypto.signal, files.signal, files.line),
-            "cifra + arquivos",
+            "cipher + files",
         )
 
 
 def _safe_problems(analysis: Analysis) -> List[Problem]:
-    """Roda o validador para completar os indícios fracos.
+    """Runs the validator to complete the weak hints.
 
     Args:
-        analysis: Análise do fonte.
+        analysis: Source analysis.
 
     Returns:
-        Os problemas encontrados; lista vazia quando a validação falha.
+        The issues found; an empty list when the validation fails.
     """
     try:
         return validate(analysis)
-    except Exception:  # noqa: BLE001 - o indício é opcional, o relatório não
-        logger.debug("validação falhou dentro da classificação", exc_info=True)
+    except Exception:  # noqa: BLE001 - the hint is optional, the report is not
+        logger.debug("validation failed inside the classification", exc_info=True)
         return []
 
 
 # -------------------------------------------------------------- interface --
 def classify(analysis: Analysis, problems: Optional[Sequence[Problem]] = None) -> List[Behavior]:
-    """Transforma a análise em comportamentos legíveis.
+    """Turns the analysis into readable behaviors.
 
-    Nunca levanta exceção: uma falha inesperada devolve o que já foi coletado
-    (ou lista vazia) para que o relatório continue sendo gerado.
+    Never raises: an unexpected failure returns what was already collected (or an
+    empty list) so that the report keeps being generated.
 
     Args:
-        analysis: Análise devolvida por :func:`asmx.analyzer.analyze`.
-        problems: Problemas do validador, quando o chamador já os tem. Quando
-            ``None``, o próprio módulo roda :func:`asmx.linter.validate`, porque
-            é de lá que vem o indício fraco de ``anti-analysis``.
+        analysis: Analysis returned by :func:`asmx.analyzer.analyze`.
+        problems: Validator issues, when the caller already has them. When
+            ``None``, the module itself runs :func:`asmx.linter.validate`,
+            because that is where the weak ``anti-analysis`` hint comes from.
 
     Returns:
-        Lista de :class:`Behavior` ordenada por gravidade, confiança e chave da
-        categoria; vazia para um programa vazio.
+        List of :class:`Behavior` ordered by severity, confidence and category
+        key; empty for an empty program.
 
     Example:
         >>> from asmx.analyzer import analyze
-        >>> nomes = [b.category for b in classify(analyze("mov rax, 60\\nsyscall"))]
-        >>> nomes
+        >>> categories = [b.category for b in classify(analyze("mov rax, 60\\nsyscall"))]
+        >>> categories
         []
     """
     collector = _Collector()
@@ -1742,33 +1730,33 @@ def classify(analysis: Analysis, problems: Optional[Sequence[Problem]] = None) -
             ctx, problems if problems is not None else _safe_problems(analysis), collector
         )
         _apply_combinations(collector)
-    except Exception:  # noqa: BLE001 - a classificação não pode derrubar o relatório
-        logger.debug("falha ao classificar comportamentos", exc_info=True)
+    except Exception:  # noqa: BLE001 - the classification cannot take the report down
+        logger.debug("failed to classify behaviors", exc_info=True)
     return collector.behaviors()
 
 
 def to_dicts(behaviors: Sequence[Behavior]) -> List[Dict[str, Any]]:
-    """Converte uma lista de comportamentos em dicionários prontos para JSON.
+    """Converts a list of behaviors into dictionaries ready for JSON.
 
     Args:
-        behaviors: Comportamentos classificados.
+        behaviors: Classified behaviors.
 
     Returns:
-        Lista de dicionários, na mesma ordem de entrada.
+        List of dictionaries, in the same input order.
     """
     return [behavior.to_dict() for behavior in behaviors]
 
 
 def techniques(behaviors: Sequence[Behavior]) -> List[Dict[str, Any]]:
-    """Lista as técnicas do ATT&CK citadas pelos comportamentos.
+    """Lists the ATT&CK techniques cited by the behaviors.
 
     Args:
-        behaviors: Comportamentos classificados.
+        behaviors: Classified behaviors.
 
     Returns:
-        Lista de dicionários com ``id``, ``name``, ``tactic``, ``url``,
-        ``description`` e ``behaviors`` (as categorias que citaram a técnica),
-        em ordem alfabética de identificador.
+        List of dictionaries with ``id``, ``name``, ``tactic``, ``url``,
+        ``description`` and ``behaviors`` (the categories that cited the
+        technique), in alphabetical order of identifier.
     """
     found: Dict[str, List[str]] = {}
     for behavior in behaviors or []:
@@ -1795,14 +1783,14 @@ def techniques(behaviors: Sequence[Behavior]) -> List[Dict[str, Any]]:
 
 
 def by_tactic(behaviors: Sequence[Behavior]) -> Dict[str, List[Dict[str, Any]]]:
-    """Agrupa as técnicas por tática, na ordem em que o relatório as mostra.
+    """Groups the techniques by tactic, in the order the report shows them.
 
     Args:
-        behaviors: Comportamentos classificados.
+        behaviors: Classified behaviors.
 
     Returns:
-        Dicionário ``tática -> técnicas``; táticas fora da ordem conhecida vão
-        para o fim, em ordem alfabética.
+        Dictionary ``tactic -> techniques``; tactics outside the known order go
+        to the end, in alphabetical order.
     """
     groups: Dict[str, List[Dict[str, Any]]] = {}
     for technique in techniques(behaviors):
@@ -1818,39 +1806,39 @@ def by_tactic(behaviors: Sequence[Behavior]) -> Dict[str, List[Dict[str, Any]]]:
 
 
 def summary(behaviors: Sequence[Behavior]) -> str:
-    """Resume os comportamentos numa linha.
+    """Summarizes the behaviors in one line.
 
     Args:
-        behaviors: Comportamentos classificados.
+        behaviors: Classified behaviors.
 
     Returns:
-        Texto como ``3 comportamento(s): rede (alto), console (baixo)``.
+        Text like ``3 behavior(s): network (high), console (low)``.
 
     Example:
         >>> summary([])
-        '0 comportamento(s)'
+        '0 behavior(s)'
     """
     items = list(behaviors or [])
     if not items:
-        return "0 comportamento(s)"
+        return "0 behavior(s)"
     parts = ["%s (%s)" % (_SHORT_LABELS.get(b.category, b.category), b.severity) for b in items]
-    return "%d comportamento(s): %s" % (len(items), ", ".join(parts))
+    return "%d behavior(s): %s" % (len(items), ", ".join(parts))
 
 
 def severity_rank(severity: str) -> int:
-    """Ordena gravidades: ``alto`` vem antes de ``medio`` e de ``baixo``.
+    """Orders severities: ``high`` comes before ``medium`` and ``low``.
 
     Args:
-        severity: ``alto``, ``medio``, ``baixo`` ou qualquer outro texto
-            (acentos e caixa não importam).
+        severity: ``high``, ``medium``, ``low`` or any other text (case does not
+            matter).
 
     Returns:
-        ``0`` para alto, ``1`` para medio, ``2`` para baixo e ``3`` para valor
-        desconhecido.
+        ``0`` for high, ``1`` for medium, ``2`` for low and ``3`` for an unknown
+        value.
 
     Example:
-        >>> severity_rank("alto"), severity_rank("MÉDIO"), severity_rank("?")
+        >>> severity_rank("high"), severity_rank("MEDIUM"), severity_rank("?")
         (0, 1, 3)
     """
-    normalized = str(severity or "").strip().lower().translate(_ACCENTS)
+    normalized = str(severity or "").strip().lower()
     return _SEVERITY_RANK.get(normalized, 3)

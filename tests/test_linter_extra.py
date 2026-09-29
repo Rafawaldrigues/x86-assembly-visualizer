@@ -1,88 +1,89 @@
-"""Testes das regras de validação: cada código de problema tem um caso."""
+"""Tests of the validation rules: every issue code has its own case."""
 
 import unittest
 
 from asmx.analyzer import analyze
-from asmx.linter import ALL_CHECKS, ALERTA, ERRO, INFO, Problem, validate, summary
+from asmx.linter import ALL_CHECKS, ERROR, INFO, WARNING, Problem, summary, validate
 
 
 def codes(src: str) -> set:
-    """Conjunto de códigos de problema para um código fonte."""
+    """Set of issue codes for a source."""
     return {p.code for p in validate(analyze(src))}
 
 
 def problems(src: str, code: str) -> list:
-    """Problemas de um código específico."""
+    """Issues with one specific code."""
     return [p for p in validate(analyze(src)) if p.code == code]
 
 
-class TestStringsEAvisos(unittest.TestCase):
-    """Regras que olham o texto e as strings."""
+class TestStringsAndWarnings(unittest.TestCase):
+    """Rules that look at the text and at the strings."""
 
-    def test_aspas_abertas(self) -> None:
-        self.assertIn("STR002", codes('section .data\nmsg db "faltou, 10\n'))
+    def test_open_quotes(self) -> None:
+        self.assertIn("STR002", codes('section .data\nmsg db "missing, 10\n'))
 
-    def test_caractere_fora_do_ascii(self) -> None:
-        self.assertIn("STR001", codes('section .data\nmsg db "Ação", 10\ntam equ $ - msg\n'))
+    def test_non_ascii_character(self) -> None:
+        self.assertIn("STR001", codes('section .data\nmsg db "caf\xe9", 10\nsize equ $ - msg\n'))
 
-    def test_caractere_de_controle_literal(self) -> None:
+    def test_literal_control_character(self) -> None:
         self.assertIn("STR004", codes('section .data\nmsg db "a\x01b", 10\n'))
 
-    def test_barra_invertida_sem_escape(self) -> None:
+    def test_backslash_without_escape(self) -> None:
         self.assertIn("STR005", codes('section .data\nmsg db "a\\b", 10\n'))
 
-    def test_escape_conhecido_nao_reclama(self) -> None:
+    def test_known_escape_does_not_complain(self) -> None:
         self.assertNotIn("STR005", codes('section .data\nmsg db "a\\nb", 10\n'))
 
-    def test_string_sem_terminador(self) -> None:
-        self.assertIn("STR006", codes('section .data\nnome db "rafael"\n'))
+    def test_string_without_terminator(self) -> None:
+        self.assertIn("STR006", codes('section .data\ntext db "rafael"\n'))
 
-    def test_string_com_terminador_passa(self) -> None:
-        self.assertNotIn("STR006", codes('section .data\nnome db "rafael", 0\n'))
+    def test_string_with_terminator_passes(self) -> None:
+        self.assertNotIn("STR006", codes('section .data\ntext db "rafael", 0\n'))
 
-    def test_string_para_printf_sem_zero(self) -> None:
+    def test_string_for_printf_without_zero(self) -> None:
         src = (
-            'extern printf\nsection .data\nnome db "rafael"\n'
-            "section .text\nmain:\n mov rdi, nome\n call printf\n ret\n"
+            'extern printf\nsection .data\ntext db "rafael"\n'
+            "section .text\nmain:\n mov rdi, text\n call printf\n ret\n"
         )
         self.assertIn("STR003", codes(src))
 
-    def test_ponto_e_virgula_dentro_da_string_nao_e_aspas_aberta(self) -> None:
-        """O comentário é separado respeitando as aspas; cortar em ";" na mão
-        dava falso positivo em User-Agent como "Mozilla/5.0 (compatible; X)"."""
-        codigo = 'section .data\nua db "Mozilla/5.0 (compatible; ASMX/1.0)", 0\n'
-        self.assertNotIn("STR002", codes(codigo))
+    def test_semicolon_inside_the_string_is_not_open_quotes(self) -> None:
+        """The comment is split off respecting the quotes; cutting at ";" by
+        hand gave a false positive on a User-Agent such as
+        "Mozilla/5.0 (compatible; X)"."""
+        src = 'section .data\nua db "Mozilla/5.0 (compatible; ASMX/1.0)", 0\n'
+        self.assertNotIn("STR002", codes(src))
 
-    def test_aspas_desbalanceadas_fora_de_string_ainda_pegam(self) -> None:
-        self.assertIn("STR002", codes('section .data\nmsg db "faltou, 10\n'))
+    def test_unbalanced_quotes_outside_a_string_are_still_caught(self) -> None:
+        self.assertIn("STR002", codes('section .data\nmsg db "missing, 10\n'))
 
-    def test_string_com_tamanho_calculado_passa(self) -> None:
-        self.assertNotIn("STR006", codes('section .data\nmsg db "abc"\ntam equ $ - msg\n'))
+    def test_string_with_computed_size_passes(self) -> None:
+        self.assertNotIn("STR006", codes('section .data\nmsg db "abc"\nsize equ $ - msg\n'))
 
 
-class TestDivisao(unittest.TestCase):
-    """Divisão exige preparo de RDX."""
+class TestDivision(unittest.TestCase):
+    """Division requires RDX to be prepared."""
 
-    def test_div_sem_preparo(self) -> None:
+    def test_div_without_preparation(self) -> None:
         self.assertIn("DIV001", codes("f:\n mov rax, 100\n mov rbx, 7\n div rbx\n ret"))
 
-    def test_div_preparado_com_xor(self) -> None:
+    def test_div_prepared_with_xor(self) -> None:
         self.assertNotIn(
             "DIV001", codes("f:\n xor rdx, rdx\n mov rax, 10\n mov rbx, 2\n" " div rbx\n ret")
         )
 
-    def test_div_preparado_com_mov_zero(self) -> None:
+    def test_div_prepared_with_mov_zero(self) -> None:
         self.assertNotIn(
             "DIV001", codes("f:\n mov rdx, 0\n mov rax, 10\n mov rbx, 2\n" " div rbx\n ret")
         )
 
-    def test_divisao_por_zero_literal(self) -> None:
+    def test_literal_division_by_zero(self) -> None:
         self.assertIn("DIV002", codes("f:\n xor rdx, rdx\n mov rax, 10\n div 0\n ret"))
 
-    def test_divisor_imediato(self) -> None:
+    def test_immediate_divisor(self) -> None:
         self.assertIn("DIV003", codes("f:\n xor rdx, rdx\n mov rax, 10\n div 3\n ret"))
 
-    def test_duas_divisoes_exigem_dois_preparos(self) -> None:
+    def test_two_divisions_require_two_preparations(self) -> None:
         src = (
             "f:\n xor rdx, rdx\n mov rax, 10\n mov rbx, 2\n div rbx\n"
             " mov rax, 20\n div rbx\n ret"
@@ -90,261 +91,267 @@ class TestDivisao(unittest.TestCase):
         self.assertIn("DIV001", codes(src))
 
 
-class TestPilha(unittest.TestCase):
-    """Equilíbrio da pilha e retorno."""
+class TestStack(unittest.TestCase):
+    """Stack balance and return."""
 
-    def test_push_sem_pop(self) -> None:
+    def test_push_without_pop(self) -> None:
         self.assertIn("STK001", codes("f:\n push rbx\n mov rax, 1\n ret"))
 
-    def test_pop_a_mais(self) -> None:
+    def test_pop_without_push(self) -> None:
         self.assertIn("STK002", codes("f:\n pop rbx\n ret"))
 
-    def test_leave_equilibra(self) -> None:
+    def test_leave_balances(self) -> None:
         self.assertNotIn("STK002", codes("f:\n push rbp\n mov rbp, rsp\n pop rbx\n" " leave\n ret"))
 
-    def test_funcao_chamada_sem_ret(self) -> None:
+    def test_called_function_without_ret(self) -> None:
         self.assertIn("STK003", codes("_start:\n call f\nf:\n mov rax, 1"))
 
-    def test_funcao_com_jmp_como_saida_passa(self) -> None:
+    def test_function_with_jmp_as_exit_passes(self) -> None:
         self.assertNotIn("STK003", codes("_start:\n call f\nf:\n jmp _start"))
 
 
 class TestAbi(unittest.TestCase):
-    """Convenções de chamada dos dois sistemas."""
+    """Calling conventions of both systems."""
 
-    def test_registrador_preservado_alterado(self) -> None:
+    def test_preserved_register_changed(self) -> None:
         self.assertIn("ABI002", codes("f:\n mov rbx, 10\n ret"))
 
-    def test_registrador_salvo_com_push_passa(self) -> None:
+    def test_register_saved_with_push_passes(self) -> None:
         self.assertNotIn("ABI002", codes("f:\n push rbx\n mov rbx, 10\n pop rbx\n ret"))
 
-    def test_windows_sem_shadow_space(self) -> None:
+    def test_windows_without_shadow_space(self) -> None:
         src = (
             "extern ExitProcess\nsection .text\nglobal main\nmain:\n xor rcx, rcx\n"
             " call ExitProcess\n ret\n"
         )
         self.assertIn("ABI001", codes(src))
 
-    def test_windows_com_shadow_space_passa(self) -> None:
+    def test_windows_with_shadow_space_passes(self) -> None:
         src = (
             "extern ExitProcess\nsection .text\nglobal main\nmain:\n sub rsp, 40\n"
             " xor rcx, rcx\n call ExitProcess\n ret\n"
         )
         self.assertNotIn("ABI001", codes(src))
 
-    def test_linux_nao_exige_shadow_space(self) -> None:
+    def test_linux_does_not_require_shadow_space(self) -> None:
         src = "f:\n call g\n ret\ng:\n ret"
         self.assertNotIn("ABI001", codes(src))
 
 
-class TestOperandos(unittest.TestCase):
-    """Tamanho, imediatos e deslocamentos."""
+class TestOperands(unittest.TestCase):
+    """Size, immediates and shifts."""
 
-    def test_imediato_grande_demais(self) -> None:
+    def test_immediate_too_large(self) -> None:
         self.assertIn("IMM001", codes("f:\n mov al, 300\n ret"))
 
-    def test_imediato_de_64_bits_fora_do_mov(self) -> None:
+    def test_64_bit_immediate_outside_mov(self) -> None:
         self.assertIn("IMM002", codes("f:\n mov rax, 0x1FFFFFFFF\n add rax, 0x1FFFFFFFF\n ret"))
 
-    def test_mov_aceita_64_bits(self) -> None:
+    def test_mov_accepts_64_bits(self) -> None:
         self.assertNotIn("IMM002", codes("f:\n mov rax, 0x1FFFFFFFF\n ret"))
 
-    def test_memoria_sem_tamanho(self) -> None:
+    def test_memory_without_size(self) -> None:
         self.assertIn(
             "MEM001", codes("section .bss\nx resb 8\nsection .text\nf:\n" " mov [x], 1\n ret")
         )
 
-    def test_memoria_com_tamanho(self) -> None:
+    def test_memory_with_size(self) -> None:
         self.assertNotIn(
             "MEM001", codes("section .bss\nx resb 8\nsection .text\nf:\n" " mov byte [x], 1\n ret")
         )
 
-    def test_memoria_dos_dois_lados(self) -> None:
+    def test_memory_on_both_sides(self) -> None:
         self.assertIn("MEM002", codes("f:\n mov [rax], [rbx]\n ret"))
 
-    def test_deslocamento_maior_que_o_registrador(self) -> None:
+    def test_shift_larger_than_the_register(self) -> None:
         self.assertIn("SHF001", codes("f:\n mov al, 1\n shl al, 12\n ret"))
 
-    def test_mnemonico_desconhecido(self) -> None:
+    def test_unknown_mnemonic(self) -> None:
         self.assertIn("UNK001", codes("f:\n xyzzy rax\n ret"))
 
 
-class TestSimbolosEEntrada(unittest.TestCase):
-    """Símbolos, ponto de entrada e saída."""
+class TestSymbolsAndEntry(unittest.TestCase):
+    """Symbols, entry point and exit."""
 
-    def test_desvio_para_rotulo_inexistente(self) -> None:
-        self.assertIn("SYM001", codes("_start:\n jmp nao_existe"))
+    def test_jump_to_a_nonexistent_label(self) -> None:
+        self.assertIn("SYM001", codes("_start:\n jmp missing"))
 
-    def test_variavel_inexistente(self) -> None:
-        self.assertIn("SYM003", codes("f:\n mov rax, [nao_existe]\n ret"))
+    def test_nonexistent_variable(self) -> None:
+        self.assertIn("SYM003", codes("f:\n mov rax, [missing]\n ret"))
 
-    def test_extern_nao_e_erro(self) -> None:
+    def test_extern_is_not_an_error(self) -> None:
         self.assertNotIn("SYM001", codes("extern printf\n_start:\n call printf"))
 
-    def test_rotulo_sem_uso(self) -> None:
-        self.assertIn("SYM002", codes("_start:\n mov rax, 1\nesquecido:\n mov rbx, 2"))
+    def test_label_without_use(self) -> None:
+        self.assertIn("SYM002", codes("_start:\n mov rax, 1\nforgotten:\n mov rbx, 2"))
 
-    def test_sem_ponto_de_entrada(self) -> None:
+    def test_without_entry_point(self) -> None:
         self.assertIn("ENT001", codes("f:\n mov rax, 1\n ret"))
 
-    def test_entrada_sem_global(self) -> None:
+    def test_entry_point_without_global(self) -> None:
         self.assertIn("ENT002", codes("section .text\n_start:\n mov rax, 60\n syscall"))
 
-    def test_entrada_com_global(self) -> None:
+    def test_entry_point_with_global(self) -> None:
         self.assertNotIn(
             "ENT002", codes("section .text\nglobal _start\n_start:\n" " mov rax, 60\n syscall")
         )
 
-    def test_sem_saida_explicita(self) -> None:
+    def test_without_explicit_exit(self) -> None:
         self.assertIn("EXIT001", codes("global _start\nsection .text\n_start:\n mov rax, 1"))
 
-    def test_com_exit_passa(self) -> None:
+    def test_with_exit_passes(self) -> None:
         self.assertNotIn(
             "EXIT001", codes("global _start\nsection .text\n_start:\n" " mov rax, 60\n syscall")
         )
 
-    def test_saida_pelo_exitprocess(self) -> None:
+    def test_exit_through_exitprocess(self) -> None:
         self.assertNotIn(
             "EXIT001",
             codes("extern ExitProcess\nglobal main\nmain:\n" " xor rcx, rcx\n call ExitProcess"),
         )
 
-    def test_saida_por_ret_no_main(self) -> None:
+    def test_exit_through_ret_in_main(self) -> None:
         self.assertNotIn("EXIT001", codes("global main\nmain:\n mov rax, 0\n ret"))
 
 
-class TestFluxo(unittest.TestCase):
-    """Blocos inalcançáveis e laços que não terminam."""
+class TestFlow(unittest.TestCase):
+    """Unreachable blocks and loops that do not end."""
 
-    def test_bloco_inalcancavel(self) -> None:
+    def test_unreachable_block(self) -> None:
         src = (
             "global _start\nsection .text\n_start:\n mov rax, 60\n xor rdi, rdi\n"
-            " syscall\norfao:\n mov rbx, 1\n jmp orfao\n"
+            " syscall\norphan:\n mov rbx, 1\n jmp orphan\n"
         )
         self.assertIn("FLOW001", codes(src))
 
-    def test_laco_sem_mudanca(self) -> None:
+    def test_loop_without_change(self) -> None:
         self.assertIn(
-            "FLOW002", codes("global _start\nsection .text\n_start:\n" ".trava:\n jmp .trava")
+            "FLOW002", codes("global _start\nsection .text\n_start:\n" ".stuck:\n jmp .stuck")
         )
 
-    def test_laco_com_contador_passa(self) -> None:
+    def test_loop_with_counter_passes(self) -> None:
         src = (
-            "global _start\nsection .text\n_start:\n mov rcx, 5\n.laco:\n dec rcx\n"
-            " jnz .laco\n mov rax, 60\n syscall\n"
+            "global _start\nsection .text\n_start:\n mov rcx, 5\n.loop:\n dec rcx\n"
+            " jnz .loop\n mov rax, 60\n syscall\n"
         )
         self.assertNotIn("FLOW002", codes(src))
 
 
-class TestSyscallsESecoes(unittest.TestCase):
-    """Chamadas de sistema e seções."""
+class TestSyscallsAndSections(unittest.TestCase):
+    """System calls and sections."""
 
-    def test_syscall_sem_rax(self) -> None:
+    def test_syscall_without_rax(self) -> None:
         self.assertIn(
             "SYS001", codes("global _start\nsection .text\n_start:\n" " mov rdi, 1\n syscall\n")
         )
 
-    def test_rcx_lido_depois_do_syscall(self) -> None:
+    def test_rcx_read_after_syscall(self) -> None:
         src = (
             "global _start\nsection .text\n_start:\n mov rax, 1\n syscall\n"
             " mov rbx, rcx\n mov rax, 60\n syscall\n"
         )
         self.assertIn("SYS002", codes(src))
 
-    def test_instrucoes_fora_da_secao_de_codigo(self) -> None:
+    def test_instructions_outside_the_code_section(self) -> None:
         self.assertIn(
             "SEC001", codes("section .data\nx db 1\nsection .rodata\ny db 2\n" "mov rax, 1")
         )
 
-    def test_escrita_em_rodata(self) -> None:
+    def test_write_to_rodata(self) -> None:
         src = (
-            "section .rodata\nfixo dq 1\nsection .text\nglobal _start\n_start:\n"
-            " mov [fixo], rax\n mov rax, 60\n syscall\n"
+            "section .rodata\nfixed dq 1\nsection .text\nglobal _start\n_start:\n"
+            " mov [fixed], rax\n mov rax, 60\n syscall\n"
         )
         self.assertIn("SEC002", codes(src))
 
 
-class TestRegistradores(unittest.TestCase):
-    """Leitura de registrador sem valor."""
+class TestRegisters(unittest.TestCase):
+    """Reads of a register that has no value yet."""
 
-    def test_registrador_nao_inicializado(self) -> None:
+    def test_uninitialized_register(self) -> None:
         self.assertIn("REG001", codes("f:\n add rax, r12\n ret"))
 
-    def test_registrador_inicializado_passa(self) -> None:
+    def test_initialized_register_passes(self) -> None:
         self.assertNotIn("REG001", codes("f:\n mov r12, 1\n add r12, 5\n ret"))
 
-    def test_rax_lido_antes_de_receber_valor(self) -> None:
-        """RAX é registrador de rascunho: ler antes de escrever é suspeito."""
+    def test_rax_read_before_receiving_a_value(self) -> None:
+        """RAX is the scratch register: reading it before writing is suspicious."""
         self.assertIn("REG001", codes("f:\n add rax, r12\n ret"))
 
-    def test_argumento_nao_conta_como_nao_inicializado(self) -> None:
+    def test_argument_is_not_counted_as_uninitialized(self) -> None:
         self.assertNotIn("REG001", codes("f:\n mov rax, rdi\n ret"))
 
 
-class TestRegressao(unittest.TestCase):
-    """Defeitos já corrigidos não podem voltar."""
+class TestRegression(unittest.TestCase):
+    """Fixed defects must not come back."""
 
-    def test_att_nao_acusa_tamanho_ambiguo(self) -> None:
-        """`movl $0, -4(%rbp)` grava 4 bytes: o sufixo do AT&T é o tamanho."""
+    def test_att_does_not_report_ambiguous_size(self) -> None:
+        """`movl $0, -4(%rbp)` writes 4 bytes: the AT&T suffix is the size."""
         from asmx.examples import EXAMPLES
 
         self.assertEqual(validate(analyze(EXAMPLES["gcc-att"]["code"])), [])
 
-    def test_ponto_e_virgula_em_string_nao_e_aspas_aberta(self) -> None:
-        codigo = 'section .data\nua db "Mozilla/5.0 (compatible; ASMX/1.0)", 0\n'
-        self.assertNotIn("STR002", codes(codigo))
+    def test_semicolon_in_a_string_is_not_open_quotes(self) -> None:
+        src = 'section .data\nua db "Mozilla/5.0 (compatible; ASMX/1.0)", 0\n'
+        self.assertNotIn("STR002", codes(src))
 
 
-class TestInfraestrutura(unittest.TestCase):
-    """O que envolve as regras: lista, resumo, ordenação e falha interna."""
+class TestInfrastructure(unittest.TestCase):
+    """What surrounds the rules: list, summary, ordering and internal failure."""
 
-    def test_lista_de_regras(self) -> None:
+    def test_rule_list(self) -> None:
         self.assertEqual(len(ALL_CHECKS), 15)
-        for regra in ALL_CHECKS:
-            with self.subTest(regra=regra.__name__):
-                self.assertEqual(regra(analyze("")), [])
+        for rule in ALL_CHECKS:
+            with self.subTest(rule=rule.__name__):
+                self.assertEqual(rule(analyze("")), [])
 
-    def test_problema_str(self) -> None:
-        problema = Problem(3, ERRO, "XXX001", "algo", "dica")
-        self.assertEqual(str(problema), "L3 [erro] XXX001: algo")
+    def test_problem_str(self) -> None:
+        problem = Problem(3, ERROR, "XXX001", "something", "tip")
+        self.assertEqual(str(problem), "L3 [error] XXX001: something")
 
-    def test_problema_to_dict(self) -> None:
-        problema = Problem(3, ALERTA, "XXX002", "algo", "dica")
+    def test_problem_to_dict(self) -> None:
+        problem = Problem(3, WARNING, "XXX002", "something", "tip")
         self.assertEqual(
-            problema.to_dict(),
-            {"line": 3, "severity": ALERTA, "code": "XXX002", "message": "algo", "hint": "dica"},
+            problem.to_dict(),
+            {
+                "line": 3,
+                "severity": WARNING,
+                "code": "XXX002",
+                "message": "something",
+                "hint": "tip",
+            },
         )
 
-    def test_resumo(self) -> None:
-        problemas = [
-            Problem(1, ERRO, "A", "a"),
-            Problem(2, ALERTA, "B", "b"),
+    def test_summary(self) -> None:
+        found = [
+            Problem(1, ERROR, "A", "a"),
+            Problem(2, WARNING, "B", "b"),
             Problem(3, INFO, "C", "c"),
         ]
-        self.assertEqual(summary(problemas), "1 erro(s), 1 alerta(s), 1 informação(ões)")
+        self.assertEqual(summary(found), "1 error(s), 1 warning(s), 1 info(s)")
 
-    def test_ordenacao_por_severidade_e_linha(self) -> None:
-        problemas = validate(analyze("f:\n mov al, 300\n jmp nao_existe\n ret"))
-        self.assertEqual(problemas[0].severity, ERRO)
-        linhas = [p.line for p in problemas if p.severity == ERRO]
-        self.assertEqual(linhas, sorted(linhas))
+    def test_ordering_by_severity_and_line(self) -> None:
+        found = validate(analyze("f:\n mov al, 300\n jmp missing\n ret"))
+        self.assertEqual(found[0].severity, ERROR)
+        lines = [p.line for p in found if p.severity == ERROR]
+        self.assertEqual(lines, sorted(lines))
 
-    def test_falha_interna_vira_info(self) -> None:
+    def test_internal_failure_becomes_info(self) -> None:
         from asmx import linter
 
-        def regra_quebrada(analise: object) -> list:
-            raise RuntimeError("explodiu de propósito")
+        def broken_rule(analysis: object) -> list:
+            raise RuntimeError("blew up on purpose")
 
         original = linter.ALL_CHECKS
-        linter.ALL_CHECKS = [regra_quebrada]
+        linter.ALL_CHECKS = [broken_rule]
         try:
-            problemas = linter.validate(analyze("nop"))
+            found = linter.validate(analyze("nop"))
         finally:
             linter.ALL_CHECKS = original
-        self.assertEqual(problemas[0].code, "INT001")
-        self.assertIn("explodiu de propósito", problemas[0].message)
+        self.assertEqual(found[0].code, "INT001")
+        self.assertIn("blew up on purpose", found[0].message)
 
-    def test_codigo_vazio_nao_tem_problema(self) -> None:
+    def test_empty_code_has_no_problem(self) -> None:
         self.assertEqual(validate(analyze("")), [])
 
 

@@ -1,4 +1,4 @@
-"""Testes do logging estruturado: formatos, níveis, ambiente e reconfiguração."""
+"""Tests of the structured logging: formats, levels, environment and reconfiguration."""
 
 import io
 import json
@@ -22,7 +22,7 @@ from asmx.logging_setup import (
 
 
 class BaseLogging(unittest.TestCase):
-    """Garante que um caso não deixe logging ligado para o próximo."""
+    """Makes sure one case does not leave logging on for the next one."""
 
     def setUp(self) -> None:
         reset_logging()
@@ -30,238 +30,236 @@ class BaseLogging(unittest.TestCase):
     def tearDown(self) -> None:
         reset_logging()
 
-    def capture(self, nivel: str = "DEBUG", **kwargs: object) -> io.StringIO:
-        fluxo = io.StringIO()
-        configure_logging(nivel, json_output=True, stream=fluxo, force=True, **kwargs)
-        return fluxo
+    def capture(self, level: str = "DEBUG", **kwargs: object) -> io.StringIO:
+        stream = io.StringIO()
+        configure_logging(level, json_output=True, stream=stream, force=True, **kwargs)
+        return stream
 
 
-class TestNiveis(unittest.TestCase):
-    """Conversão de nome de nível e leitura de variável booleana."""
+class TestLevels(unittest.TestCase):
+    """Level name conversion and boolean environment variable reading."""
 
-    def test_nome_minusculo(self) -> None:
+    def test_lowercase_name(self) -> None:
         self.assertEqual(resolve_level("debug"), logging.DEBUG)
 
-    def test_numero_passa_direto(self) -> None:
+    def test_number_passes_through(self) -> None:
         self.assertEqual(resolve_level(42), 42)
 
-    def test_none_vira_info(self) -> None:
+    def test_none_becomes_info(self) -> None:
         self.assertEqual(resolve_level(None), logging.INFO)
 
-    def test_nome_invalido_explica(self) -> None:
-        with self.assertRaises(ValueError) as contexto:
-            resolve_level("barulhento")
-        self.assertIn("DEBUG", str(contexto.exception))
+    def test_invalid_name_explains(self) -> None:
+        with self.assertRaises(ValueError) as context:
+            resolve_level("noisy")
+        self.assertIn("DEBUG", str(context.exception))
 
-    def test_env_flag_verdadeiros(self) -> None:
-        for valor in ("1", "true", "TRUE", "yes", "on", "sim"):
-            with self.subTest(valor=valor):
-                with unittest.mock.patch.dict(os.environ, {"ASMX_TESTE": valor}):
-                    self.assertTrue(env_flag("ASMX_TESTE"))
+    def test_env_flag_truthy_values(self) -> None:
+        for value in ("1", "true", "TRUE", "yes", "on"):
+            with self.subTest(value=value):
+                with unittest.mock.patch.dict(os.environ, {"ASMX_TEST": value}):
+                    self.assertTrue(env_flag("ASMX_TEST"))
 
-    def test_env_flag_falsos(self) -> None:
-        for valor in ("0", "false", "no", "off", ""):
-            with self.subTest(valor=valor):
-                with unittest.mock.patch.dict(os.environ, {"ASMX_TESTE": valor}):
-                    self.assertFalse(env_flag("ASMX_TESTE", default=True))
+    def test_env_flag_falsy_values(self) -> None:
+        for value in ("0", "false", "no", "off", ""):
+            with self.subTest(value=value):
+                with unittest.mock.patch.dict(os.environ, {"ASMX_TEST": value}):
+                    self.assertFalse(env_flag("ASMX_TEST", default=True))
 
-    def test_env_flag_ausente_usa_padrao(self) -> None:
+    def test_missing_env_flag_uses_the_default(self) -> None:
         with unittest.mock.patch.dict(os.environ, {}, clear=True):
-            self.assertTrue(env_flag("ASMX_NAO_EXISTE", default=True))
-            self.assertFalse(env_flag("ASMX_NAO_EXISTE"))
+            self.assertTrue(env_flag("ASMX_DOES_NOT_EXIST", default=True))
+            self.assertFalse(env_flag("ASMX_DOES_NOT_EXIST"))
 
-    def test_env_flag_texto_estranho_usa_padrao(self) -> None:
-        with unittest.mock.patch.dict(os.environ, {"ASMX_TESTE": "talvez"}):
-            self.assertTrue(env_flag("ASMX_TESTE", default=True))
+    def test_strange_env_flag_text_uses_the_default(self) -> None:
+        with unittest.mock.patch.dict(os.environ, {"ASMX_TEST": "maybe"}):
+            self.assertTrue(env_flag("ASMX_TEST", default=True))
 
 
 class TestJsonFormatter(BaseLogging):
-    """O formato JSON é o contrato para CI e para o Docker."""
+    """The JSON format is the contract for CI and for Docker."""
 
-    def test_campos_obrigatorios(self) -> None:
-        fluxo = self.capture()
-        get_logger("asmx.teste").info("olá")
-        dados = json.loads(fluxo.getvalue())
-        self.assertEqual(dados["level"], "INFO")
-        self.assertEqual(dados["logger"], "asmx.teste")
-        self.assertEqual(dados["message"], "olá")
-        self.assertRegex(dados["ts"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$")
+    def test_required_fields(self) -> None:
+        stream = self.capture()
+        get_logger("asmx.test").info("hello")
+        data = json.loads(stream.getvalue())
+        self.assertEqual(data["level"], "INFO")
+        self.assertEqual(data["logger"], "asmx.test")
+        self.assertEqual(data["message"], "hello")
+        self.assertRegex(data["ts"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$")
 
-    def test_uma_linha_por_evento(self) -> None:
-        fluxo = self.capture()
-        log = get_logger("asmx.teste")
-        log.info("primeiro")
-        log.info("segundo")
-        linhas = fluxo.getvalue().strip().split("\n")
-        self.assertEqual(len(linhas), 2)
+    def test_one_line_per_event(self) -> None:
+        stream = self.capture()
+        log = get_logger("asmx.test")
+        log.info("first")
+        log.info("second")
+        lines = stream.getvalue().strip().split("\n")
+        self.assertEqual(len(lines), 2)
 
-    def test_acentos_preservados(self) -> None:
-        fluxo = self.capture()
-        get_logger("asmx.teste").warning("não é emulada")
-        self.assertIn("não é emulada", fluxo.getvalue())
+    def test_non_ascii_is_preserved(self) -> None:
+        stream = self.capture()
+        get_logger("asmx.test").warning("temperature 20\u00b0C")
+        self.assertIn("temperature 20\u00b0C", stream.getvalue())
 
-    def test_campos_extras_viram_chaves(self) -> None:
-        fluxo = self.capture()
-        log_event(
-            get_logger("asmx.teste"), "analysis_completed", instructions=12, blocks=4, ok=True
-        )
-        dados = json.loads(fluxo.getvalue())
-        self.assertEqual(dados["event"], "analysis_completed")
-        self.assertEqual(dados["instructions"], 12)
-        self.assertEqual(dados["blocks"], 4)
-        self.assertTrue(dados["ok"])
+    def test_extra_fields_become_keys(self) -> None:
+        stream = self.capture()
+        log_event(get_logger("asmx.test"), "analysis_completed", instructions=12, blocks=4, ok=True)
+        data = json.loads(stream.getvalue())
+        self.assertEqual(data["event"], "analysis_completed")
+        self.assertEqual(data["instructions"], 12)
+        self.assertEqual(data["blocks"], 4)
+        self.assertTrue(data["ok"])
 
-    def test_chave_protegida_recebe_prefixo(self) -> None:
-        fluxo = self.capture()
-        get_logger("asmx.teste").info("x", extra={"level": "alto"})
-        self.assertEqual(json.loads(fluxo.getvalue())["extra_level"], "alto")
+    def test_protected_key_gets_a_prefix(self) -> None:
+        stream = self.capture()
+        get_logger("asmx.test").info("x", extra={"level": "high"})
+        self.assertEqual(json.loads(stream.getvalue())["extra_level"], "high")
 
-    def test_excecao_entra_no_json(self) -> None:
-        fluxo = self.capture()
+    def test_exception_enters_the_json(self) -> None:
+        stream = self.capture()
         try:
-            raise ValueError("quebrou de propósito")
+            raise ValueError("broke on purpose")
         except ValueError:
-            get_logger("asmx.teste").error("falhou", exc_info=True)
-        dados = json.loads(fluxo.getvalue())
-        self.assertIn("ValueError", dados["exception"])
+            get_logger("asmx.test").error("failed", exc_info=True)
+        data = json.loads(stream.getvalue())
+        self.assertIn("ValueError", data["exception"])
 
-    def test_valor_nao_serializavel_vira_texto(self) -> None:
-        fluxo = self.capture()
-        log_event(get_logger("asmx.teste"), "conjunto", nomes={"b", "a"})
-        self.assertEqual(json.loads(fluxo.getvalue())["nomes"], "a,b")
+    def test_value_that_is_not_serializable_becomes_text(self) -> None:
+        stream = self.capture()
+        log_event(get_logger("asmx.test"), "collection", names={"b", "a"})
+        self.assertEqual(json.loads(stream.getvalue())["names"], "a,b")
 
 
 class TestTextFormatter(BaseLogging):
-    """O formato de texto é o que aparece no terminal."""
+    """The text format is the one that shows up in the terminal."""
 
-    def test_mostra_evento_e_extras(self) -> None:
-        fluxo = io.StringIO()
-        configure_logging("INFO", json_output=False, stream=fluxo, force=True)
-        log_event(get_logger("asmx.teste"), "check_finished", errors=0)
-        linha = fluxo.getvalue()
-        self.assertIn("check_finished", linha)
-        self.assertIn("event=check_finished", linha)
-        self.assertIn("errors=0", linha)
+    def test_shows_event_and_extras(self) -> None:
+        stream = io.StringIO()
+        configure_logging("INFO", json_output=False, stream=stream, force=True)
+        log_event(get_logger("asmx.test"), "check_finished", errors=0)
+        line = stream.getvalue()
+        self.assertIn("check_finished", line)
+        self.assertIn("event=check_finished", line)
+        self.assertIn("errors=0", line)
 
-    def test_sem_extras(self) -> None:
-        formatador = TextFormatter(show_extras=False)
-        registro = logging.LogRecord("asmx.teste", logging.INFO, __file__, 1, "oi", None, None)
-        self.assertNotIn("event=", formatador.format(registro))
+    def test_without_extras(self) -> None:
+        formatter = TextFormatter(show_extras=False)
+        record = logging.LogRecord("asmx.test", logging.INFO, __file__, 1, "hi", None, None)
+        self.assertNotIn("event=", formatter.format(record))
 
-    def test_excecao_aparece(self) -> None:
-        fluxo = io.StringIO()
-        configure_logging("INFO", json_output=False, stream=fluxo, force=True)
+    def test_exception_shows_up(self) -> None:
+        stream = io.StringIO()
+        configure_logging("INFO", json_output=False, stream=stream, force=True)
         try:
-            raise KeyError("sumiu")
+            raise KeyError("vanished")
         except KeyError:
-            get_logger("asmx.teste").error("falhou", exc_info=True)
-        self.assertIn("KeyError", fluxo.getvalue())
+            get_logger("asmx.test").error("failed", exc_info=True)
+        self.assertIn("KeyError", stream.getvalue())
 
 
 class TestConfigureLogging(BaseLogging):
-    """Configuração, reconfiguração e estado devolvido."""
+    """Configuration, reconfiguration and the returned state."""
 
-    def test_estado_devolvido(self) -> None:
-        estado = configure_logging("DEBUG", json_output=True, stream=io.StringIO(), force=True)
-        self.assertIsInstance(estado, LoggingState)
-        self.assertEqual(estado.level, "DEBUG")
-        self.assertTrue(estado.json_output)
-        self.assertEqual(estado.handlers, 1)
-        self.assertEqual(estado.to_dict()["handlers"], 1)
+    def test_state_returned(self) -> None:
+        state = configure_logging("DEBUG", json_output=True, stream=io.StringIO(), force=True)
+        self.assertIsInstance(state, LoggingState)
+        self.assertEqual(state.level, "DEBUG")
+        self.assertTrue(state.json_output)
+        self.assertEqual(state.handlers, 1)
+        self.assertEqual(state.to_dict()["handlers"], 1)
 
-    def test_nao_duplica_handler(self) -> None:
+    def test_does_not_duplicate_the_handler(self) -> None:
         configure_logging("INFO", stream=io.StringIO(), force=True)
-        primeiro = configure_logging("INFO", stream=io.StringIO())
-        self.assertEqual(primeiro.handlers, 1)
+        first = configure_logging("INFO", stream=io.StringIO())
+        self.assertEqual(first.handlers, 1)
         self.assertEqual(len(logging.getLogger(LOGGER_NAME).handlers), 1)
 
-    def test_force_reconfigura(self) -> None:
+    def test_force_reconfigures(self) -> None:
         configure_logging("INFO", json_output=False, stream=io.StringIO(), force=True)
-        estado = configure_logging("ERROR", json_output=True, stream=io.StringIO(), force=True)
-        self.assertEqual(estado.level, "ERROR")
-        self.assertTrue(estado.json_output)
+        state = configure_logging("ERROR", json_output=True, stream=io.StringIO(), force=True)
+        self.assertEqual(state.level, "ERROR")
+        self.assertTrue(state.json_output)
 
-    def test_nivel_vem_do_ambiente(self) -> None:
+    def test_level_comes_from_the_environment(self) -> None:
         with unittest.mock.patch.dict(
             os.environ, {"ASMX_LOG_LEVEL": "WARNING", "ASMX_LOG_JSON": "1"}
         ):
-            estado = configure_logging(stream=io.StringIO(), force=True)
-        self.assertEqual(estado.level, "WARNING")
-        self.assertTrue(estado.json_output)
+            state = configure_logging(stream=io.StringIO(), force=True)
+        self.assertEqual(state.level, "WARNING")
+        self.assertTrue(state.json_output)
 
-    def test_arquivo_de_log_recebe_as_linhas(self) -> None:
-        with tempfile.TemporaryDirectory() as pasta:
-            caminho = os.path.join(pasta, "asmx.log")
+    def test_log_file_receives_the_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "asmx.log")
             config = configure_logging(
-                "INFO", json_output=True, log_file=caminho, stream=io.StringIO(), force=True
+                "INFO", json_output=True, log_file=path, stream=io.StringIO(), force=True
             )
-            get_logger("asmx.teste").info("gravado no arquivo")
+            get_logger("asmx.test").info("written to the file")
             logging.getLogger(LOGGER_NAME).handlers[1].flush()
-            with open(caminho, encoding="utf-8") as arquivo:
-                conteudo = arquivo.read()
+            with open(path, encoding="utf-8") as file:
+                content = file.read()
         self.assertEqual(config.handlers, 2)
-        self.assertEqual(config.log_file, caminho)
-        self.assertIn("gravado no arquivo", conteudo)
+        self.assertEqual(config.log_file, path)
+        self.assertIn("written to the file", content)
 
-    def test_nivel_invalido_levanta(self) -> None:
+    def test_invalid_level_raises(self) -> None:
         with self.assertRaises(ValueError):
-            configure_logging("gritaria", force=True)
+            configure_logging("shouting", force=True)
 
 
 class TestLogEvent(BaseLogging):
-    """Eventos estruturados."""
+    """Structured events."""
 
-    def test_evento_sem_mensagem_usa_o_nome(self) -> None:
-        fluxo = self.capture()
-        log_event(get_logger("asmx.teste"), "started")
-        self.assertEqual(json.loads(fluxo.getvalue())["message"], "started")
+    def test_event_without_a_message_uses_the_name(self) -> None:
+        stream = self.capture()
+        log_event(get_logger("asmx.test"), "started")
+        self.assertEqual(json.loads(stream.getvalue())["message"], "started")
 
-    def test_mensagem_propria(self) -> None:
-        fluxo = self.capture()
-        log_event(get_logger("asmx.teste"), "started", message="começou agora")
-        self.assertEqual(json.loads(fluxo.getvalue())["message"], "começou agora")
+    def test_own_message(self) -> None:
+        stream = self.capture()
+        log_event(get_logger("asmx.test"), "started", message="started right now")
+        self.assertEqual(json.loads(stream.getvalue())["message"], "started right now")
 
-    def test_nivel_explicito(self) -> None:
-        fluxo = self.capture()
-        log_event(get_logger("asmx.teste"), "detalhe", level=logging.DEBUG, x=1)
-        self.assertEqual(json.loads(fluxo.getvalue())["level"], "DEBUG")
+    def test_explicit_level(self) -> None:
+        stream = self.capture()
+        log_event(get_logger("asmx.test"), "detail", level=logging.DEBUG, x=1)
+        self.assertEqual(json.loads(stream.getvalue())["level"], "DEBUG")
 
-    def test_campo_message_nao_duplica(self) -> None:
-        fluxo = self.capture()
-        log_event(get_logger("asmx.teste"), "evento", message="texto")
-        dados = json.loads(fluxo.getvalue())
-        self.assertNotIn("extra_message", dados)
+    def test_message_field_does_not_duplicate(self) -> None:
+        stream = self.capture()
+        log_event(get_logger("asmx.test"), "event", message="text")
+        data = json.loads(stream.getvalue())
+        self.assertNotIn("extra_message", data)
 
 
 class TestGetLogger(unittest.TestCase):
-    """O namespace dos loggers é sempre asmx.*."""
+    """The logger namespace is always asmx.*."""
 
-    def test_nome_do_modulo(self) -> None:
+    def test_module_name(self) -> None:
         self.assertEqual(get_logger("asmx.parser").name, "asmx.parser")
 
-    def test_nome_solto_recebe_prefixo(self) -> None:
+    def test_bare_name_gets_the_prefix(self) -> None:
         self.assertEqual(get_logger("parser").name, "asmx.parser")
 
-    def test_sem_nome_e_a_raiz_do_projeto(self) -> None:
+    def test_no_name_is_the_project_root(self) -> None:
         self.assertEqual(get_logger().name, LOGGER_NAME)
 
 
 class TestResetLogging(BaseLogging):
-    """Desligar o logging devolve o namespace ao estado inicial."""
+    """Turning logging off returns the namespace to its initial state."""
 
-    def test_remove_handlers_e_volta_a_propagar(self) -> None:
+    def test_removes_handlers_and_propagates_again(self) -> None:
         configure_logging("INFO", stream=io.StringIO(), force=True)
         reset_logging()
         logger = logging.getLogger(LOGGER_NAME)
         self.assertEqual(logger.handlers, [])
         self.assertTrue(logger.propagate)
 
-    def test_sem_handler_nada_e_impresso(self) -> None:
-        fluxo = io.StringIO()
+    def test_without_a_handler_nothing_is_printed(self) -> None:
+        stream = io.StringIO()
         reset_logging()
-        with unittest.mock.patch("sys.stderr", fluxo):
-            get_logger("asmx.teste").info("silêncio")
-        self.assertEqual(fluxo.getvalue(), "")
+        with unittest.mock.patch("sys.stderr", stream):
+            get_logger("asmx.test").info("silence")
+        self.assertEqual(stream.getvalue(), "")
 
 
 if __name__ == "__main__":

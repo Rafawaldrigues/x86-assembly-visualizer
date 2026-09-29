@@ -1,4 +1,4 @@
-"""Editor de assembly: numeração de linhas, breakpoints, realce e anotações."""
+"""Assembly editor: line numbers, breakpoints, highlighting and notes."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ LABELDEF = re.compile(r"^\s*([A-Za-z_.$?@][\w.$@?]*)\s*:")
 
 
 class CodeEditor(ttk.Frame):
-    """Text widget com calha de linhas, breakpoints e realce de sintaxe."""
+    """Text widget with a line gutter, breakpoints and syntax highlighting."""
 
     def __init__(
         self,
@@ -35,13 +35,13 @@ class CodeEditor(ttk.Frame):
         on_breakpoint: Optional[Callable[..., Any]] = None,
         on_cursor: Optional[Callable[..., Any]] = None,
     ) -> None:
-        """Monta o texto, a calha, as barras de rolagem e os eventos.
+        """Build the text, the gutter, the scrollbars and the events.
 
         Args:
-            master: widget pai.
-            on_change: chamado quando o texto para de mudar.
-            on_breakpoint: chamado com (linha, ativo) ao marcar um breakpoint.
-            on_cursor: chamado com (linha, coluna) quando o cursor se move.
+            master: Parent widget.
+            on_change: Called when the text stops changing.
+            on_breakpoint: Called with (line, active) when a breakpoint is toggled.
+            on_cursor: Called with (line, column) when the cursor moves.
         """
         super().__init__(master)
         self.on_change = on_change
@@ -102,7 +102,7 @@ class CodeEditor(ttk.Frame):
         self.bind("<Destroy>", self._cleanup)
 
     def _cleanup(self, event: Optional[tk.Event[tk.Misc]] = None) -> None:
-        """Cancela trabalhos agendados para a janela não reclamar ao fechar."""
+        """Cancel scheduled jobs so the window does not complain when it closes."""
         for job in (self._highlight_job, self._change_job):
             if job:
                 try:
@@ -114,7 +114,7 @@ class CodeEditor(ttk.Frame):
 
     # ------------------------------------------------------------- tags ---
     def _make_tags(self) -> None:
-        """Cria as tags de realce usadas pelo widget de texto."""
+        """Create the highlight tags used by the text widget."""
         t = self.text
         t.tag_configure("mnemonic", foreground=theme.WHITE)
         t.tag_configure("register", foreground=theme.DATA)
@@ -129,21 +129,21 @@ class CodeEditor(ttk.Frame):
         t.tag_configure("found", background=theme.SEL)
         t.tag_raise("sel")
 
-    # ------------------------------------------------------- conteúdo -----
+    # ------------------------------------------------------- content ------
     def get_code(self) -> str:
-        """Devolve o texto do editor tal como está no widget.
+        """Return the editor text exactly as it is in the widget.
 
         Returns:
-            O conteúdo digitado, sem o newline final que o Tk mantém.
+            The typed content, without the trailing newline Tk keeps.
         """
         return self.text.get("1.0", "end-1c")
 
     def set_code(self, code: str, keep_view: bool = False) -> None:
-        """Substitui todo o texto do editor e refaz o realce e a calha.
+        """Replace all the editor text and redo the highlighting and the gutter.
 
         Args:
-            code: novo conteúdo do editor.
-            keep_view: mantém a posição da rolagem quando verdadeiro.
+            code: New editor content.
+            keep_view: Keep the scroll position when true.
         """
         pos = self.text.yview()[0] if keep_view else 0.0
         self.text.edit_separator()
@@ -155,35 +155,35 @@ class CodeEditor(ttk.Frame):
         self.redraw_gutter()
 
     def line_count(self) -> int:
-        """Devolve o número de linhas do texto.
+        """Return the number of lines in the text.
 
         Returns:
-            A quantidade de linhas.
+            The line count.
         """
         return int(self.text.index("end-1c").split(".")[0])
 
     def cursor_line(self) -> int:
-        """Devolve a linha onde o cursor está.
+        """Return the line where the cursor is.
 
         Returns:
-            O número da linha, a partir de 1.
+            The line number, starting at 1.
         """
         return int(self.text.index("insert").split(".")[0])
 
     def cursor_col(self) -> int:
-        """Devolve a coluna onde o cursor está.
+        """Return the column where the cursor is.
 
         Returns:
-            O número da coluna, a partir de 1.
+            The column number, starting at 1.
         """
         return int(self.text.index("insert").split(".")[1]) + 1
 
     def goto_line(self, line: int, focus: bool = True) -> None:
-        """Põe o cursor na linha e rola até ela.
+        """Put the cursor on the line and scroll to it.
 
         Args:
-            line: número da linha.
-            focus: leva o foco do teclado para o editor quando verdadeiro.
+            line: Line number.
+            focus: Move the keyboard focus to the editor when true.
         """
         self.text.mark_set("insert", "%d.0" % line)
         self.text.see("%d.0" % max(1, line - 2))
@@ -192,9 +192,9 @@ class CodeEditor(ttk.Frame):
             self.text.focus_set()
         self.redraw_gutter()
 
-    # --------------------------------------------------------- eventos ----
+    # --------------------------------------------------------- events -----
     def _changed(self, event: Optional[tk.Event[tk.Misc]] = None) -> None:
-        """Reage a uma edição: agenda o realce, redesenha a calha e avisa quem observa."""
+        """React to an edit: schedule the highlight, redraw the gutter and notify observers."""
         self.schedule_highlight()
         self.redraw_gutter()
         if self.on_change and not self._destroyed:
@@ -204,28 +204,28 @@ class CodeEditor(ttk.Frame):
         self._cursor_moved()
 
     def _cursor_moved(self, event: Optional[tk.Event[tk.Misc]] = None) -> None:
-        """Atualiza a linha realçada e informa a posição do cursor."""
+        """Update the highlighted line and report the cursor position."""
         self.mark_current_line()
         if self.on_cursor:
             self.on_cursor(self.cursor_line(), self.cursor_col())
 
     def _tab(self, event: tk.Event[tk.Misc]) -> str:
-        """Insere quatro espaços no lugar da tecla Tab.
+        """Insert four spaces instead of the Tab key.
 
         Returns:
-            "break", para o Tk não inserir a tabulação padrão.
+            "break", so Tk does not insert the default tab.
         """
         self.text.insert("insert", "    ")
         return "break"
 
     def _wheel(self, event: tk.Event[tk.Misc]) -> str:
-        """Rola o texto com a roda do mouse e redesenha a calha.
+        """Scroll the text with the mouse wheel and redraw the gutter.
 
         Args:
-            event: evento da roda; usa num no Linux e delta nos outros sistemas.
+            event: Wheel event; uses num on Linux and delta on the other systems.
 
         Returns:
-            "break", para o Tk não rolar o texto uma segunda vez.
+            "break", so Tk does not scroll the text a second time.
         """
         if event.num == 4 or getattr(event, "delta", 0) > 0:
             self.text.yview_scroll(-3, "units")
@@ -235,29 +235,29 @@ class CodeEditor(ttk.Frame):
         return "break"
 
     def _yview(self, *args: Any) -> None:
-        """Repassa a rolagem para o texto e mantém a calha alinhada.
+        """Forward the scroll to the text and keep the gutter aligned.
 
         Args:
-            *args: argumentos de rolagem que o Tk entrega à barra.
+            *args: Scroll arguments Tk hands to the scrollbar.
         """
         self.text.yview(*args)
         self.redraw_gutter()
 
     def _on_text_scroll(self, first: Union[float, str], last: Union[float, str]) -> None:
-        """Sincroniza a barra de rolagem vertical com o texto.
+        """Sync the vertical scrollbar with the text.
 
         Args:
-            first: fração inicial visível, informada pelo Tk.
-            last: fração final visível, informada pelo Tk.
+            first: First visible fraction, reported by Tk.
+            last: Last visible fraction, reported by Tk.
         """
         self.scroll.set(first, last)
         self.redraw_gutter()
 
     def _gutter_click(self, event: tk.Event[tk.Misc]) -> None:
-        """Liga ou desliga o breakpoint da linha clicada na calha.
+        """Toggle the breakpoint of the line clicked in the gutter.
 
         Args:
-            event: clique na calha; a coordenada y indica a linha.
+            event: Click on the gutter; the y coordinate gives the line.
         """
         index = self.text.index("@0,%d" % event.y)
         line = int(index.split(".")[0])
@@ -271,9 +271,9 @@ class CodeEditor(ttk.Frame):
         if self.on_breakpoint:
             self.on_breakpoint(line, line in self.breakpoints)
 
-    # ---------------------------------------------------------- calha -----
+    # ---------------------------------------------------------- gutter ----
     def redraw_gutter(self) -> None:
-        """Redesenha a calha: números, breakpoints, anotação e linha em execução."""
+        """Redraw the gutter: numbers, breakpoints, notes and the running line."""
         self.gutter.delete("all")
         try:
             first = self.text.index("@0,0")
@@ -307,10 +307,10 @@ class CodeEditor(ttk.Frame):
             line += 1
 
     def set_exec_line(self, line: Optional[int]) -> None:
-        """Marca a linha que a máquina vai executar.
+        """Mark the line the machine is about to run.
 
         Args:
-            line: número da linha em execução; None limpa a marca.
+            line: Number of the running line; None clears the mark.
         """
         self._exec_line = line
         self.text.tag_remove("exec", "1.0", "end")
@@ -320,17 +320,17 @@ class CodeEditor(ttk.Frame):
         self.redraw_gutter()
 
     def mark_current_line(self) -> None:
-        """Realça a linha onde o cursor está."""
+        """Highlight the line where the cursor is."""
         self.text.tag_remove("current", "1.0", "end")
         line = self.cursor_line()
         self.text.tag_add("current", "%d.0" % line, "%d.end+1c" % line)
         self.text.tag_lower("current")
 
     def mark_error_lines(self, lines: List[int]) -> None:
-        """Pinta de erro as linhas indicadas.
+        """Paint the given lines as errors.
 
         Args:
-            lines: números das linhas com problema.
+            lines: Numbers of the lines with a problem.
         """
         self.text.tag_remove("errorline", "1.0", "end")
         for line in lines:
@@ -340,9 +340,9 @@ class CodeEditor(ttk.Frame):
                 pass
         self.text.tag_lower("errorline")
 
-    # --------------------------------------------------------- realce -----
+    # ------------------------------------------------------ highlight -----
     def schedule_highlight(self) -> None:
-        """Agenda o realce para daqui a pouco, juntando várias edições seguidas."""
+        """Schedule the highlight for soon, merging several edits in a row."""
         if self._destroyed:
             return
         if self._highlight_job:
@@ -350,18 +350,18 @@ class CodeEditor(ttk.Frame):
         self._highlight_job = self.after(120, self.highlight)
 
     def highlight(self) -> None:
-        """Recolore o texto inteiro: comentários, strings, rótulos e mnemônicos.
+        """Recolor the whole text: comments, strings, labels and mnemonics.
 
-        O trabalho é feito linha a linha, removendo as marcas antigas antes de
-        aplicar as novas, para o realce não acumular. Um realce agendado que
-        ainda não disparou é cancelado aqui: quem chamou o método já está
-        pintando o texto agora, e um segundo trabalho pendente viraria um
-        comando Tk órfão depois que a janela fecha.
+        The work is done line by line, removing the old marks before applying
+        the new ones, so the highlight does not pile up. A scheduled highlight
+        that has not fired yet is cancelled here: whoever called the method is
+        already painting the text now, and a second pending job would become an
+        orphan Tk command after the window closes.
         """
         if self._highlight_job:
             try:
                 self.after_cancel(self._highlight_job)
-            except tk.TclError:  # pragma: no cover - janela já destruída
+            except tk.TclError:  # pragma: no cover - window already destroyed
                 pass
         self._highlight_job = None
         t = self.text
@@ -408,66 +408,66 @@ class CodeEditor(ttk.Frame):
         self.text.tag_raise("string")
         self.text.tag_raise("comment")
 
-    # ---------------------------------------------------- comentários -----
+    # --------------------------------------------------------- comments ---
     def toggle_comment(self, event: Optional[tk.Event[tk.Misc]] = None) -> str:
-        """Comenta ou descomenta a seleção; sem seleção, a linha do cursor.
+        """Comment or uncomment the selection; with no selection, the cursor line.
 
         Returns:
-            "break", para o Tk não processar a tecla de atalho.
+            "break", so Tk does not process the shortcut key.
         """
         try:
             start = int(self.text.index("sel.first").split(".")[0])
             end = int(self.text.index("sel.last").split(".")[0])
         except tk.TclError:
             start = end = self.cursor_line()
-        linhas = [self.text.get("%d.0" % i, "%d.end" % i) for i in range(start, end + 1)]
-        comentadas = all(linha.strip().startswith(";") or not linha.strip() for linha in linhas)
+        lines = [self.text.get("%d.0" % i, "%d.end" % i) for i in range(start, end + 1)]
+        commented = all(line.strip().startswith(";") or not line.strip() for line in lines)
         self.text.edit_separator()
-        for i, original in zip(range(start, end + 1), linhas):
+        for i, original in zip(range(start, end + 1), lines):
             if not original.strip():
                 continue
-            if comentadas:
-                nova = re.sub(r"^(\s*);\s?", r"\1", original)
+            if commented:
+                updated = re.sub(r"^(\s*);\s?", r"\1", original)
             else:
                 indent = len(original) - len(original.lstrip())
-                nova = original[:indent] + "; " + original[indent:]
+                updated = original[:indent] + "; " + original[indent:]
             self.text.delete("%d.0" % i, "%d.end" % i)
-            self.text.insert("%d.0" % i, nova)
+            self.text.insert("%d.0" % i, updated)
         self.highlight()
         self._changed()
         return "break"
 
-    def insert_at_cursor(self, texto: str) -> None:
-        """Insere texto na posição do cursor e avisa que o conteúdo mudou.
+    def insert_at_cursor(self, text: str) -> None:
+        """Insert text at the cursor position and report that the content changed.
 
         Args:
-            texto: o que será inserido.
+            text: What will be inserted.
         """
-        self.text.insert("insert", texto)
+        self.text.insert("insert", text)
         self._changed()
 
-    # ------------------------------------------------------------ busca ---
-    def find(self, termo: str, from_start: bool = False) -> bool:
-        """Procura o termo no texto e seleciona a ocorrência encontrada.
+    # ------------------------------------------------------------ find ----
+    def find(self, term: str, from_start: bool = False) -> bool:
+        """Look for the term in the text and select the occurrence found.
 
         Args:
-            termo: texto procurado, sem diferenciar maiúsculas de minúsculas.
-            from_start: começa a busca no início do arquivo.
+            term: Text being searched, case insensitive.
+            from_start: Start the search at the beginning of the file.
 
         Returns:
-            True quando alguma ocorrência foi encontrada.
+            True when some occurrence was found.
         """
         self.text.tag_remove("found", "1.0", "end")
-        if not termo:
+        if not term:
             return False
-        inicio = "1.0" if from_start else "insert+1c"
-        pos = self.text.search(termo, inicio, nocase=True, stopindex="end")
+        begin = "1.0" if from_start else "insert+1c"
+        pos = self.text.search(term, begin, nocase=True, stopindex="end")
         if not pos:
-            pos = self.text.search(termo, "1.0", nocase=True, stopindex="end")
+            pos = self.text.search(term, "1.0", nocase=True, stopindex="end")
         if not pos:
             return False
-        fim = "%s+%dc" % (pos, len(termo))
-        self.text.tag_add("found", pos, fim)
-        self.text.mark_set("insert", fim)
+        stop = "%s+%dc" % (pos, len(term))
+        self.text.tag_add("found", pos, stop)
+        self.text.mark_set("insert", stop)
         self.text.see(pos)
         return True

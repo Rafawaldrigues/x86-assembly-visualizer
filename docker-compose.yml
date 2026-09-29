@@ -7,7 +7,7 @@
 #   docker compose run --rm asmx run examples/linux-loop.asm --limit 50
 #   docker compose --profile test run --rm asmx-test      # coverage+flake8+mypy
 #
-# The 8 sample programs are already inside the image (`examples/`), so no mount
+# The 9 sample programs are already inside the image (`examples/`), so no mount
 # is needed to try them. Drop your own sources in `samples/` and they show up
 # read-only at /app/samples.
 #

@@ -1,21 +1,21 @@
-"""Logging estruturado do ASM X, sem dependência externa.
+"""Structured logging for ASM X, with no external dependency.
 
-Dois formatos, o mesmo conteúdo:
+Two formats, the same content:
 
-* **texto** — legível no terminal, usado por padrão quando alguém roda a
-  ferramenta à mão;
-* **JSON** — um objeto por linha, com ``ts``, ``level``, ``logger``, ``event``,
-  ``message`` e os campos extras do evento. É o formato para CI, para o
-  Docker e para qualquer coisa que vá ler os logs com ``jq``.
+* **text** — readable in the terminal, used by default when someone runs the
+  tool by hand;
+* **JSON** — one object per line, with ``ts``, ``level``, ``logger``, ``event``,
+  ``message`` and the extra fields of the event. It is the format for CI, for
+  Docker and for anything that will read the logs with ``jq``.
 
-O logger raiz usado aqui é o namespace ``asmx``: a biblioteca nunca mexe no
-logging global de quem a importa, então embutir o ASM X num programa maior não
-duplica mensagem nem rouba configuração.
+The root logger used here is the ``asmx`` namespace: the library never touches
+the global logging of whoever imports it, so embedding ASM X in a bigger
+program neither duplicates messages nor steals configuration.
 
 Example:
     >>> from asmx.logging_setup import configure_logging, get_logger, log_event
-    >>> estado = configure_logging(level="DEBUG", json_output=True)
-    >>> log = get_logger("asmx.exemplo")
+    >>> state = configure_logging(level="DEBUG", json_output=True)
+    >>> log = get_logger("asmx.example")
     >>> log_event(log, "analysis_started", instructions=12)  # doctest: +SKIP
     >>> reset_logging()
 """
@@ -44,61 +44,62 @@ __all__ = [
     "env_flag",
 ]
 
-#: Namespace dos loggers da aplicação (nunca o logger raiz).
+#: Namespace of the application loggers (never the root logger).
 LOGGER_NAME = "asmx"
 
-#: Níveis aceitos na configuração, do mais verboso ao mais silencioso.
+#: Levels accepted in the configuration, from the most verbose to the quietest.
 LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 
-#: Campos que o próprio :mod:`logging` cria em cada registro.
+#: Fields that :mod:`logging` itself creates in every record.
 _STANDARD_ATTRS = frozenset(
     vars(logging.LogRecord("", logging.NOTSET, "", 0, "", (), None)).keys()
 ) | {"message", "asctime", "taskName"}
 
-#: Campos extras que não podem virar chave de topo no JSON sem confusão.
+#: Extra fields that cannot become a top level JSON key without confusion.
 _PROTECTED_KEYS = frozenset({"ts", "level", "logger", "event", "message", "exception", "stack"})
 
 
 def env_flag(name: str, default: bool = False) -> bool:
-    """Lê uma variável de ambiente no formato booleano.
+    """Reads an environment variable in the boolean format.
 
-    Aceita ``1``, ``true``, ``yes``, ``on`` (sem diferenciar maiúsculas) como
-    verdadeiro e ``0``, ``false``, ``no``, ``off``, vazio como falso. Qualquer
-    outro texto devolve o padrão.
+    Accepts ``1``, ``true``, ``yes``, ``on`` (case-insensitive) as true and
+    ``0``, ``false``, ``no``, ``off``, empty as false. The Portuguese words
+    ``sim`` and ``nao`` are also accepted, as a courtesy for existing setups.
+    Any other text returns the default.
 
     Args:
-        name: Nome da variável de ambiente.
-        default: Valor devolvido quando a variável não existe ou é ambígua.
+        name: Name of the environment variable.
+        default: Value returned when the variable does not exist or is ambiguous.
 
     Returns:
-        O booleano lido do ambiente.
+        The boolean read from the environment.
 
     Example:
-        >>> env_flag("ASMX_NAO_EXISTE", default=True)
+        >>> env_flag("ASMX_DOES_NOT_EXIST", default=True)
         True
     """
     raw = os.environ.get(name)
     if raw is None:
         return default
-    texto = raw.strip().lower()
-    if texto in ("1", "true", "yes", "on", "sim"):
+    text = raw.strip().lower()
+    if text in ("1", "true", "yes", "on", "sim"):
         return True
-    if texto in ("0", "false", "no", "off", "", "nao", "não"):
+    if text in ("0", "false", "no", "off", "", "nao", "n\u00e3o"):
         return False
     return default
 
 
 def resolve_level(level: Union[str, int, None]) -> int:
-    """Converte nome ou número de nível no valor numérico do :mod:`logging`.
+    """Converts a level name or number into the :mod:`logging` numeric value.
 
     Args:
-        level: ``"debug"``, ``"INFO"``, ``10`` ou ``None`` (que vale INFO).
+        level: ``"debug"``, ``"INFO"``, ``10`` or ``None`` (which means INFO).
 
     Returns:
-        Número do nível, pronto para ``logger.setLevel``.
+        The level number, ready for ``logger.setLevel``.
 
     Raises:
-        ValueError: Se o nome não for um dos :data:`LOG_LEVELS`.
+        ValueError: When the name is not one of :data:`LOG_LEVELS`.
 
     Example:
         >>> resolve_level("debug") == logging.DEBUG
@@ -108,17 +109,17 @@ def resolve_level(level: Union[str, int, None]) -> int:
         return logging.INFO
     if isinstance(level, int):
         return level
-    nome = str(level).strip().upper()
-    if nome not in LOG_LEVELS:
-        raise ValueError("nível de log desconhecido: %s (use %s)" % (level, ", ".join(LOG_LEVELS)))
-    return int(getattr(logging, nome))
+    name = str(level).strip().upper()
+    if name not in LOG_LEVELS:
+        raise ValueError("unknown log level: %s (use %s)" % (level, ", ".join(LOG_LEVELS)))
+    return int(getattr(logging, name))
 
 
 def _json_default(value: Any) -> str:
-    """Serializa o que o :mod:`json` não conhece (set, objeto, dataclass).
+    """Serializes what :mod:`json` does not know (set, object, dataclass).
 
     Returns:
-        Uma representação em texto que o :mod:`json` aceita.
+        A text representation that :mod:`json` accepts.
     """
     if isinstance(value, (set, frozenset)):
         return ",".join(sorted(str(v) for v in value))
@@ -128,33 +129,33 @@ def _json_default(value: Any) -> str:
 
 
 class JsonFormatter(logging.Formatter):
-    """Formata cada registro como uma linha JSON.
+    """Formats every record as one JSON line.
 
     Attributes:
-        timestamp_key: Nome do campo de data/hora (padrão ``ts``).
-        include_exception: Se o rastreamento da exceção entra no JSON.
+        timestamp_key: Name of the date/time field (default ``ts``).
+        include_exception: Whether the exception traceback enters the JSON.
     """
 
     def __init__(self, timestamp_key: str = "ts", include_exception: bool = True) -> None:
-        """Inicializa o formatador.
+        """Initializes the formatter.
 
         Args:
-            timestamp_key: Chave usada para a data/hora ISO-8601.
-            include_exception: Inclui ``exception`` quando há ``exc_info``.
+            timestamp_key: Key used for the ISO-8601 date/time.
+            include_exception: Includes ``exception`` when there is ``exc_info``.
         """
         super().__init__()
         self.timestamp_key = timestamp_key
         self.include_exception = include_exception
 
     def format(self, record: logging.LogRecord) -> str:
-        """Converte o registro em uma linha JSON.
+        """Converts the record into one JSON line.
 
         Args:
-            record: Registro criado pelo :mod:`logging`.
+            record: Record created by :mod:`logging`.
 
         Returns:
-            String JSON de uma linha, com ``ensure_ascii=False`` para preservar
-            acentos das mensagens em português.
+            One-line JSON string, with ``ensure_ascii=False`` so non-ASCII
+            characters of the messages stay readable instead of escaped.
         """
         payload: Dict[str, Any] = {
             self.timestamp_key: self.timestamp(record),
@@ -165,13 +166,13 @@ class JsonFormatter(logging.Formatter):
         event = record.__dict__.get("event")
         if event:
             payload["event"] = event
-        for chave, valor in record.__dict__.items():
-            if chave in _STANDARD_ATTRS or chave == "event":
+        for key, value in record.__dict__.items():
+            if key in _STANDARD_ATTRS or key == "event":
                 continue
-            if chave in _PROTECTED_KEYS:
-                payload["extra_" + chave] = valor
+            if key in _PROTECTED_KEYS:
+                payload["extra_" + key] = value
             else:
-                payload[chave] = valor
+                payload[key] = value
         if self.include_exception and record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
         if record.stack_info:
@@ -180,26 +181,26 @@ class JsonFormatter(logging.Formatter):
 
     @staticmethod
     def timestamp(record: logging.LogRecord) -> str:
-        """Devolve a hora do registro em ISO-8601 UTC com milissegundos.
+        """Returns the time of the record in ISO-8601 UTC with milliseconds.
 
         Args:
-            record: Registro de log.
+            record: Log record.
 
         Returns:
-            Texto como ``2026-09-21T18:04:11.123Z``.
+            Text such as ``2026-09-21T18:04:11.123Z``.
         """
-        momento = _dt.datetime.fromtimestamp(record.created, tz=_dt.timezone.utc)
-        return momento.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        moment = _dt.datetime.fromtimestamp(record.created, tz=_dt.timezone.utc)
+        return moment.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 class TextFormatter(logging.Formatter):
-    """Formata o registro para leitura humana, mostrando os campos extras."""
+    """Formats the record for human reading, showing the extra fields."""
 
     def __init__(self, show_extras: bool = True) -> None:
-        """Inicializa o formatador.
+        """Initializes the formatter.
 
         Args:
-            show_extras: Anexa ``event`` e os campos extras ao fim da linha.
+            show_extras: Appends ``event`` and the extra fields to the end of the line.
         """
         super().__init__(
             fmt="%(asctime)s %(levelname)-7s %(name)s: %(message)s", datefmt="%H:%M:%S"
@@ -207,49 +208,49 @@ class TextFormatter(logging.Formatter):
         self.show_extras = show_extras
 
     def format(self, record: logging.LogRecord) -> str:
-        """Monta a linha de texto do registro.
+        """Builds the text line of the record.
 
         Args:
-            record: Registro criado pelo :mod:`logging`.
+            record: Record created by :mod:`logging`.
 
         Returns:
-            Linha terminada sem quebra, no formato
-            ``12:00:01 INFO    asmx.cli: mensagem event=... chave=valor``.
+            Line with no trailing break, in the format
+            ``12:00:01 INFO    asmx.cli: message event=... key=value``.
         """
-        linha = super().format(record)
+        line = super().format(record)
         if self.show_extras:
-            linha += self._extras(record)
+            line += self._extras(record)
         if record.exc_info:
-            linha += "\n" + self.formatException(record.exc_info)
-        return linha
+            line += "\n" + self.formatException(record.exc_info)
+        return line
 
     @staticmethod
     def _extras(record: logging.LogRecord) -> str:
-        """Descreve os campos extras do registro como ``chave=valor``.
+        """Describes the extra fields of the record as ``key=value``.
 
         Returns:
-            Sufixo pronto para colar na linha, ou string vazia.
+            Suffix ready to be glued to the line, or an empty string.
         """
-        partes = []
+        parts = []
         event = record.__dict__.get("event")
         if event:
-            partes.append("event=%s" % event)
-        for chave, valor in record.__dict__.items():
-            if chave in _STANDARD_ATTRS or chave == "event":
+            parts.append("event=%s" % event)
+        for key, value in record.__dict__.items():
+            if key in _STANDARD_ATTRS or key == "event":
                 continue
-            partes.append("%s=%s" % (chave, valor))
-        return ("  " + " ".join(partes)) if partes else ""
+            parts.append("%s=%s" % (key, value))
+        return ("  " + " ".join(parts)) if parts else ""
 
 
 @dataclass(frozen=True)
 class LoggingState:
-    """Retrato da configuração de logging aplicada.
+    """Snapshot of the logging configuration that was applied.
 
     Attributes:
-        level: Nome do nível em uso (``DEBUG``, ``INFO``...).
-        json_output: Se a saída está em JSON.
-        log_file: Caminho do arquivo de log, quando houver.
-        handlers: Quantos handlers ficaram instalados no logger ``asmx``.
+        level: Name of the level in use (``DEBUG``, ``INFO``...).
+        json_output: Whether the output is JSON.
+        log_file: Path of the log file, when there is one.
+        handlers: How many handlers were installed on the ``asmx`` logger.
     """
 
     level: str
@@ -258,10 +259,10 @@ class LoggingState:
     handlers: int
 
     def to_dict(self) -> Dict[str, Any]:
-        """Converte o estado em dicionário serializável.
+        """Converts the state into a serializable dictionary.
 
         Returns:
-            Dicionário com os quatro campos do estado.
+            Dictionary with the four fields of the state.
         """
         return {
             "level": self.level,
@@ -279,37 +280,37 @@ def configure_logging(
     stream: Optional[IO[str]] = None,
     force: bool = False,
 ) -> LoggingState:
-    """Liga o logging estruturado do ASM X.
+    """Turns on the structured logging of ASM X.
 
-    Chamar duas vezes não duplica handler: os anteriores do logger ``asmx`` são
-    removidos antes de instalar os novos. Quando um argumento é ``None``, o
-    valor vem do ambiente (``ASMX_LOG_LEVEL``, ``ASMX_LOG_JSON``,
-    ``ASMX_LOG_FILE``) e, se o ambiente também estiver vazio, do padrão
-    ``INFO`` em texto no ``stderr``.
+    Calling it twice does not duplicate a handler: the previous ones of the
+    ``asmx`` logger are removed before the new ones are installed. When an
+    argument is ``None``, the value comes from the environment
+    (``ASMX_LOG_LEVEL``, ``ASMX_LOG_JSON``, ``ASMX_LOG_FILE``) and, if the
+    environment is empty too, from the default ``INFO`` in text on ``stderr``.
 
     Args:
-        level: Nível mínimo (nome ou número). ``None`` = ambiente ou INFO.
-        json_output: Força (ou desliga) o formato JSON. ``None`` = ambiente.
-        log_file: Arquivo que recebe as mesmas linhas do console.
-        stream: Fluxo de saída; padrão ``sys.stderr``.
-        force: Reconfigura mesmo se já houver configuração aplicada.
+        level: Minimum level (name or number). ``None`` = environment or INFO.
+        json_output: Forces (or turns off) the JSON format. ``None`` = environment.
+        log_file: File that receives the same lines as the console.
+        stream: Output stream; default ``sys.stderr``.
+        force: Reconfigures even when a configuration is already applied.
 
     Returns:
-        O :class:`LoggingState` com o que ficou valendo.
+        The :class:`LoggingState` with what ended up in effect.
 
     Raises:
-        ValueError: Se o nível pedido não existir.
+        ValueError: When the requested level does not exist.
 
     Example:
-        >>> estado = configure_logging("DEBUG", json_output=False, stream=sys.stderr)
-        >>> estado.level
+        >>> state = configure_logging("DEBUG", json_output=False, stream=sys.stderr)
+        >>> state.level
         'DEBUG'
         >>> reset_logging()
     """
     logger = logging.getLogger(LOGGER_NAME)
     if getattr(logger, "_asmx_configured", False) and not force:
-        atual = logger._asmx_state  # type: ignore[attr-defined]
-        return atual
+        current = logger._asmx_state  # type: ignore[attr-defined]
+        return current
 
     if level is None:
         level = os.environ.get("ASMX_LOG_LEVEL") or "INFO"
@@ -318,54 +319,55 @@ def configure_logging(
     if log_file is None:
         log_file = os.environ.get("ASMX_LOG_FILE") or None
 
-    numero = resolve_level(level)
-    nome = logging.getLevelName(numero)
-    formato: logging.Formatter = JsonFormatter() if json_output else TextFormatter()
+    number = resolve_level(level)
+    name = logging.getLevelName(number)
+    formatter: logging.Formatter = JsonFormatter() if json_output else TextFormatter()
 
     for handler in list(logger.handlers):
         logger.removeHandler(handler)
         try:
             handler.close()
-        except Exception:  # pragma: no cover - handler exótico de terceiros
+        except Exception:  # pragma: no cover - exotic third party handler
             pass
 
     console = logging.StreamHandler(stream if stream is not None else sys.stderr)
-    console.setFormatter(formato)
-    console.setLevel(numero)
+    console.setFormatter(formatter)
+    console.setLevel(number)
     logger.addHandler(console)
 
     if log_file:
-        arquivo = logging.FileHandler(log_file, encoding="utf-8")
-        arquivo.setFormatter(formato)
-        arquivo.setLevel(numero)
-        logger.addHandler(arquivo)
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
+        file_handler.setFormatter(formatter)
+        file_handler.setLevel(number)
+        logger.addHandler(file_handler)
 
-    logger.setLevel(numero)
+    logger.setLevel(number)
     logger.propagate = False
-    estado = LoggingState(
-        level=str(nome),
+    state = LoggingState(
+        level=str(name),
         json_output=bool(json_output),
         log_file=log_file,
         handlers=len(logger.handlers),
     )
     logger._asmx_configured = True  # type: ignore[attr-defined]
-    logger._asmx_state = estado  # type: ignore[attr-defined]
-    return estado
+    logger._asmx_state = state  # type: ignore[attr-defined]
+    return state
 
 
 def reset_logging() -> None:
-    """Desliga o logging do ASM X e devolve o namespace ao estado inicial.
+    """Turns off ASM X logging and returns the namespace to its initial state.
 
-    Remove os handlers instalados por :func:`configure_logging`, apaga a marca
-    de configuração e volta a deixar o logger ``asmx`` propagar para o logger
-    raiz. É o que os testes usam para que um caso não contamine o seguinte.
+    It removes the handlers installed by :func:`configure_logging`, erases the
+    configuration mark and lets the ``asmx`` logger propagate to the root
+    logger again. It is what the tests use so that one case does not
+    contaminate the next one.
     """
     logger = logging.getLogger(LOGGER_NAME)
     for handler in list(logger.handlers):
         logger.removeHandler(handler)
         try:
             handler.close()
-        except Exception:  # pragma: no cover - handler exótico de terceiros
+        except Exception:  # pragma: no cover - exotic third party handler
             pass
     logger.setLevel(logging.NOTSET)
     logger.propagate = True
@@ -374,14 +376,14 @@ def reset_logging() -> None:
 
 
 def get_logger(name: Optional[str] = None) -> logging.Logger:
-    """Devolve um logger dentro do namespace ``asmx``.
+    """Returns a logger inside the ``asmx`` namespace.
 
     Args:
-        name: Nome do módulo (use ``__name__``). ``None`` devolve o logger raiz
-            do ASM X.
+        name: Module name (use ``__name__``). ``None`` returns the ASM X root
+            logger.
 
     Returns:
-        Logger pronto para uso; sem handler instalado, nada é impresso.
+        Logger ready to use; with no handler installed, nothing is printed.
 
     Example:
         >>> get_logger("asmx.parser").name
@@ -401,27 +403,25 @@ def log_event(
     exc_info: bool = False,
     **fields: Any,
 ) -> None:
-    """Emite um evento estruturado.
+    """Emits a structured event.
 
-    O campo ``event`` vira uma chave de topo no JSON (``analysis_completed``,
-    ``project_saved``...), o que permite filtrar logs por acontecimento sem
-    interpretar texto livre.
+    The ``event`` field becomes a top level JSON key (``analysis_completed``,
+    ``project_saved``...), which allows filtering logs by occurrence without
+    interpreting free text.
 
     Args:
-        logger: Logger devolvido por :func:`get_logger`.
-        event: Nome curto do acontecimento, em ``snake_case``.
-        level: Nível do registro (padrão ``INFO``).
-        message: Texto legível; quando vazio, usa o próprio nome do evento.
-        exc_info: Anexa o rastreamento da exceção corrente.
-        **fields: Campos extras do evento (contagens, caminhos, códigos).
+        logger: Logger returned by :func:`get_logger`.
+        event: Short name of the occurrence, in ``snake_case``.
+        level: Level of the record (default ``INFO``).
+        message: Readable text; when empty, it uses the event name itself.
+        exc_info: Appends the traceback of the current exception.
+        **fields: Extra fields of the event (counts, paths, codes).
 
     Example:
-        >>> log = get_logger("asmx.exemplo")
+        >>> log = get_logger("asmx.example")
         >>> log_event(log, "validation_finished", errors=0, warnings=2)
     """
     extras = {
-        chave: valor
-        for chave, valor in fields.items()
-        if chave not in _STANDARD_ATTRS and chave != "event"
+        key: value for key, value in fields.items() if key not in _STANDARD_ATTRS and key != "event"
     }
     logger.log(level, message or event, extra={"event": event, **extras}, exc_info=exc_info)

@@ -1,9 +1,9 @@
-"""Máquina virtual didática de x86-64 em modo usuário.
+"""Didactic x86-64 virtual machine in user mode.
 
-A máquina guarda registradores, memória esparsa, flags e a saída de texto;
-executa uma instrução por vez em :meth:`Machine.step` e registra cada passo no
-histórico. As syscalls do Linux e as funções mais comuns da API do Windows são
-emuladas de forma aproximada, e o que não é emulado entra na lista de problemas.
+The machine holds registers, sparse memory, flags and the text output; it runs
+one instruction at a time in :meth:`Machine.step` and records every step in the
+history. Linux syscalls and the most common Windows API functions are emulated
+approximately, and whatever is not emulated goes into the list of issues.
 """
 
 from __future__ import annotations
@@ -24,12 +24,12 @@ DATA_BASE = 0x00400000
 BSS_BASE = 0x00600000
 STACK_TOP = 0x00007FFFFFFFF000
 RET_MAGIC = 0xC0DE0000
-RET_SENTINEL = 0xDEAD0000  # retorno da função executada isoladamente
+RET_SENTINEL = 0xDEAD0000  # return of a function run standalone
 
-#: Tradução dos números de syscall da ABI de 32 bits (i386) para os de 64 bits.
-#: O ``INT 0x80`` usa a tabela antiga, onde ``write`` é 4 (e não 1) e ``exit``
-#: é 1 (e não 60): sem esta tradução, o exemplo clássico de 32 bits escreveria
-#: na syscall errada.
+#: Translation of the 32-bit ABI (i386) syscall numbers to the 64-bit ones.
+#: ``INT 0x80`` uses the old table, where ``write`` is 4 (and not 1) and ``exit``
+#: is 1 (and not 60): without this translation, the classic 32-bit example would
+#: write to the wrong syscall.
 I386_SYSCALLS: Dict[int, int] = {
     1: 60,  # exit
     3: 0,  # read
@@ -45,26 +45,26 @@ I386_SYSCALLS: Dict[int, int] = {
 
 
 def hexs(v: int) -> str:
-    """Formata um inteiro como hexadecimal de 64 bits.
+    """Formats an integer as a 64-bit hexadecimal.
 
     Args:
-        v: Valor a formatar.
+        v: Value to format.
 
     Returns:
-        Texto no formato ``0x...``, já truncado em 64 bits.
+        Text in the ``0x...`` format, already truncated to 64 bits.
     """
     return "0x%x" % (v & MASK64)
 
 
 def to_signed(v: int, size: int = 8) -> int:
-    """Interpreta os bits de um valor como número com sinal.
+    """Interprets the bits of a value as a signed number.
 
     Args:
-        v: Valor a interpretar.
-        size: Tamanho em bytes.
+        v: Value to interpret.
+        size: Size in bytes.
 
     Returns:
-        O valor equivalente em complemento de dois.
+        The two's complement equivalent value.
     """
     bits = size * 8
     v &= (1 << bits) - 1
@@ -73,13 +73,13 @@ def to_signed(v: int, size: int = 8) -> int:
 
 @dataclass
 class Step:
-    """Uma instrução executada, como ela aparece no histórico da interface.
+    """One executed instruction, as it appears in the interface history.
 
     Attributes:
-        line: Número da linha no fonte.
-        text: Texto da instrução.
-        note: O que a máquina fez nesse passo.
-        issue: Marca de problema (``"fatal"`` nas paradas), quando houver.
+        line: Line number in the source.
+        text: Instruction text.
+        note: What the machine did in this step.
+        issue: Issue mark (``"fatal"`` on the stops), when there is one.
     """
 
     line: int
@@ -90,14 +90,14 @@ class Step:
 
 @dataclass
 class Symbol:
-    """Um símbolo carregado na memória simulada.
+    """A symbol loaded into the simulated memory.
 
     Attributes:
-        addr: Endereço simulado, ou ``None`` em símbolos ``equ``.
-        size: Tamanho em bytes (dados e reservas).
-        equ: Valor constante, quando o símbolo veio de um ``equ``.
-        bss: Se o símbolo mora em ``.bss`` (sem conteúdo inicial).
-        line: Linha do fonte onde o símbolo foi definido.
+        addr: Simulated address, or ``None`` on ``equ`` symbols.
+        size: Size in bytes (data and reserves).
+        equ: Constant value, when the symbol came from an ``equ``.
+        bss: Whether the symbol lives in ``.bss`` (no initial content).
+        line: Source line where the symbol was defined.
     """
 
     addr: Optional[int]
@@ -108,11 +108,11 @@ class Symbol:
 
 
 class Machine:
-    """Executa a análise instrução a instrução, registrando o que acontece.
+    """Runs the analysis instruction by instruction, recording what happens.
 
-    O estado simulado (registradores, memória, flags e saída) mora nos
-    atributos criados por :meth:`reset`; cada passo vira um :class:`Step` no
-    histórico ``trace``.
+    The simulated state (registers, memory, flags and output) lives in the
+    attributes created by :meth:`reset`; each step becomes a :class:`Step` in
+    the ``trace`` history.
     """
 
     def __init__(
@@ -122,14 +122,14 @@ class Machine:
         entry: Optional[str] = None,
         clock: Optional[Callable[[], float]] = None,
     ) -> None:
-        """Prepara a máquina e carrega os dados do programa.
+        """Prepares the machine and loads the program data.
 
         Args:
-            analysis: Análise completa do fonte.
-            stdin: Entrada simulada usada pela syscall de leitura.
-            entry: Função a executar isoladamente; sem ela valem ``_start``,
-                ``main``, ``start`` e ``WinMain``.
-            clock: Relógio usado no tempo limite (por padrão ``time.monotonic``).
+            analysis: Complete analysis of the source.
+            stdin: Simulated input used by the read syscall.
+            entry: Function to run standalone; without it ``_start``,
+                ``main``, ``start`` and ``WinMain`` apply.
+            clock: Clock used for the time limit (``time.monotonic`` by default).
         """
         self.analysis = analysis
         self.instrs = analysis.instrs
@@ -140,12 +140,12 @@ class Machine:
         self.clock: Callable[[], float] = clock or time.monotonic
         self.reset()
 
-    # ------------------------------------------------------------ estado --
+    # ------------------------------------------------------------- state --
     def reset(self) -> None:
-        """Volta a máquina ao estado inicial e recarrega os dados do programa.
+        """Returns the machine to the initial state and reloads the program data.
 
-        Zera registradores, memória, flags, saída e histórico; RSP e RBP passam
-        a apontar para o topo da pilha simulada.
+        Zeroes registers, memory, flags, output and history; RSP and RBP now
+        point to the top of the simulated stack.
         """
         self.regs: Dict[str, int] = {r: 0 for r in REGS64}
         self.xmm: Dict[str, int] = {}
@@ -168,16 +168,16 @@ class Machine:
         self.ip = self._entry_index()
         self.entry_ip = self.ip
         if self.entry:
-            # rodando uma função isolada: coloca um retorno de mentira na pilha
-            # para o RET dela terminar a execução sem parecer erro
+            # running a standalone function: put a fake return address on the
+            # stack so that its RET ends the execution without looking like an error
             self.push(RET_SENTINEL)
 
     def _entry_index(self) -> int:
-        """Escolhe o índice da instrução onde a execução começa.
+        """Chooses the index of the instruction where execution starts.
 
         Returns:
-            O índice do ponto de entrada pedido, ou de ``_start``/``main``/
-            ``start``/``WinMain``; zero quando nenhum deles existe.
+            The index of the requested entry point, or of ``_start``/``main``/
+            ``start``/``WinMain``; zero when none of them exists.
         """
         candidates = [self.entry] if self.entry else []
         candidates += ["_start", "main", "start", "WinMain"]
@@ -186,38 +186,38 @@ class Machine:
                 return self.label_at[c]
         return 0
 
-    # ------------------------------------------------------------ memória -
+    # ------------------------------------------------------------- memory -
     def rd8(self, addr: int) -> int:
-        """Lê um byte da memória simulada.
+        """Reads one byte from the simulated memory.
 
         Args:
-            addr: Endereço de leitura.
+            addr: Address to read from.
 
         Returns:
-            O byte guardado no endereço, ou 0 quando nada foi escrito ali.
+            The byte stored at the address, or 0 when nothing was written there.
         """
         return self.mem.get(addr & MASK64, 0)
 
     def wr8(self, addr: int, value: int) -> None:
-        """Escreve um byte na memória simulada.
+        """Writes one byte into the simulated memory.
 
         Args:
-            addr: Endereço de escrita.
-            value: Valor gravado; só os 8 bits baixos entram.
+            addr: Address to write to.
+            value: Stored value; only the low 8 bits go in.
         """
         addr &= MASK64
         self.mem[addr] = value & 0xFF
         self.written.add(addr)
 
     def read_mem(self, addr: int, size: int) -> int:
-        """Lê um valor little-endian da memória.
+        """Reads a little-endian value from memory.
 
         Args:
-            addr: Endereço do primeiro byte.
-            size: Quantidade de bytes lidos.
+            addr: Address of the first byte.
+            size: Number of bytes read.
 
         Returns:
-            O inteiro formado pelos bytes lidos.
+            The integer formed by the bytes read.
         """
         v = 0
         for i in range(size - 1, -1, -1):
@@ -225,12 +225,12 @@ class Machine:
         return v
 
     def write_mem(self, addr: int, size: int, value: int) -> None:
-        """Escreve um valor little-endian na memória.
+        """Writes a little-endian value into memory.
 
         Args:
-            addr: Endereço do primeiro byte.
-            size: Quantidade de bytes gravados.
-            value: Valor gravado; bytes acima de ``size`` são descartados.
+            addr: Address of the first byte.
+            size: Number of bytes written.
+            value: Stored value; bytes above ``size`` are discarded.
         """
         v = value & MASK64
         for i in range(size):
@@ -238,14 +238,14 @@ class Machine:
             v >>= 8
 
     def read_cstring(self, addr: int, limit: int = 4096) -> str:
-        """Lê uma string terminada em zero.
+        """Reads a zero-terminated string.
 
         Args:
-            addr: Endereço do primeiro caractere.
-            limit: Número máximo de bytes lidos.
+            addr: Address of the first character.
+            limit: Maximum number of bytes read.
 
         Returns:
-            O texto encontrado antes do terminador, ou até o limite.
+            The text found before the terminator, or up to the limit.
         """
         out = []
         for i in range(limit):
@@ -256,10 +256,10 @@ class Machine:
         return "".join(out)
 
     def _load_data(self) -> None:
-        """Carrega na memória os dados, as reservas e os símbolos ``equ``.
+        """Loads the data, the reserves and the ``equ`` symbols into memory.
 
-        Monta ``self.symbols``, grava o conteúdo inicial de ``.data`` e dá
-        endereço às reservas de ``.bss``, que não têm conteúdo.
+        Builds ``self.symbols``, writes the initial content of ``.data`` and
+        gives addresses to the ``.bss`` reserves, which have no content.
         """
         cursor, bss_cursor = DATA_BASE, BSS_BASE
         for linha in self.analysis.program.lines:
@@ -322,7 +322,7 @@ class Machine:
             linha.addr = addr
             cursor += max(len(data), 1)
 
-        # símbolos "len equ $ - msg"
+        # "len equ $ - msg" symbols
         for linha in self.analysis.program.lines:
             if linha.kind == "data" and linha.directive == "equ" and linha.label and linha.args:
                 m = re.search(r"\$\s*-\s*([A-Za-z_.$][\w.$]*)", linha.args[0])
@@ -333,19 +333,19 @@ class Machine:
 
     @staticmethod
     def _repeat_bytes(line: Any) -> List[int]:
-        """Monta os bytes de uma diretiva ``times``.
+        """Builds the bytes of a ``times`` directive.
 
-        Entende ``times 64 db 0`` (zeros), ``times 3 db 7`` (valor repetido),
-        ``times 4 dw 0x1234`` (valor de mais de um byte, little-endian) e
-        ``times 2 db "ab"`` (string repetida). Quando a sintaxe não é
-        reconhecida, devolve lista vazia — o mesmo que a diretiva não gerar
-        dado nenhum.
+        Understands ``times 64 db 0`` (zeros), ``times 3 db 7`` (repeated
+        value), ``times 4 dw 0x1234`` (value with more than one byte,
+        little-endian) and ``times 2 db "ab"`` (repeated string). When the
+        syntax is not recognized, it returns an empty list — the same as the
+        directive generating no data at all.
 
         Args:
-            line: Linha de dados do parser.
+            line: Data line from the parser.
 
         Returns:
-            A lista de bytes, na ordem em que vão para a memória.
+            The list of bytes, in the order they go into memory.
         """
         texto = line.args[0] if line.args else ""
         m = re.match(r"^(\w+)\s+(db|dw|dd|dq)\s+(.*)$", texto, re.I)
@@ -366,16 +366,16 @@ class Machine:
         numero &= (1 << (unit * 8)) - 1
         return [((numero >> (8 * u)) & 0xFF) for _ in range(count) for u in range(unit)]
 
-    # ------------------------------------------------------ registradores -
+    # ----------------------------------------------------------- registers -
     def get_reg(self, name: str) -> int:
-        """Lê um registrador pelo nome, respeitando o tamanho do nome.
+        """Reads a register by name, respecting the size of the name.
 
         Args:
-            name: Nome do registrador (``rax``, ``eax``, ``al``, ``ah``,
+            name: Register name (``rax``, ``eax``, ``al``, ``ah``,
                 ``xmm0``...).
 
         Returns:
-            O valor mascarado no tamanho do nome; 0 para nome desconhecido.
+            The value masked to the size of the name; 0 for an unknown name.
         """
         info = REG_INFO.get(name)
         if not info:
@@ -388,14 +388,14 @@ class Machine:
         return full & ((1 << (info["size"] * 8)) - 1)
 
     def set_reg(self, name: str, value: int) -> None:
-        """Escreve num registrador pelo nome, respeitando o tamanho do nome.
+        """Writes to a register by name, respecting the size of the name.
 
-        Como na CPU real, escrever num nome de 32 bits zera os 32 bits altos do
-        registrador de 64 bits.
+        As on the real CPU, writing to a 32-bit name zeroes the high 32 bits of
+        the 64-bit register.
 
         Args:
-            name: Nome do registrador.
-            value: Valor gravado.
+            name: Register name.
+            value: Value written.
         """
         info = REG_INFO.get(name)
         if not info:
@@ -415,16 +415,16 @@ class Machine:
             mask = (1 << (info["size"] * 8)) - 1
             self.regs[info["base"]] = (cur & ~mask) | (v & mask)
 
-    # ---------------------------------------------------------- operandos -
+    # ----------------------------------------------------------- operands -
     def symbol_addr(self, name: str) -> int:
-        """Resolve o endereço de um símbolo.
+        """Resolves the address of a symbol.
 
         Args:
-            name: Nome do símbolo ou do rótulo.
+            name: Name of the symbol or of the label.
 
         Returns:
-            O endereço na memória simulada, o valor de um ``equ`` ou 0 quando o
-            nome não existe.
+            The address in the simulated memory, the value of an ``equ`` or 0
+            when the name does not exist.
         """
         s = self.symbols.get(name)
         if s:
@@ -434,16 +434,16 @@ class Machine:
         return 0
 
     def eval_addr(self, op: Operand) -> int:
-        """Calcula o endereço de um operando de memória.
+        """Computes the address of a memory operand.
 
-        Soma os termos de ``[base + índice*escala + deslocamento]``, aceitando
-        registradores, símbolos e números.
+        Adds the terms of ``[base + index*scale + displacement]``, accepting
+        registers, symbols and numbers.
 
         Args:
-            op: Operando do tipo ``mem``.
+            op: Operand of type ``mem``.
 
         Returns:
-            O endereço mascarado em 64 bits.
+            The address masked to 64 bits.
         """
         inner = re.sub(r"\brel\b", "", op.inner or op.text or "", flags=re.I).strip()
         total = 0
@@ -468,15 +468,15 @@ class Machine:
         return total & MASK64
 
     def op_size(self, op: Operand, other: Optional[Operand] = None) -> int:
-        """Descobre o tamanho, em bytes, de um operando.
+        """Finds the size, in bytes, of an operand.
 
         Args:
-            op: Operando principal.
-            other: Outro operando, consultado quando o principal não declara
-                tamanho.
+            op: Main operand.
+            other: Another operand, consulted when the main one does not declare
+                a size.
 
         Returns:
-            O tamanho declarado, o do registrador ou 8 como último recurso.
+            The declared size, the register size or 8 as a last resort.
         """
         if op.size:
             return op.size
@@ -490,18 +490,18 @@ class Machine:
         return 8
 
     def read(self, op: Operand, other: Optional[Operand] = None) -> int:
-        """Lê o valor de um operando.
+        """Reads the value of an operand.
 
-        A leitura de memória nunca escrita registra um problema, porque na
-        máquina real o conteúdo seria lixo.
+        Reading memory that was never written records an issue, because on the
+        real machine the content would be garbage.
 
         Args:
-            op: Operando a ler.
-            other: Outro operando, usado para deduzir o tamanho da memória.
+            op: Operand to read.
+            other: Another operand, used to deduce the size of the memory.
 
         Returns:
-            O valor do registrador, do imediato, do símbolo, da memória ou da
-            expressão; 0 para operando desconhecido.
+            The value of the register, the immediate, the symbol, the memory or
+            the expression; 0 for an unknown operand.
         """
         if op.type == "reg":
             return self.get_reg(op.reg)
@@ -514,7 +514,8 @@ class Machine:
             size = self.op_size(op, other)
             if not any((addr + i) in self.written for i in range(size)):
                 self._issue(
-                    "leitura de memória nunca escrita em %s — o valor real seria lixo" % hexs(addr)
+                    "read of memory never written at %s — the real value would be garbage"
+                    % hexs(addr)
                 )
             return self.read_mem(addr, size)
         if op.type == "expr":
@@ -522,12 +523,12 @@ class Machine:
         return 0
 
     def write(self, op: Operand, value: int, other: Optional[Operand] = None) -> None:
-        """Grava um valor num operando.
+        """Writes a value to an operand.
 
         Args:
-            op: Operando de destino (registrador ou memória).
-            value: Valor gravado.
-            other: Outro operando, usado para deduzir o tamanho da memória.
+            op: Target operand (register or memory).
+            value: Value written.
+            other: Another operand, used to deduce the size of the memory.
         """
         if op.type == "reg":
             self.set_reg(op.reg, value)
@@ -536,26 +537,26 @@ class Machine:
 
     # -------------------------------------------------------------- flags -
     def _parity(self, v: int) -> int:
-        """Calcula a paridade dos 8 bits baixos.
+        """Computes the parity of the low 8 bits.
 
         Args:
-            v: Valor analisado.
+            v: Value being analyzed.
 
         Returns:
-            1 quando a quantidade de bits 1 é par, senão 0.
+            1 when the number of 1 bits is even, otherwise 0.
         """
         low = v & 0xFF
         return 0 if bin(low).count("1") % 2 else 1
 
     def set_logic_flags(self, res: int, size: int) -> None:
-        """Atualiza as flags depois de uma operação lógica.
+        """Updates the flags after a logic operation.
 
-        ZF e SF saem do resultado, CF e OF são zeradas e PF vem da paridade dos
-        8 bits baixos.
+        ZF and SF come from the result, CF and OF are zeroed and PF comes from
+        the parity of the low 8 bits.
 
         Args:
-            res: Resultado da operação.
-            size: Tamanho do operando, em bytes.
+            res: Result of the operation.
+            size: Size of the operand, in bytes.
         """
         bits = size * 8
         v = res & ((1 << bits) - 1)
@@ -566,17 +567,17 @@ class Machine:
         self.flags["PF"] = self._parity(v)
 
     def set_arith_flags(self, a: int, b: int, res: int, size: int, is_sub: bool) -> None:
-        """Atualiza as flags depois de uma soma ou subtração.
+        """Updates the flags after an addition or a subtraction.
 
-        CF marca o estouro sem sinal e OF, o estouro com sinal; ZF, SF e PF saem
-        do resultado.
+        CF marks the unsigned overflow and OF the signed one; ZF, SF and PF come
+        from the result.
 
         Args:
-            a: Primeiro operando.
-            b: Segundo operando.
-            res: Resultado da operação.
-            size: Tamanho do operando, em bytes.
-            is_sub: Se a operação é uma subtração.
+            a: First operand.
+            b: Second operand.
+            res: Result of the operation.
+            size: Size of the operand, in bytes.
+            is_sub: Whether the operation is a subtraction.
         """
         bits = size * 8
         mask = (1 << bits) - 1
@@ -595,14 +596,14 @@ class Machine:
         self.flags["PF"] = self._parity(v)
 
     def cond(self, cc: str) -> bool:
-        """Avalia uma condição de desvio a partir das flags.
+        """Evaluates a branch condition from the flags.
 
         Args:
-            cc: Sufixo da condição (``e``, ``ne``, ``g``, ``b``...).
+            cc: Condition suffix (``e``, ``ne``, ``g``, ``b``...).
 
         Returns:
-            ``True`` quando a condição vale e ``False`` caso contrário,
-            inclusive para sufixo desconhecido.
+            ``True`` when the condition holds and ``False`` otherwise,
+            including for an unknown suffix.
         """
         f = self.flags
         return {
@@ -612,7 +613,7 @@ class Machine:
             "nz": f["ZF"] == 0,
             "g": f["ZF"] == 0 and f["SF"] == f["OF"],
             "ge": f["SF"] == f["OF"],
-            "linha": f["SF"] != f["OF"],
+            "l": f["SF"] != f["OF"],
             "le": f["ZF"] == 1 or f["SF"] != f["OF"],
             "a": f["CF"] == 0 and f["ZF"] == 0,
             "ae": f["CF"] == 0,
@@ -628,49 +629,49 @@ class Machine:
             "np": f["PF"] == 0,
         }.get(cc, False)
 
-    # -------------------------------------------------------------- pilha -
+    # -------------------------------------------------------------- stack -
     def push(self, v: int) -> None:
-        """Empilha um valor de 8 bytes.
+        """Pushes an 8-byte value.
 
         Args:
-            v: Valor empilhado; RSP diminui 8 antes da escrita.
+            v: Value pushed; RSP decreases by 8 before the write.
         """
         self.regs["rsp"] = (self.regs["rsp"] - 8) & MASK64
         self.write_mem(self.regs["rsp"], 8, v)
 
     def pop(self) -> int:
-        """Desempilha um valor de 8 bytes.
+        """Pops an 8-byte value.
 
-        Registra um problema quando a pilha já está vazia.
+        Records an issue when the stack is already empty.
 
         Returns:
-            O valor que estava no topo; RSP aumenta 8.
+            The value that was on top; RSP increases by 8.
         """
         if self.regs["rsp"] >= STACK_TOP:
-            self._issue("POP com a pilha vazia — estouro de pilha (stack underflow)")
+            self._issue("POP with an empty stack — stack underflow")
         v = self.read_mem(self.regs["rsp"], 8)
         self.regs["rsp"] = (self.regs["rsp"] + 8) & MASK64
         return v
 
     def _issue(self, msg: str) -> None:
-        """Registra um problema, sem repetir mensagens iguais.
+        """Records an issue, without repeating equal messages.
 
         Args:
-            msg: Mensagem acrescentada à lista de problemas.
+            msg: Message added to the issue list.
         """
         if msg not in self.issues:
             self.issues.append(msg)
 
     # ----------------------------------------------------------- syscalls -
     def do_syscall(self) -> str:
-        """Executa a syscall indicada pelo número em RAX.
+        """Runs the syscall indicated by the number in RAX.
 
-        Emula ``write``, ``read``, ``exit``/``exit_group``, ``getpid``, ``time``,
-        ``nanosleep``, ``brk`` e ``getrandom``; qualquer outra zera RAX e entra
-        na lista de problemas.
+        Emulates ``write``, ``read``, ``exit``/``exit_group``, ``getpid``,
+        ``time``, ``nanosleep``, ``brk`` and ``getrandom``; any other one zeroes
+        RAX and goes into the issue list.
 
         Returns:
-            Descrição em português do que a chamada fez.
+            Description of what the call did.
         """
         n = self.regs["rax"] & 0xFFFFFFFF
         info = LINUX_SYSCALLS.get(n)
@@ -679,14 +680,12 @@ class Machine:
             length = self.regs["rdx"]
             addr = self.regs["rsi"]
             if length > 1 << 20:
-                self._issue(
-                    "write com tamanho absurdo (%d bytes) — RDX provavelmente errado" % length
-                )
+                self._issue("write with an absurd size (%d bytes) — RDX is probably wrong" % length)
                 length = 4096
             s = "".join(chr(self.rd8(addr + i)) for i in range(length))
             self.output += s
             self.regs["rax"] = length
-            return "write: escreveu %d bytes no descritor %d" % (length, self.regs["rdi"])
+            return "write: wrote %d bytes to descriptor %d" % (length, self.regs["rdi"])
         if n == 0:
             cnt = self.regs["rdx"]
             dst = self.regs["rsi"]
@@ -696,117 +695,118 @@ class Machine:
                 self.stdin_pos += 1
                 got += 1
             self.regs["rax"] = got
-            return "read: leu %d bytes da entrada simulada" % got
+            return "read: read %d bytes from the simulated input" % got
         if n in (60, 231):
             self.halted = True
             self.exit_code = to_signed(self.regs["rdi"], 4)
-            return "%s: processo encerrado com código %d" % (name, self.exit_code)
+            return "%s: process terminated with code %d" % (name, self.exit_code)
         if n == 39:
             self.regs["rax"] = 4242
-            return "getpid: devolveu 4242 (simulado)"
+            return "getpid: returned 4242 (simulated)"
         if n == 201:
             self.regs["rax"] = int(time.time())
-            return "time: hora atual"
+            return "time: current time"
         if n == 35:
-            return "nanosleep: ignorado na simulação"
+            return "nanosleep: ignored in the simulation"
         if n == 12:
             self.regs["rax"] = BSS_BASE + 0x10000
-            return "brk: heap simulado"
+            return "brk: simulated heap"
         if n == 318:
             qn = self.regs["rsi"]
             for i in range(min(qn, 4096)):
                 self.wr8(self.regs["rdi"] + i, random.randrange(256))
             self.regs["rax"] = qn
-            return "getrandom: %d bytes aleatórios" % qn
+            return "getrandom: %d random bytes" % qn
         self.regs["rax"] = 0
-        self._issue("syscall %d não é emulada — o resultado em RAX é fictício" % n)
-        return "%s: não emulada, RAX zerado" % name
+        self._issue("syscall %d is not emulated — the result in RAX is fictitious" % n)
+        return "%s: not emulated, RAX zeroed" % name
 
     def do_win_api(self, raw_name: str) -> str:
-        """Executa uma função da API do Windows, ou registra que não é emulada.
+        """Runs a Windows API function, or records that it is not emulated.
 
-        Emula ``ExitProcess``, ``GetStdHandle``, ``WriteConsoleA``/``WriteFile``,
-        ``MessageBoxA``/``MessageBoxW``, ``Sleep`` e ``GetLastError``.
+        Emulates ``ExitProcess``, ``GetStdHandle``, ``WriteConsoleA``/``WriteFile``,
+        ``MessageBoxA``/``MessageBoxW``, ``Sleep`` and ``GetLastError``.
 
         Args:
-            raw_name: Nome da função como apareceu no CALL.
+            raw_name: Function name as it appeared in the CALL.
 
         Returns:
-            Descrição em português do que a chamada fez.
+            Description of what the call did.
         """
         key = re.sub(r"^_+|@.*$", "", str(raw_name).lower())
         api = WIN_APIS.get(key)
         if key == "exitprocess":
             self.halted = True
             self.exit_code = to_signed(self.regs["rcx"], 4)
-            return "ExitProcess: processo encerrado com código %d" % self.exit_code
+            return "ExitProcess: process terminated with code %d" % self.exit_code
         if key == "getstdhandle":
             self.regs["rax"] = 0x13
-            return "GetStdHandle: devolveu um handle simulado (0x13)"
+            return "GetStdHandle: returned a simulated handle (0x13)"
         if key in ("writeconsolea", "writefile"):
             length = self.regs["r8"]
             addr = self.regs["rdx"]
             s = "".join(chr(self.rd8(addr + i)) for i in range(min(length, 1 << 20)))
             self.output += s
             self.regs["rax"] = 1
-            return "%s: escreveu %d bytes no console" % (api[0] if api else key, length)
+            return "%s: wrote %d bytes to the console" % (api[0] if api else key, length)
         if key in ("messageboxa", "messageboxw"):
             txt = self.read_cstring(self.regs["rdx"], 512)
             tit = self.read_cstring(self.regs["r8"], 256)
             self.output += "[MessageBox] %s: %s\n" % (tit, txt)
             self.regs["rax"] = 1
-            return "MessageBoxA: caixa de mensagem exibida (mostrada na saída)"
+            return "MessageBoxA: message box displayed (shown in the output)"
         if key == "sleep":
-            return "Sleep: ignorado na simulação"
+            return "Sleep: ignored in the simulation"
         if key == "getlasterror":
             self.regs["rax"] = 0
             return "GetLastError: 0"
         self.regs["rax"] = 0
-        self._issue("função externa %s não é emulada — RAX zerado" % raw_name)
-        return "%s: stub, RAX zerado" % (api[0] if api else raw_name)
+        self._issue("external function %s is not emulated — RAX zeroed" % raw_name)
+        return "%s: stub, RAX zeroed" % (api[0] if api else raw_name)
 
-    # ---------------------------------------------------------- execução --
+    # --------------------------------------------------------- execution --
     @property
     def current(self) -> Optional[object]:
-        """Instrução apontada pelo IP, quando ela existe.
+        """Instruction pointed to by the IP, when it exists.
 
         Returns:
-            A instrução atual ou ``None`` no fim do código.
+            The current instruction or ``None`` at the end of the code.
         """
         return self.instrs[self.ip] if 0 <= self.ip < len(self.instrs) else None
 
     def _jump_target(self, op: Operand, ins: Any) -> Optional[int]:
-        """Resolve o rótulo de destino de um desvio.
+        """Resolves the target label of a jump.
 
         Args:
-            op: Operando com o rótulo de destino.
-            ins: Instrução do desvio, usada no aviso de rótulo desconhecido.
+            op: Operand with the target label.
+            ins: Jump instruction, used in the unknown label warning.
 
         Returns:
-            O índice da instrução de destino, ou ``None`` quando o rótulo não
-            existe no programa.
+            The index of the target instruction, or ``None`` when the label does
+            not exist in the program.
         """
         t = op.symbol or op.text
         if t in self.label_at:
             return self.label_at[t]
-        self._issue("rótulo desconhecido: %s (linha %d)" % (t, ins.n))
+        self._issue("unknown label: %s (line %d)" % (t, ins.n))
         return None
 
-    def step(self) -> Step:  # noqa: C901 (despacho de ~70 instruções)
-        """Executa uma instrução e registra o que aconteceu.
+    def step(self) -> Step:  # noqa: C901 (~70 instruction dispatch)
+        """Runs one instruction and records what happened.
 
-        Instruções não emuladas são puladas com um problema registrado; erros
-        internos da simulação viram problema, sem derrubar a máquina.
+        Instructions that are not emulated are skipped with a recorded issue;
+        internal simulation errors become issues, without taking the machine
+        down.
 
         Returns:
-            O :class:`Step` com linha, texto, observação e marca de problema.
+            The :class:`Step` with line, text, note and issue mark.
         """
         if self.halted:
-            return Step(0, "", "A execução já terminou.")
+            return Step(0, "", "Execution has already finished.")
         ins = self.current
         if ins is None:
             self.halted = True
-            return Step(0, "", "Fim do código.")
+            return Step(0, "", "End of code.")
 
         m = ins.mnemonic
         ops = ins.operands
@@ -825,32 +825,32 @@ class Machine:
                     fits = (1 << (size * 8)) - 1
                     if o1.value > fits or o1.value < -(1 << (size * 8 - 1)):
                         self._issue(
-                            "linha %d: o valor %s não cabe em %s (%d bits) e será truncado"
-                            % (ins.n, o1.text, o0.text, size * 8)
+                            "line %d: the value %s does not fit in %s (%d bits) and will "
+                            "be truncated" % (ins.n, o1.text, o0.text, size * 8)
                         )
                 self.write(o0, v, o1)
                 note = "%s = %s" % (o0.text, hexs(v))
             elif m == "movzx":
                 v = self.read(o1)
                 self.write(o0, v)
-                note = "%s = %s (zeros à esquerda)" % (o0.text, hexs(v))
+                note = "%s = %s (leading zeros)" % (o0.text, hexs(v))
             elif m in ("movsx", "movsxd"):
                 sz = o1.size or (REG_INFO[o1.reg]["size"] if o1.type == "reg" else 4)
                 sv = to_signed(self.read(o1), sz)
                 self.write(o0, sv & MASK64)
-                note = "%s = %d (sinal preservado)" % (o0.text, sv)
+                note = "%s = %d (sign preserved)" % (o0.text, sv)
             elif m == "lea":
                 a = self.eval_addr(o1)
                 self.write(o0, a)
-                note = "%s = endereço %s" % (o0.text, hexs(a))
+                note = "%s = address %s" % (o0.text, hexs(a))
             elif m == "xchg":
                 x, y = self.read(o0), self.read(o1)
                 self.write(o0, y)
                 self.write(o1, x)
-                note = "trocou %s com %s" % (o0.text, o1.text)
+                note = "swapped %s with %s" % (o0.text, o1.text)
             elif m == "push":
                 self.push(self.read(o0))
-                note = "empilhou %s; RSP = %s" % (
+                note = "pushed %s; RSP = %s" % (
                     hexs(self.read_mem(self.regs["rsp"], 8)),
                     hexs(self.regs["rsp"]),
                 )
@@ -865,7 +865,7 @@ class Machine:
                 self.set_arith_flags(a, b, r, size, False)
                 if self.flags["CF"]:
                     self._issue(
-                        "linha %d: a soma estourou %d bits (CF=1) — resultado truncado"
+                        "line %d: the sum overflowed %d bits (CF=1) — result truncated"
                         % (ins.n, size * 8)
                     )
                 self.write(o0, r & MASK64)
@@ -899,15 +899,15 @@ class Machine:
                 note = "%s = %s" % (o0.text, hexs(r & ((1 << (size * 8)) - 1)))
             elif m == "not":
                 self.write(o0, (~self.read(o0)) & MASK64)
-                note = "%s invertido" % o0.text
+                note = "%s inverted" % o0.text
             elif m == "test":
                 r = self.read(o0) & self.read(o1, o0)
                 self.set_logic_flags(r, size)
-                note = "flags atualizadas: ZF=%d" % self.flags["ZF"]
+                note = "flags updated: ZF=%d" % self.flags["ZF"]
             elif m == "cmp":
                 a, b = self.read(o0), self.read(o1, o0)
                 self.set_arith_flags(a, b, a - b, size, True)
-                note = "comparou %d com %d → ZF=%d SF=%d CF=%d OF=%d" % (
+                note = "compared %d with %d → ZF=%d SF=%d CF=%d OF=%d" % (
                     to_signed(a, size),
                     to_signed(b, size),
                     self.flags["ZF"],
@@ -949,17 +949,17 @@ class Machine:
                 d = self.read(o0)
                 if d == 0:
                     self._issue(
-                        "linha %d: divisão por zero — a CPU real dispara a exceção #DE "
-                        "e o processo morre" % ins.n
+                        "line %d: division by zero — the real CPU raises the #DE exception "
+                        "and the process dies" % ins.n
                     )
                     self.halted = True
-                    return self._record(ins, "divisão por zero", issue="fatal")
+                    return self._record(ins, "division by zero", issue="fatal")
                 if m == "div":
                     num = (self.regs["rdx"] << 64) | self.regs["rax"]
                     if self.regs["rdx"] and num // d > MASK64:
                         self._issue(
-                            "linha %d: o quociente não cabe em RAX (#DE). Zere RDX antes "
-                            "do DIV." % ins.n
+                            "line %d: the quotient does not fit in RAX (#DE). Zero RDX "
+                            "before the DIV." % ins.n
                         )
                     self.regs["rax"] = (num // d) & MASK64
                     self.regs["rdx"] = (num % d) & MASK64
@@ -969,23 +969,23 @@ class Machine:
                     rem = sn - q * sd
                     self.regs["rax"] = q & MASK64
                     self.regs["rdx"] = rem & MASK64
-                note = "quociente em RAX = %d, resto em RDX = %d" % (
+                note = "quotient in RAX = %d, remainder in RDX = %d" % (
                     to_signed(self.regs["rax"]),
                     to_signed(self.regs["rdx"]),
                 )
             elif m == "cdq":
                 self.regs["rdx"] = 0xFFFFFFFF if to_signed(self.regs["rax"], 4) < 0 else 0
-                note = "EDX estendido pelo sinal de EAX"
+                note = "EDX sign-extended from EAX"
             elif m == "cqo":
                 self.regs["rdx"] = MASK64 if to_signed(self.regs["rax"]) < 0 else 0
-                note = "RDX estendido pelo sinal de RAX"
+                note = "RDX sign-extended from RAX"
             elif m == "jmp":
                 t = self._jump_target(o0, ins)
                 if t is None:
                     self.halted = True
-                    return self._record(ins, "desvio para rótulo inexistente", issue="fatal")
+                    return self._record(ins, "jump to a nonexistent label", issue="fatal")
                 nxt = t
-                note = "desviou para %s" % o0.text
+                note = "jumped to %s" % o0.text
             elif is_cond_jump(m):
                 cc = m[1:]
                 taken = (self.regs["rcx"] == 0) if cc in ("rcxz", "ecxz", "cxz") else self.cond(cc)
@@ -994,9 +994,9 @@ class Machine:
                     if t is not None:
                         nxt = t
                 note = (
-                    ("condição verdadeira → desviou para %s" % o0.text)
+                    ("condition true → jumped to %s" % o0.text)
                     if taken
-                    else "condição falsa → continuou na linha seguinte"
+                    else "condition false → continued on the next line"
                 )
             elif m.startswith("set"):
                 b = 1 if self.cond(m[3:]) else 0
@@ -1005,30 +1005,30 @@ class Machine:
             elif m.startswith("cmov"):
                 if self.cond(m[4:]):
                     self.write(o0, self.read(o1, o0))
-                    note = "condição verdadeira → copiou"
+                    note = "condition true → copied"
                 else:
-                    note = "condição falsa → não copiou"
+                    note = "condition false → did not copy"
             elif m == "loop":
                 self.regs["rcx"] = (self.regs["rcx"] - 1) & MASK64
                 if self.regs["rcx"]:
                     t = self._jump_target(o0, ins)
                     if t is not None:
                         nxt = t
-                    note = "RCX = %d, repetiu" % self.regs["rcx"]
+                    note = "RCX = %d, repeated" % self.regs["rcx"]
                 else:
-                    note = "RCX chegou a zero, saiu do laço"
+                    note = "RCX reached zero, left the loop"
             elif m == "call":
                 name = o0.symbol or o0.text
                 if self.platform.os == "windows" and (self.regs["rsp"] % 16) not in (0, 8):
                     self._issue(
-                        "linha %d: RSP não está alinhado em 16 bytes na chamada a %s — "
-                        "a ABI do Windows exige alinhamento" % (ins.n, name)
+                        "line %d: RSP is not aligned to 16 bytes on the call to %s — "
+                        "the Windows ABI requires alignment" % (ins.n, name)
                     )
                 if name in self.label_at:
                     self.push(RET_MAGIC + self.ip + 1)
                     nxt = self.label_at[name]
                     self.call_depth += 1
-                    note = "chamou %s; endereço de retorno empilhado" % name
+                    note = "called %s; return address pushed" % name
                 else:
                     note = self.do_win_api(name)
             elif m.startswith("ret"):
@@ -1036,26 +1036,29 @@ class Machine:
                 if rv == RET_SENTINEL:
                     self.halted = True
                     self.exit_code = to_signed(self.regs["rax"], 4)
-                    note = "retornou da função em teste; RAX = %d" % to_signed(self.regs["rax"])
+                    note = "returned from the function under test; RAX = %d" % to_signed(
+                        self.regs["rax"]
+                    )
                 elif RET_MAGIC <= rv < RET_MAGIC + 1000000:
                     nxt = rv - RET_MAGIC
                     self.call_depth -= 1
-                    note = "voltou para a instrução %d" % (nxt + 1)
+                    note = "returned to instruction %d" % (nxt + 1)
                 else:
                     self.halted = True
                     self.exit_code = to_signed(self.regs["rax"], 4)
                     if self.call_depth > 0 or rv != 0:
                         self._issue(
-                            "linha %d: RET pegou %s da pilha, que não é um endereço de "
-                            "retorno válido — a pilha está desbalanceada" % (ins.n, hexs(rv))
+                            "line %d: RET took %s from the stack, which is not a valid "
+                            "return address — the stack is unbalanced" % (ins.n, hexs(rv))
                         )
-                    note = "RET sem endereço válido na pilha — tratado como fim do programa"
+                    note = "RET without a valid address on the stack — treated as the end "
+                    "of the program"
                 if o0 is not None and o0.type == "imm":
                     self.regs["rsp"] = (self.regs["rsp"] + o0.value) & MASK64
             elif m == "leave":
                 self.regs["rsp"] = self.regs["rbp"]
                 self.regs["rbp"] = self.pop()
-                note = "quadro desmontado; RSP = %s" % hexs(self.regs["rsp"])
+                note = "frame torn down; RSP = %s" % hexs(self.regs["rsp"])
             elif m == "syscall":
                 note = self.do_syscall()
             elif m == "int":
@@ -1066,31 +1069,31 @@ class Machine:
                     equivalente = I386_SYSCALLS.get(i386)
                     if equivalente is None:
                         note = (
-                            "INT 0x80: a syscall de 32 bits %d não tem equivalente "
-                            "conhecido em 64 bits" % i386
+                            "INT 0x80: the 32-bit syscall %d has no known 64-bit "
+                            "equivalent" % i386
                         )
-                        self._issue("linha %d: %s" % (ins.n, note))
+                        self._issue("line %d: %s" % (ins.n, note))
                     else:
                         self.regs["rax"] = equivalente
                         note = (
-                            "INT 0x80 (ABI de 32 bits, syscall %d → %d): " % (i386, equivalente)
+                            "INT 0x80 (32-bit ABI, syscall %d → %d): " % (i386, equivalente)
                         ) + self.do_syscall()
                 elif o0 is not None and o0.text == "3":
                     note = "INT 3 — breakpoint"
                 else:
-                    note = "interrupção não emulada"
+                    note = "unemulated interrupt"
             elif m in ("nop", "endbr64", "cld", "std"):
                 if m == "cld":
                     self.flags["DF"] = 0
                 if m == "std":
                     self.flags["DF"] = 1
-                note = "nada aconteceu" if m == "nop" else "estado ajustado"
+                note = "nothing happened" if m == "nop" else "state adjusted"
             elif m in ("stosb", "movsb", "lodsb", "scasb"):
                 rep = bool(ins.prefix and ins.prefix.startswith("rep"))
                 count = self.regs["rcx"] if rep else 1
                 if count > 1 << 20:
                     self._issue(
-                        "linha %d: REP com RCX = %d — provável contador errado" % (ins.n, count)
+                        "line %d: REP with RCX = %d — probably a wrong counter" % (ins.n, count)
                     )
                     count = 1 << 20
                 delta = -1 if self.flags["DF"] else 1
@@ -1116,38 +1119,38 @@ class Machine:
                     done += 1
                 if rep:
                     self.regs["rcx"] = 0
-                note = "%s %s" % (m, ("repetido %d vezes" % done) if rep else "executado")
+                note = "%s %s" % (m, ("repeated %d times" % done) if rep else "executed")
             elif m == "hlt":
                 self.halted = True
-                note = "HLT — execução parada"
+                note = "HLT — execution stopped"
             else:
-                note = 'instrução "%s" não é emulada; foi pulada' % m
-                self._issue("linha %d: %s não é emulada pela máquina virtual" % (ins.n, m))
+                note = 'instruction "%s" is not emulated; it was skipped' % m
+                self._issue("line %d: %s is not emulated by the virtual machine" % (ins.n, m))
         except Exception as exc:  # noqa: BLE001
-            self._issue("linha %d: erro na simulação — %s" % (ins.n, exc))
-            note = "erro na simulação: %s" % exc
+            self._issue("line %d: simulation error — %s" % (ins.n, exc))
+            note = "simulation error: %s" % exc
 
         self.ip = nxt
         if self.ip >= len(self.instrs):
             self.halted = True
-            note += " | fim do código alcançado"
+            note += " | end of code reached"
             if self.exit_code is None:
                 self._issue(
-                    "o código terminou sem uma chamada de saída explícita — na prática a "
-                    "execução continuaria por memória inválida"
+                    "the code ended without an explicit exit call — in practice execution "
+                    "would continue through invalid memory"
                 )
         return self._record(ins, note)
 
     def _record(self, ins: Any, note: str, issue: Optional[str] = None) -> Step:
-        """Acrescenta um passo ao histórico, mantendo os 2000 mais recentes.
+        """Adds a step to the history, keeping the 2000 most recent ones.
 
         Args:
-            ins: Instrução executada.
-            note: Observação em português sobre o passo.
-            issue: Marca de problema (``"fatal"`` nas paradas), quando houver.
+            ins: Executed instruction.
+            note: Note about the step.
+            issue: Issue mark (``"fatal"`` on the stops), when there is one.
 
         Returns:
-            O :class:`Step` registrado.
+            The recorded :class:`Step`.
         """
         s = Step(line=ins.n, text=ins.text, note=note, issue=issue)
         self.trace.append(s)
@@ -1162,21 +1165,21 @@ class Machine:
         timeout: Optional[float] = None,
         raise_on_timeout: bool = False,
     ) -> int:
-        """Roda até o fim, até um breakpoint, até o limite ou até o tempo acabar.
+        """Runs to the end, to a breakpoint, to the limit or until time runs out.
 
         Args:
-            limit: Número máximo de instruções executadas.
-            breakpoints: Linhas do arquivo onde a execução deve parar.
-            timeout: Tempo máximo de parede, em segundos (opcional).
-            raise_on_timeout: Levanta :class:`~asmx.errors.AnalysisTimeoutError`
-                em vez de só marcar ``timed_out``.
+            limit: Maximum number of instructions executed.
+            breakpoints: Lines of the file where execution must stop.
+            timeout: Maximum wall time, in seconds (optional).
+            raise_on_timeout: Raises :class:`~asmx.errors.AnalysisTimeoutError`
+                instead of only marking ``timed_out``.
 
         Returns:
-            Quantas instruções foram executadas.
+            How many instructions were executed.
 
         Raises:
-            AnalysisTimeoutError: Se ``raise_on_timeout`` for verdadeiro e o
-                tempo limite estourar.
+            AnalysisTimeoutError: If ``raise_on_timeout`` is true and the time
+                limit is exceeded.
         """
         inicio = self.clock()
         n = 0
@@ -1186,7 +1189,7 @@ class Machine:
             if timeout is not None and n % 256 == 0 and (self.clock() - inicio) > timeout:
                 self.timed_out = True
                 self.halted = True
-                self._issue("a execução passou de %g s — parada por tempo (timeout)" % timeout)
+                self._issue("execution went past %g s — stopped by time (timeout)" % timeout)
                 if raise_on_timeout:
                     raise AnalysisTimeoutError(timeout, steps=n)
                 break
@@ -1195,19 +1198,19 @@ class Machine:
                 if cur is not None and cur.n in breakpoints:
                     break
         if n >= limit:
-            self._issue("parou após %d instruções — laço infinito muito provável" % limit)
+            self._issue("stopped after %d instructions — an infinite loop is very likely" % limit)
             self.halted = True
         return n
 
     def run_until(self, stop_indexes: Set[int], limit: int = 100000) -> int:
-        """Roda até o IP alcançar um dos índices indicados ou até o limite.
+        """Runs until the IP reaches one of the given indexes or until the limit.
 
         Args:
-            stop_indexes: Índices de instrução onde a execução deve parar.
-            limit: Número máximo de instruções executadas.
+            stop_indexes: Instruction indexes where execution must stop.
+            limit: Maximum number of instructions executed.
 
         Returns:
-            Quantas instruções foram executadas.
+            How many instructions were executed.
         """
         n = 0
         while not self.halted and n < limit:
@@ -1218,11 +1221,11 @@ class Machine:
         return n
 
     def snapshot(self) -> Dict[str, Any]:
-        """Fotografa o estado atual da máquina.
+        """Takes a snapshot of the current machine state.
 
         Returns:
-            Dicionário com registradores, flags, saída, código de saída,
-            problemas, número de passos e se a execução terminou.
+            Dictionary with registers, flags, output, exit code, issues, number
+            of steps and whether execution finished.
         """
         return {
             "regs": dict(self.regs),

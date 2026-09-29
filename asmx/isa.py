@@ -1,10 +1,10 @@
-"""Base de conhecimento do x86-64: instruções, registradores, flags, syscalls.
+"""x86-64 knowledge base: instructions, registers, flags, syscalls.
 
-O acervo em si mora em ``asmx/data/isa.json`` e é carregado uma única vez, na
-importação. Este módulo só dá forma a ele: tabelas prontas para consulta
-(:data:`ISA`, :data:`REG_INFO`, :data:`LINUX_SYSCALLS`) e as funções curtas que
-o resto do programa usa para perguntar "essa instrução existe?", "de que
-categoria ela é?" e "esse mnemônico é um desvio condicional?".
+The catalogue itself lives in ``asmx/data/isa.json`` and is loaded only once, at
+import time. This module just gives it shape: tables ready for lookup
+(:data:`ISA`, :data:`REG_INFO`, :data:`LINUX_SYSCALLS`) and the short functions
+the rest of the program uses to ask "does this instruction exist?", "which
+category is it in?" and "is this mnemonic a conditional branch?".
 
 Example:
     >>> from asmx.isa import doc_for, category_of, is_cond_jump
@@ -29,28 +29,28 @@ _DATA = os.path.join(os.path.dirname(__file__), "data", "isa.json")
 with open(_DATA, encoding="utf-8") as _f:
     _RAW: Dict[str, Any] = json.load(_f)
 
-#: Categorias de instrução (chave -> rótulo e explicação).
+#: Instruction categories (key -> label and explanation).
 CATEGORIES: Dict[str, Dict[str, Any]] = _RAW["CATEGORIES"]
 
-#: Acervo de mnemônicos documentados: chave em minúsculas -> ficha completa.
+#: Catalogue of documented mnemonics: lowercase key -> full record.
 ISA: Dict[str, Dict[str, Any]] = _RAW["ISA"]
 
-#: Condições dos desvios: sufixo (``e``, ``ne``...) -> nome e explicação.
+#: Branch conditions: suffix (``e``, ``ne``...) -> name and explanation.
 CONDITIONS: Dict[str, List[str]] = _RAW["CONDITIONS"]
 
-#: Documentação dos registradores.
+#: Register documentation.
 REG_DOC: Dict[str, str] = _RAW["REG_DOC"]
 
-#: Documentação das flags do processador.
+#: Processor flag documentation.
 FLAG_DOC: Dict[str, str] = _RAW["FLAG_DOC"]
 
-#: Syscalls do Linux x86-64, indexadas pelo número.
+#: Linux x86-64 syscalls, indexed by number.
 LINUX_SYSCALLS: Dict[int, List[str]] = {int(k): v for k, v in _RAW["LINUX_SYSCALLS"].items()}
 
-#: Funções da API do Windows (kernel32/user32) usadas pelos exemplos.
+#: Windows API functions (kernel32/user32) used by the examples.
 WIN_APIS: Dict[str, List[str]] = _RAW["WIN_APIS"]
 
-#: Registradores de 64 bits, na ordem canônica da ABI.
+#: 64-bit registers, in the canonical ABI order.
 REGS64: List[str] = [
     "rax",
     "rcx",
@@ -70,32 +70,32 @@ REGS64: List[str] = [
     "r15",
 ]
 
-#: Registradores que a função chamada precisa preservar no System V AMD64.
+#: Registers the called function must preserve in System V AMD64.
 CALLEE_SAVED_SYSV: List[str] = ["rbx", "rbp", "r12", "r13", "r14", "r15"]
 
-#: Registradores que a função chamada precisa preservar na ABI da Microsoft.
+#: Registers the called function must preserve in the Microsoft ABI.
 CALLEE_SAVED_WIN: List[str] = ["rbx", "rbp", "rdi", "rsi", "r12", "r13", "r14", "r15"]
 
-#: Ordem dos argumentos de função no System V AMD64.
+#: Function argument order in System V AMD64.
 ARG_REGS_SYSV: List[str] = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"]
 
-#: Ordem dos argumentos de syscall no Linux x86-64 (RCX dá lugar a R10).
+#: Syscall argument order in Linux x86-64 (RCX gives way to R10).
 ARG_REGS_SYSCALL: List[str] = ["rdi", "rsi", "rdx", "r10", "r8", "r9"]
 
-#: Ordem dos argumentos de função na ABI da Microsoft.
+#: Function argument order in the Microsoft ABI.
 ARG_REGS_WIN: List[str] = ["rcx", "rdx", "r8", "r9"]
 
 
 def _build_reg_info() -> Dict[str, Dict[str, Any]]:
-    """Monta o mapa de registradores, incluindo os nomes parciais.
+    """Builds the register map, including the partial names.
 
-    Cada entrada diz qual é o registrador de 64 bits por trás do nome
-    (``al`` -> ``rax``), quantos bytes ele ocupa e se é a metade alta de um
-    registrador clássico (``ah``, ``bh``, ``ch``, ``dh``).
+    Each entry says which 64-bit register is behind the name (``al`` ->
+    ``rax``), how many bytes it takes and whether it is the high half of a
+    classic register (``ah``, ``bh``, ``ch``, ``dh``).
 
     Returns:
-        Dicionário ``nome -> {"base", "size", "high"}``, com ``"simd": True``
-        nas entradas de XMM/YMM.
+        Dictionary ``name -> {"base", "size", "high"}``, with ``"simd": True``
+        in the XMM/YMM entries.
     """
     info: Dict[str, Dict[str, Any]] = {}
     low = {
@@ -147,10 +147,10 @@ def _build_reg_info() -> Dict[str, Dict[str, Any]]:
     return info
 
 
-#: Todo nome de registrador aceito, com tamanho e registrador de origem.
+#: Every accepted register name, with its size and originating register.
 REG_INFO: Dict[str, Dict[str, Any]] = _build_reg_info()
 
-#: Palavras de tamanho aceitas antes de um operando (``byte``, ``qword``...).
+#: Size keywords accepted before an operand (``byte``, ``qword``...).
 SIZE_KEYWORDS: Dict[str, int] = {
     "byte": 1,
     "word": 2,
@@ -161,7 +161,7 @@ SIZE_KEYWORDS: Dict[str, int] = {
     "xmmword": 16,
 }
 
-#: Diretivas que definem ou reservam dados, com o tamanho da unidade.
+#: Directives that define or reserve data, with the size of the unit.
 DATA_DIRECTIVES: Dict[str, int] = {
     "db": 1,
     "dw": 2,
@@ -184,7 +184,7 @@ DATA_DIRECTIVES: Dict[str, int] = {
     ".zero": 1,
 }
 
-#: Diretivas que organizam o arquivo e não geram código nem dados.
+#: Directives that organize the file and generate neither code nor data.
 CONTROL_DIRECTIVES: Set[str] = {
     "section",
     "segment",
@@ -244,19 +244,19 @@ CONTROL_DIRECTIVES: Set[str] = {
     ".cfi_endproc",
 }
 
-#: Sufixos aceitos depois do ``j`` de um desvio condicional.
+#: Suffixes accepted after the ``j`` of a conditional branch.
 COND_SUFFIXES: List[str] = list(CONDITIONS.keys()) + ["cxz", "ecxz", "rcxz"]
 
 
 def is_cond_jump(mnemonic: str) -> bool:
-    """Diz se o mnemônico é um desvio condicional.
+    """Tells whether the mnemonic is a conditional branch.
 
     Args:
-        mnemonic: Mnemônico em minúsculas (``jne``, ``jmp``, ``mov``...).
+        mnemonic: Lowercase mnemonic (``jne``, ``jmp``, ``mov``...).
 
     Returns:
-        ``True`` para ``j`` + condição conhecida (``je``, ``jg``, ``jrcxz``...);
-        ``False`` para qualquer outra coisa, inclusive ``jmp``.
+        ``True`` for ``j`` + a known condition (``je``, ``jg``, ``jrcxz``...);
+        ``False`` for anything else, including ``jmp``.
 
     Example:
         >>> is_cond_jump("jl"), is_cond_jump("jmp"), is_cond_jump("mov")
@@ -266,14 +266,14 @@ def is_cond_jump(mnemonic: str) -> bool:
 
 
 def doc_for(mnemonic: str) -> Optional[Dict[str, Any]]:
-    """Busca a ficha de documentação de uma instrução.
+    """Looks up the documentation record of an instruction.
 
     Args:
-        mnemonic: Mnemônico em qualquer caixa; ``None`` também é aceito.
+        mnemonic: Mnemonic in any case; ``None`` is also accepted.
 
     Returns:
-        A ficha do acervo (nome, sintaxe, descrição, exemplos, flags) ou
-        ``None`` quando a instrução não está documentada.
+        The catalogue record (name, syntax, description, examples, flags) or
+        ``None`` when the instruction is not documented.
 
     Example:
         >>> doc_for("MOV")["cat"]
@@ -283,19 +283,19 @@ def doc_for(mnemonic: str) -> Optional[Dict[str, Any]]:
 
 
 def category_of(mnemonic: str) -> str:
-    """Devolve a categoria de uma instrução.
+    """Returns the category of an instruction.
 
     Args:
-        mnemonic: Mnemônico em qualquer caixa.
+        mnemonic: Mnemonic in any case.
 
     Returns:
-        A chave da categoria (``data``, ``branch``, ``sys``...) ou ``"misc"``
-        quando a instrução não está no acervo.
+        The category key (``data``, ``branch``, ``sys``...) or ``"misc"`` when
+        the instruction is not in the catalogue.
 
     Example:
         >>> category_of("syscall")
         'sys'
-        >>> category_of("instrucao_inexistente")
+        >>> category_of("nonexistent_instruction")
         'misc'
     """
     d = doc_for(mnemonic)

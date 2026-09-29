@@ -1,58 +1,68 @@
-"""Roda os exemplos de código que estão dentro das docstrings.
+"""Runs the code examples written inside the docstrings.
 
-Docstring que não roda envelhece mentindo: estes testes executam cada exemplo
-dos módulos do pacote e falham se algum deixar de bater com o código.
+A docstring that never runs ages into a lie: these tests execute every example
+in the package modules and fail when one stops matching the code.
 """
+
+from __future__ import annotations
 
 import doctest
 import importlib
 import pkgutil
 import unittest
+from typing import List
 
 import asmx
 
-#: Módulos que só fazem sentido com uma tela ligada.
-SEM_DOCTEST = ("asmx.ui",)
+#: Modules that only make sense with a screen attached.
+NO_DOCTEST = ("asmx.ui",)
 
-#: Quantidade mínima de exemplos que precisam existir, para o teste não passar
-#: por acidente quando alguém apaga as docstrings.
-MINIMO_DE_EXEMPLOS = 40
+#: Minimum number of examples that must exist, so the test cannot pass by
+#: accident when somebody deletes the docstrings.
+MINIMUM_EXAMPLES = 40
 
 
-def modulos_do_pacote() -> list:
-    """Lista os módulos importáveis do pacote ``asmx``."""
-    nomes = []
+def package_modules() -> List[str]:
+    """Lists the importable modules of the ``asmx`` package.
+
+    Returns:
+        Sorted module names, including ``asmx`` itself and excluding the ones in
+        :data:`NO_DOCTEST`.
+    """
+    names = []
     for info in pkgutil.iter_modules(asmx.__path__, "asmx."):
-        if info.name.startswith(SEM_DOCTEST):
+        if info.name.startswith(NO_DOCTEST):
             continue
-        nomes.append(info.name)
-    nomes.append("asmx")
-    return sorted(nomes)
+        names.append(info.name)
+    names.append("asmx")
+    return sorted(names)
 
 
 class TestDoctests(unittest.TestCase):
-    """Os exemplos das docstrings precisam continuar verdadeiros."""
+    """The examples inside the docstrings must stay true."""
 
-    def test_todos_os_exemplos_passam(self) -> None:
+    def test_every_example_passes(self) -> None:
+        """Every module must run its own doctests without a single failure."""
         total = 0
-        for nome in modulos_do_pacote():
-            with self.subTest(modulo=nome):
-                modulo = importlib.import_module(nome)
-                resultado = doctest.testmod(
-                    modulo, verbose=False, report=False, optionflags=doctest.ELLIPSIS
+        for name in package_modules():
+            with self.subTest(module=name):
+                module = importlib.import_module(name)
+                result = doctest.testmod(
+                    module, verbose=False, report=False, optionflags=doctest.ELLIPSIS
                 )
-                total += resultado.attempted
-                self.assertEqual(resultado.failed, 0, "exemplo quebrado em %s" % nome)
+                total += result.attempted
+                self.assertEqual(result.failed, 0, "broken example in %s" % name)
         self.assertGreaterEqual(
             total,
-            MINIMO_DE_EXEMPLOS,
-            "esperava pelo menos %d exemplos nas docstrings" % MINIMO_DE_EXEMPLOS,
+            MINIMUM_EXAMPLES,
+            "expected at least %d examples in the docstrings" % MINIMUM_EXAMPLES,
         )
 
-    def test_modulos_do_pacote_sao_importaveis(self) -> None:
-        self.assertIn("asmx.cli", modulos_do_pacote())
-        self.assertIn("asmx.workspace", modulos_do_pacote())
-        self.assertNotIn("asmx.ui.app", modulos_do_pacote())
+    def test_package_modules_are_importable(self) -> None:
+        """The discovery helper must find the package modules and skip the UI."""
+        self.assertIn("asmx.cli", package_modules())
+        self.assertIn("asmx.workspace", package_modules())
+        self.assertNotIn("asmx.ui.app", package_modules())
 
 
 if __name__ == "__main__":

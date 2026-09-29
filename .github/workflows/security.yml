@@ -51,12 +51,13 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Audit the dependencies this project declares
-        # O ASM X não tem dependência de execução: o que se audita aqui é o
-        # ferramental de desenvolvimento (flake8, mypy, coverage, black,
-        # bandit, build...). Auditamos o que o projeto DECLARA, e não o pip ou
-        # o setuptools que vieram na imagem do runner — apontar vulnerabilidade
-        # no toolchain do runner daria um vermelho que não é deste projeto.
-        # Quando aparece advisório numa dependência de verdade, o job falha.
+        # ASM X has no runtime dependency: what is audited here is the
+        # development tooling (flake8, mypy, coverage, black, bandit,
+        # build...). We audit what the project DECLARES, not the pip or
+        # setuptools that came with the runner image — pointing at a
+        # vulnerability in the runner toolchain would give a red that is not
+        # this project's. When an advisory shows up in a real dependency, the
+        # job fails.
         run: pip-audit --desc --progress-spinner off --requirement requirements-dev.txt
 
   zero-runtime-dependencies:

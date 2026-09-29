@@ -41,19 +41,19 @@ repos:
       - id: mypy
         files: ^asmx/
 
-  # Os dois portões que sustentam a promessa de "100% de type hints e
-  # docstrings no padrão Google", e a garantia de que examples/*.asm continua
-  # igual ao acervo embutido em asmx/examples.py.
+  # The two gates behind the promise of "100% type hints and Google-style
+  # docstrings", plus the guarantee that examples/*.asm stays identical to the
+  # collection embedded in asmx/examples.py.
   - repo: local
     hooks:
       - id: asmx-quality-gates
-        name: portões de qualidade (anotações e docstrings)
+        name: quality gates (type hints and docstrings)
         entry: python tools/quality_gates.py
         language: system
         pass_filenames: false
         files: ^(asmx|tests|tools)/.*\.py$|^asmx\.py$
       - id: asmx-examples-sync
-        name: exemplos em examples/ iguais aos do pacote
+        name: examples in examples/ identical to the ones in the package
         entry: python tools/export_examples.py --check
         language: system
         pass_filenames: false

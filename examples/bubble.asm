@@ -1,6 +1,6 @@
-; Ordena 8 bytes em ordem crescente e imprime o vetor.
+; Sorts 8 bytes in ascending order and prints the array.
 section .data
-    vetor   db  9, 3, 7, 1, 8, 2, 5, 4
+    array   db  9, 3, 7, 1, 8, 2, 5, 4
     n       equ 8
     nl      db  10
 
@@ -11,40 +11,40 @@ _start:
     mov  rcx, n
     dec  rcx                 ; passes = n - 1
 
-.passe:
+.pass:
     push rcx
-    mov  rsi, 0              ; indice interno
+    mov  rsi, 0              ; inner index
 
-.interno:
-    mov  al, [vetor + rsi]
-    mov  bl, [vetor + rsi + 1]
+.inner:
+    mov  al, [array + rsi]
+    mov  bl, [array + rsi + 1]
     cmp  al, bl
-    jbe  .segue              ; ja esta em ordem
-    mov  [vetor + rsi], bl   ; troca os dois
-    mov  [vetor + rsi + 1], al
+    jbe  .next               ; already in order
+    mov  [array + rsi], bl   ; swaps the two
+    mov  [array + rsi + 1], al
 
-.segue:
+.next:
     inc  rsi
     cmp  rsi, rcx
-    jb   .interno
+    jb   .inner
 
     pop  rcx
     dec  rcx
-    jnz  .passe
+    jnz  .pass
 
-    ; imprime os 8 bytes como numeros ASCII
+    ; prints the 8 bytes as ASCII numbers
     mov  r12, 0
-.mostra:
-    mov  al, [vetor + r12]
+.show:
+    mov  al, [array + r12]
     add  al, 48
-    mov  [vetor + r12], al
+    mov  [array + r12], al
     inc  r12
     cmp  r12, n
-    jb   .mostra
+    jb   .show
 
     mov  rax, 1
     mov  rdi, 1
-    mov  rsi, vetor
+    mov  rsi, array
     mov  rdx, n
     syscall
 

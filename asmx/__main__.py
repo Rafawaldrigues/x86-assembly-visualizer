@@ -1,9 +1,9 @@
-"""Ponto de entrada do pacote.
+"""Entry point of the package.
 
-``python3 -m asmx`` abre a interface gráfica; qualquer argumento é entregue à
-linha de comando (``python3 -m asmx check prog.asm``). A importação da
-interface é preguiçosa de propósito: assim a linha de comando continua
-funcionando em máquinas sem Tkinter, como um contêiner mínimo.
+``python3 -m asmx`` opens the graphical interface; any argument is handed to the
+command line (``python3 -m asmx check prog.asm``). The import of the interface
+is lazy on purpose: that way the command line keeps working on machines without
+Tkinter, such as a minimal container.
 """
 
 from __future__ import annotations
@@ -12,11 +12,11 @@ import sys
 
 
 def main() -> int:
-    """Despacha entre a interface gráfica e a linha de comando.
+    """Dispatches between the graphical interface and the command line.
 
     Returns:
-        Código de saída do processo: o da linha de comando quando houver
-        argumentos, ou ``0`` quando a janela fecha normalmente.
+        Exit code of the process: the one from the command line when there are
+        arguments, or ``0`` when the window closes normally.
     """
     from .cli import launch_gui, main as cli_main
 

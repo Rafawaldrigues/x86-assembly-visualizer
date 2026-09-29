@@ -1,0 +1,133 @@
+{
+  "schema": "asmx-rules/1",
+  "description": "Signals that the sample tries to notice or defeat analysis.",
+  "rules": [
+    {
+      "id": "EVA001",
+      "name": "Debugger checks",
+      "severity": "high",
+      "description": "The program asks the kernel whether it is being traced, or raises a breakpoint on purpose. That is a classic sandbox/debugger check.",
+      "tags": [
+        "anti-analysis",
+        "evasion"
+      ],
+      "mitre": [
+        "T1622"
+      ],
+      "match": {
+        "any_of": [
+          {
+            "syscalls": [
+              "ptrace"
+            ]
+          },
+          {
+            "strings": [
+              "\\bint\\s+3\\b",
+              "IsDebuggerPresent",
+              "CheckRemoteDebuggerPresent"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "EVA002",
+      "name": "Timing and delay loops",
+      "severity": "medium",
+      "description": "Sleeps or clock reads inside a loop: either a sandbox-evasion delay or a beacon that waits before calling home.",
+      "tags": [
+        "anti-analysis",
+        "timing"
+      ],
+      "mitre": [
+        "T1497.003"
+      ],
+      "match": {
+        "any_of": [
+          {
+            "syscalls": [
+              "nanosleep",
+              "clock_gettime",
+              "gettimeofday"
+            ]
+          },
+          {
+            "apis": [
+              "Sleep",
+              "GetTickCount"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "EVA003",
+      "name": "Environment fingerprint",
+      "severity": "low",
+      "description": "The sample collects information about the machine it runs on (user, host, kernel, environment variables). Harmless alone; meaningful next to network code.",
+      "tags": [
+        "discovery"
+      ],
+      "mitre": [
+        "T1082",
+        "T1033"
+      ],
+      "match": {
+        "any_of": [
+          {
+            "syscalls": [
+              "uname",
+              "getuid",
+              "getpid",
+              "sysinfo"
+            ]
+          },
+          {
+            "strings": [
+              "HOSTNAME",
+              "USERNAME",
+              "getenv",
+              "GetComputerName"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "EVA004",
+      "name": "Self-modifying or executable memory",
+      "severity": "high",
+      "description": "The program asks for memory it can execute, or writes into its own code section. That is how a packed or injected payload unpacks itself at runtime.",
+      "tags": [
+        "evasion",
+        "packer"
+      ],
+      "mitre": [
+        "T1027.002",
+        "T1055"
+      ],
+      "match": {
+        "any_of": [
+          {
+            "syscalls": [
+              "mprotect",
+              "mmap"
+            ]
+          },
+          {
+            "apis": [
+              "VirtualAlloc",
+              "VirtualProtect"
+            ]
+          },
+          {
+            "behaviors": [
+              "self-modifying"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

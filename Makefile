@@ -64,11 +64,12 @@ format: ## Auto-format the source with black
 typecheck: ## Static type check with mypy
 	$(PYTHON) -m mypy asmx/
 
-quality: lint typecheck gates coverage ## lint + typecheck + portões + cobertura
+quality: lint typecheck gates coverage ## lint + typecheck + gates + coverage
 
-gates: ## Check 100% type hints/docstrings and that examples/ matches the package
+gates: ## Check 100% type hints/docstrings plus generated files still in sync
 	$(PYTHON) tools/quality_gates.py
 	$(PYTHON) tools/export_examples.py --check
+	$(PYTHON) tools/build_reference.py --check
 
 run: ## Open the Tkinter GUI
 	$(PYTHON) -m asmx

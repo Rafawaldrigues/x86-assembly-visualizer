@@ -1,0 +1,98 @@
+{
+  "schema": "asmx-rules/1",
+  "description": "Cryptography, randomness and impact indicators.",
+  "rules": [
+    {
+      "id": "CRY001",
+      "name": "Random bytes requested",
+      "severity": "low",
+      "description": "The sample asks the kernel for random bytes: a key, a nonce or an identifier. Not suspicious by itself — meaningful next to file writes.",
+      "tags": [
+        "crypto"
+      ],
+      "mitre": [
+        "T1486"
+      ],
+      "match": {
+        "any_of": [
+          {
+            "syscalls": [
+              "getrandom"
+            ]
+          },
+          {
+            "apis": [
+              "CryptGenRandom",
+              "BCryptGenRandom"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "CRY002",
+      "name": "XOR or bit-shift heavy loop",
+      "severity": "medium",
+      "description": "The classifier sees a loop that mixes several bit operations: the shape of a hand-rolled cipher, a string obfuscator or a simple unpacker. The rule reports the shape, not the intent, and inherits the classifier's confidence.",
+      "tags": [
+        "crypto",
+        "obfuscation"
+      ],
+      "mitre": [
+        "T1027"
+      ],
+      "match": {
+        "behaviors": [
+          "crypto"
+        ]
+      }
+    },
+    {
+      "id": "IMP001",
+      "name": "Recursive file walk with writes",
+      "severity": "high",
+      "description": "The sample both opens files for writing and requests random bytes: the classic combination of a ransomware encryptor, worth reading line by line.",
+      "tags": [
+        "impact",
+        "ransomware"
+      ],
+      "mitre": [
+        "T1486"
+      ],
+      "match": {
+        "syscalls": [
+          "open",
+          "write",
+          "getrandom"
+        ],
+        "require_all": true
+      }
+    },
+    {
+      "id": "IMP002",
+      "name": "Encrypted-looking extensions",
+      "severity": "high",
+      "description": "Strings that look like the extensions or note names a locker leaves behind.",
+      "tags": [
+        "impact",
+        "ransomware",
+        "ioc"
+      ],
+      "mitre": [
+        "T1486"
+      ],
+      "match": {
+        "strings": [
+          "\\.locked\\b",
+          "\\.encrypted\\b",
+          "\\.crypt\\b",
+          "README.*DECRYPT",
+          "recover.*files",
+          "bitcoin",
+          "wallet"
+        ],
+        "strings_min": 1
+      }
+    }
+  ]
+}

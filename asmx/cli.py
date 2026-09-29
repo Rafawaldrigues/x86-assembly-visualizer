@@ -1,26 +1,26 @@
-"""Linha de comando do ASM X — a mesma análise da interface, sem interface.
+"""Command line of ASM X — the same analysis as the interface, without the interface.
 
-Comandos:
+Commands:
 
-* ``check``    — analisa e valida, mostrando os problemas por linha;
-* ``run``      — executa o programa na máquina virtual e mostra a saída;
-* ``explain``  — explica uma instrução do acervo ou uma linha do arquivo;
-* ``report``   — gera o relatório (HTML, Markdown, JSON, DOT, SVG);
-* ``analyze``  — analisa vários arquivos e monta um índice comparativo;
-* ``info``     — versão, acervo de instruções e configuração em vigor;
-* ``examples`` — lista, mostra ou grava os programas de exemplo;
-* ``version``  — só a versão.
+* ``check``    — analyzes and validates, showing the problems by line;
+* ``run``      — runs the program in the virtual machine and shows the output;
+* ``explain``  — explains one instruction of the catalog or one line of the file;
+* ``report``   — generates the report (HTML, Markdown, JSON, DOT, SVG);
+* ``analyze``  — analyzes several files and builds a comparative index;
+* ``info``     — version, instruction catalog and configuration in effect;
+* ``examples`` — lists, shows or writes the sample programs;
+* ``version``  — only the version.
 
-Códigos de saída (contrato estável para CI)::
+Exit codes (stable contract for CI)::
 
-    0  tudo certo
-    1  problemas encontrados no código
-    2  erro de uso (argumento inválido)
-    3  erro de entrada (arquivo ausente, formato, configuração, rótulo)
-    4  tempo limite estourado
+    0  everything is fine
+    1  problems found in the code
+    2  usage error (invalid argument)
+    3  input error (missing file, format, configuration, label)
+    4  time limit exceeded
 
-As opções globais (``--config``, ``-v``, ``--log-json``...) vêm antes do
-comando: ``asmx --config asmx.json check prog.asm``.
+The global options (``--config``, ``-v``, ``--log-json``...) come before the
+command: ``asmx --config asmx.json check prog.asm``.
 
 Example:
     >>> from asmx.cli import main
@@ -56,7 +56,9 @@ from .errors import (
 )
 from .examples import EXAMPLES, render
 from .isa import CATEGORIES, ISA, LINUX_SYSCALLS, WIN_APIS
-from .linter import ALL_CHECKS, ALERTA, ERRO, INFO, Problem, summary, validate
+from concurrent import futures
+
+from .linter import ALL_CHECKS, ERROR, INFO, WARNING, Problem, summary, validate
 from .logging_setup import LoggingState, configure_logging, get_logger, log_event
 from .source import SOURCE_SUFFIXES, SourceFile, read_source
 
@@ -76,30 +78,33 @@ __all__ = [
 
 logger = get_logger(__name__)
 
-#: Tudo certo.
+#: Everything is fine.
 EXIT_OK = 0
-#: Problemas encontrados no código analisado.
+#: Problems found in the analyzed code.
 EXIT_PROBLEMS = 1
-#: Erro de uso da linha de comando.
+#: Usage error of the command line.
 EXIT_USAGE = 2
-#: Erro de entrada: arquivo, formato, configuração ou rótulo.
+#: Input error: file, format, configuration or label.
 EXIT_INPUT = 3
-#: A execução passou do tempo limite.
+#: The run went past the time limit.
 EXIT_TIMEOUT = 4
 
-#: Severidades na ordem em que aparecem no relatório.
-SEVERITIES: Tuple[str, ...] = (ERRO, ALERTA, INFO)
+#: Severities in the order they appear in the report.
+SEVERITIES: Tuple[str, ...] = (ERROR, WARNING, INFO)
 
-#: Nomes das chaves de contagem no JSON, na mesma ordem de :data:`SEVERITIES`.
+#: Names of the count keys in the JSON, in the same order as :data:`SEVERITIES`.
 SUMMARY_KEYS: Tuple[str, ...] = ("errors", "warnings", "infos")
 
-#: Formatos de relatório aceitos por ``report`` e ``analyze``.
+#: Report formats accepted by ``report`` and ``analyze``.
 REPORT_FORMATS: Tuple[str, ...] = ("html", "md", "json", "dot", "svg", "mermaid")
 
-#: Níveis de risco, do mais tranquilo ao mais grave.
-RISK_LEVELS: Tuple[str, ...] = ("baixo", "medio", "alto", "critico")
+#: Risk levels, from the calmest to the most severe.
+RISK_LEVELS: Tuple[str, ...] = ("low", "medium", "high", "critical")
 
-#: Extensão de cada formato de relatório.
+#: Rule severities accepted by ``--fail-on`` of the ``scan`` command.
+RULE_SEVERITIES: Tuple[str, ...] = ("high", "medium", "low")
+
+#: Extension of each report format.
 FORMAT_SUFFIX = {
     "html": "html",
     "md": "md",
@@ -109,122 +114,122 @@ FORMAT_SUFFIX = {
     "mermaid": "mmd",
 }
 
-#: Cores ANSI usadas na saída de terminal.
+#: ANSI colors used in the terminal output.
 _COLORS = {
-    "erro": "\033[31m",
-    "alerta": "\033[33m",
+    "error": "\033[31m",
+    "warning": "\033[33m",
     "info": "\033[34m",
-    "titulo": "\033[1;36m",
-    "bom": "\033[32m",
-    "fraco": "\033[90m",
-    "forte": "\033[1m",
+    "title": "\033[1;36m",
+    "good": "\033[32m",
+    "dim": "\033[90m",
+    "bold": "\033[1m",
 }
 _RESET = "\033[0m"
 
 
 class Palette:
-    """Pinta texto no terminal quando o destino aceita cor.
+    """Paints text in the terminal when the destination accepts color.
 
     Attributes:
-        enabled: Se as sequências ANSI entram na saída.
+        enabled: Whether the ANSI sequences enter the output.
     """
 
     def __init__(self, enabled: bool = True) -> None:
-        """Guarda se a cor está ligada.
+        """Stores whether the color is on.
 
         Args:
-            enabled: ``False`` devolve o texto intacto.
+            enabled: ``False`` returns the text untouched.
         """
         self.enabled = enabled
 
     def paint(self, text: str, color: str = "") -> str:
-        """Envolve o texto na cor pedida.
+        """Wraps the text in the requested color.
 
         Args:
-            text: Texto original.
-            color: Nome em :data:`_COLORS`; vazio não pinta nada.
+            text: Original text.
+            color: Name in :data:`_COLORS`; empty paints nothing.
 
         Returns:
-            Texto com as sequências ANSI, ou intacto quando desligado.
+            Text with the ANSI sequences, or untouched when turned off.
 
         Example:
-            >>> Palette(False).paint("erro", "erro")
-            'erro'
+            >>> Palette(False).paint("error", "error")
+            'error'
         """
         if not self.enabled or color not in _COLORS:
             return text
         return "%s%s%s" % (_COLORS[color], text, _RESET)
 
     def severity(self, severity: str, text: str) -> str:
-        """Pinta um texto conforme a severidade do problema.
+        """Paints a text according to the severity of the problem.
 
         Args:
-            severity: ``erro``, ``alerta`` ou ``info``.
-            text: Texto a pintar.
+            severity: ``error``, ``warning`` or ``info``.
+            text: Text to paint.
 
         Returns:
-            Texto colorido.
+            Colored text.
         """
         return self.paint(text, severity)
 
 
 # ------------------------------------------------------------------ parser --
 def _add_global_options(parser: argparse.ArgumentParser, suppress: bool = False) -> None:
-    """Registra as opções que valem para qualquer comando.
+    """Registers the options that are valid for any command.
 
-    O mesmo grupo é registrado no analisador principal e em cada subcomando,
-    com ``default=SUPPRESS`` nos subcomandos. Assim ``asmx --no-color check x``
-    e ``asmx check x --no-color`` funcionam igual, e a opção dada antes do
-    comando não é sobrescrita pelo padrão do subcomando.
+    The same group is registered in the main parser and in every subcommand,
+    with ``default=SUPPRESS`` in the subcommands. That way ``asmx --no-color
+    check x`` and ``asmx check x --no-color`` work the same, and the option
+    given before the command is not overwritten by the subcommand default.
 
     Args:
-        parser: Analisador (ou subcomando) que recebe as opções.
-        suppress: Quando ``True``, as opções só entram em ``args`` se forem
-            usadas de fato.
+        parser: Parser (or subcommand) that receives the options.
+        suppress: When ``True``, the options only enter ``args`` if they are
+            really used.
     """
-    padrao: Any = argparse.SUPPRESS if suppress else False
+    default: Any = argparse.SUPPRESS if suppress else False
     parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
-        default=padrao,
-        help="mostra o log de depuração (DEBUG)",
+        default=default,
+        help="shows the debug log (DEBUG)",
     )
     parser.add_argument(
         "-q",
         "--quiet",
         action="store_true",
-        default=padrao,
-        help="silencia o log; sobra só o resultado",
+        default=default,
+        help="silences the log; only the result is left",
     )
     parser.add_argument(
         "--log-json",
         action="store_true",
-        default=padrao,
-        help="emite o log em JSON (uma linha por evento)",
+        default=default,
+        help="emits the log as JSON (one line per event)",
     )
     parser.add_argument(
         "--log-file",
-        metavar="CAMINHO",
+        metavar="PATH",
         default=argparse.SUPPRESS if suppress else None,
-        help="grava também o log neste arquivo",
+        help="also writes the log to this file",
     )
     parser.add_argument(
         "--config",
-        metavar="CAMINHO",
+        metavar="PATH",
         default=argparse.SUPPRESS if suppress else None,
-        help="arquivo de configuração (.json, .yaml ou .yml)",
+        help="configuration file (.json, .yaml or .yml)",
     )
     parser.add_argument(
-        "--no-color", action="store_true", default=padrao, help="não usa cor na saída"
+        "--no-color", action="store_true", default=default, help="does not use color in the output"
     )
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Monta o analisador de argumentos da linha de comando.
+    """Builds the argument parser of the command line.
 
     Returns:
-        O :class:`argparse.ArgumentParser` com os comandos e as opções globais.
+        The :class:`argparse.ArgumentParser` with the commands and the global options.
 
     Example:
         >>> build_parser().parse_args(["check", "a.asm"]).command
@@ -234,198 +239,294 @@ def build_parser() -> argparse.ArgumentParser:
     """
     parser = argparse.ArgumentParser(
         prog="asmx",
-        description="ASM X — ambiente de estudo e depuração de assembly x86-64.",
-        epilog="sem argumentos abre a interface gráfica. As opções globais "
-        "(--config, -v, --log-json) vêm antes do comando. "
-        "Exemplos: asmx check prog.asm · asmx run prog.asm · "
+        description="ASM X — study and debugging environment for x86-64 assembly.",
+        epilog="with no argument it opens the graphical interface. The global "
+        "options (--config, -v, --log-json) come before the command. "
+        "Examples: asmx check prog.asm · asmx run prog.asm · "
         "asmx explain prog.asm --line 12",
     )
     parser.add_argument("--version", action="version", version="ASM X %s" % __version__)
     parser.add_argument(
-        "--gui", action="store_true", help="abre a interface gráfica (mesmo comando sem argumentos)"
+        "--gui",
+        action="store_true",
+        help="opens the graphical interface (same as the command with no arguments)",
     )
     _add_global_options(parser)
 
-    sub = parser.add_subparsers(dest="command", metavar="COMANDO")
+    sub = parser.add_subparsers(dest="command", metavar="COMMAND")
 
-    check = sub.add_parser("check", help="analisa e valida o código")
-    check.add_argument("files", nargs="+", metavar="ARQUIVO", help="um ou mais fontes .asm")
-    check.add_argument("--json", action="store_true", help="saída em JSON")
+    check = sub.add_parser("check", help="analyzes and validates the code")
+    check.add_argument("files", nargs="+", metavar="FILE", help="one or more .asm sources")
+    check.add_argument("--json", action="store_true", help="output in JSON")
     check.add_argument(
         "--min-severity",
         choices=SEVERITIES,
-        default=ALERTA,
-        help="severidade mínima que faz o comando falhar (padrão: alerta)",
+        default=WARNING,
+        help="minimum severity that makes the command fail (default: warning)",
     )
     check.add_argument(
-        "--exit-zero", action="store_true", help="sempre devolve 0, mesmo com problemas encontrados"
+        "--exit-zero", action="store_true", help="always returns 0, even with problems found"
     )
     check.add_argument(
-        "--summary-only", action="store_true", help="mostra só o resumo, sem a lista de problemas"
+        "--summary-only",
+        action="store_true",
+        help="shows only the summary, without the problem list",
     )
     _add_global_options(check, suppress=True)
 
-    run = sub.add_parser("run", help="executa o programa na máquina virtual")
-    run.add_argument("file", metavar="ARQUIVO", help="fonte .asm")
+    run = sub.add_parser("run", help="runs the program in the virtual machine")
+    run.add_argument("file", metavar="FILE", help=".asm source")
     run.add_argument(
         "--entry",
-        metavar="RÓTULO",
+        metavar="LABEL",
         default=None,
-        help="começa a execução neste rótulo (função isolada)",
+        help="starts the execution at this label (isolated function)",
     )
     run.add_argument(
-        "--stdin", metavar="TEXTO", default="", help="entrada simulada para a syscall read"
+        "--stdin", metavar="TEXT", default="", help="simulated input for the read syscall"
     )
     run.add_argument(
         "--limit",
         type=int,
         default=None,
-        help="limite de instruções (padrão: max_steps da configuração)",
+        help="instruction limit (default: max_steps of the configuration)",
     )
     run.add_argument(
         "--timeout",
         type=float,
         default=None,
-        help="tempo máximo em segundos; ao estourar, sai com código 4",
+        help="maximum time in seconds; when it is exceeded, exits with code 4",
     )
-    run.add_argument("--json", action="store_true", help="saída em JSON")
-    run.add_argument("--trace", action="store_true", help="mostra o histórico de execução")
+    run.add_argument("--json", action="store_true", help="output in JSON")
+    run.add_argument("--trace", action="store_true", help="shows the execution history")
     run.add_argument(
-        "--max-trace", type=int, default=40, help="quantas linhas do histórico mostrar (padrão: 40)"
+        "--max-trace",
+        type=int,
+        default=40,
+        help="how many lines of the history to show (default: 40)",
     )
     _add_global_options(run, suppress=True)
 
-    explain = sub.add_parser("explain", help="explica uma instrução ou uma linha")
-    explain.add_argument("file", metavar="ARQUIVO", help="fonte .asm")
-    grupo = explain.add_mutually_exclusive_group(required=True)
-    grupo.add_argument("--line", type=int, metavar="N", help="número da linha (1-based)")
-    grupo.add_argument("--mnemonic", metavar="MNEMÔNICO", help="instrução a documentar")
-    explain.add_argument("--json", action="store_true", help="saída em JSON")
+    explain = sub.add_parser("explain", help="explains one instruction or one line")
+    explain.add_argument("file", metavar="FILE", help=".asm source")
+    group = explain.add_mutually_exclusive_group(required=True)
+    group.add_argument("--line", type=int, metavar="N", help="line number (1-based)")
+    group.add_argument("--mnemonic", metavar="MNEMONIC", help="instruction to document")
+    explain.add_argument("--json", action="store_true", help="output in JSON")
     _add_global_options(explain, suppress=True)
 
-    report = sub.add_parser("report", help="gera o relatório da análise")
-    report.add_argument("file", metavar="ARQUIVO", help="fonte .asm")
+    report = sub.add_parser("report", help="generates the analysis report")
+    report.add_argument("file", metavar="FILE", help=".asm source")
     report.add_argument(
         "--out",
-        metavar="CAMINHO",
+        metavar="PATH",
         default=None,
-        help="destino do relatório (- para a saída padrão); sem ele, "
-        "HTML vai para results/ e os outros formatos para a tela",
+        help="destination of the report (- for the standard output); without it, "
+        "HTML goes to results/ and the other formats go to the screen",
     )
     report.add_argument(
         "--format",
         choices=REPORT_FORMATS,
         default=None,
-        help="formato do relatório (padrão: pela extensão, ou html)",
+        help="report format (default: by the extension, or html)",
     )
     report.add_argument(
         "--no-emulate",
         action="store_true",
-        help="não executa o programa; o relatório fica só estático",
+        help="does not run the program; the report stays static only",
     )
     report.add_argument(
-        "--limit", type=int, default=None, help="limite de instruções da execução simulada"
+        "--limit", type=int, default=None, help="instruction limit of the simulated run"
     )
     report.add_argument(
-        "--timeout", type=float, default=None, help="tempo máximo da execução simulada, em segundos"
+        "--timeout", type=float, default=None, help="maximum time of the simulated run, in seconds"
     )
     report.add_argument(
-        "--stdin", metavar="TEXTO", default="", help="entrada simulada para a syscall read"
+        "--stdin", metavar="TEXT", default="", help="simulated input for the read syscall"
     )
     report.add_argument(
-        "--entry", metavar="RÓTULO", default=None, help="começa a execução neste rótulo"
+        "--entry", metavar="LABEL", default=None, help="starts the execution at this label"
     )
     report.add_argument(
-        "--open", action="store_true", help="abre o relatório no navegador ao terminar"
+        "--open", action="store_true", help="opens the report in the browser when it finishes"
     )
     report.add_argument(
         "--fail-on",
         choices=RISK_LEVELS,
         default=None,
-        help="sai com código 1 se o risco for deste nível ou maior",
+        help="exits with code 1 if the risk is at this level or higher",
     )
     report.add_argument(
         "--json",
         action="store_true",
-        help="resumo da análise em JSON na tela (não grava arquivo; use --out para "
-        "gravar e imprimir o resumo)",
+        help="analysis summary in JSON on the screen (writes no file; use --out to "
+        "write and print the summary)",
     )
     _add_global_options(report, suppress=True)
 
-    analyze = sub.add_parser("analyze", help="analisa vários arquivos e monta um índice")
-    analyze.add_argument(
-        "paths", nargs="+", metavar="CAMINHO", help="arquivos .asm ou diretórios com fontes"
+    analyze_cmd = sub.add_parser("analyze", help="analyzes several files and builds an index")
+    analyze_cmd.add_argument(
+        "paths", nargs="+", metavar="PATH", help=".asm files or directories with sources"
     )
-    analyze.add_argument(
+    analyze_cmd.add_argument(
         "--out",
-        metavar="DIRETÓRIO",
+        metavar="DIRECTORY",
         default=None,
-        help="diretório dos relatórios (padrão: output_dir da configuração)",
+        help="directory of the reports (default: output_dir of the configuration)",
     )
-    analyze.add_argument(
+    analyze_cmd.add_argument(
         "--format",
         choices=REPORT_FORMATS,
         default="html",
-        help="formato de cada relatório (padrão: html)",
+        help="format of each report (default: html)",
     )
-    analyze.add_argument(
+    analyze_cmd.add_argument(
         "--index",
         dest="index",
         action="store_true",
         default=True,
-        help="grava index.html comparando os arquivos (padrão)",
+        help="writes index.html comparing the files (default)",
     )
-    analyze.add_argument(
-        "--no-index", dest="index", action="store_false", help="não grava o índice"
+    analyze_cmd.add_argument(
+        "--no-index", dest="index", action="store_false", help="does not write the index"
     )
-    analyze.add_argument(
+    analyze_cmd.add_argument(
         "--no-emulate",
         action="store_true",
-        help="não executa os programas; relatórios só estáticos",
+        help="does not run the programs; static reports only",
     )
-    analyze.add_argument(
-        "--limit", type=int, default=None, help="limite de instruções por execução simulada"
+    analyze_cmd.add_argument(
+        "--limit", type=int, default=None, help="instruction limit per simulated run"
     )
-    analyze.add_argument(
+    analyze_cmd.add_argument(
         "--timeout",
         type=float,
         default=None,
-        help="tempo máximo por execução simulada, em segundos",
+        help="maximum time per simulated run, in seconds",
     )
-    analyze.add_argument(
+    analyze_cmd.add_argument(
         "--fail-on",
         choices=RISK_LEVELS,
         default=None,
-        help="sai com código 1 se algum arquivo atingir este risco",
+        help="exits with code 1 if any file reaches this risk",
     )
-    analyze.add_argument("--json", action="store_true", help="resumo da análise em lote como JSON")
-    _add_global_options(analyze, suppress=True)
+    analyze_cmd.add_argument(
+        "--jobs",
+        type=int,
+        default=1,
+        help="analyses this many files in parallel processes (default: 1, sequential)",
+    )
+    analyze_cmd.add_argument(
+        "--cluster",
+        dest="cluster",
+        action="store_true",
+        help="also groups the files by similarity in the index",
+    )
+    analyze_cmd.add_argument(
+        "--threshold",
+        type=float,
+        default=0.8,
+        help="similarity threshold used by --cluster (default: 0.8)",
+    )
+    analyze_cmd.add_argument("--json", action="store_true", help="batch analysis summary as JSON")
+    _add_global_options(analyze_cmd, suppress=True)
 
-    info = sub.add_parser("info", help="versão, acervo e configuração em vigor")
-    info.add_argument("--json", action="store_true", help="saída em JSON")
+    scan = sub.add_parser("scan", help="matches signature rules against the sources")
+    scan.add_argument("paths", nargs="+", metavar="PATH", help=".asm files or directories")
+    scan.add_argument(
+        "--rules",
+        metavar="DIRECTORY",
+        default=None,
+        help="rule directory (default: the rule set shipped with the package)",
+    )
+    scan.add_argument(
+        "--fail-on",
+        choices=RULE_SEVERITIES,
+        default=None,
+        help="exits with code 1 when a rule of this severity matches",
+    )
+    scan.add_argument("--json", action="store_true", help="output in JSON")
+    _add_global_options(scan, suppress=True)
+
+    rules = sub.add_parser("rules", help="lists the signature rules in effect")
+    rules.add_argument(
+        "--rules",
+        metavar="DIRECTORY",
+        default=None,
+        help="rule directory (default: the rule set shipped with the package)",
+    )
+    rules.add_argument("--json", action="store_true", help="output in JSON")
+    _add_global_options(rules, suppress=True)
+
+    cluster = sub.add_parser("cluster", help="groups sources by similarity")
+    cluster.add_argument("paths", nargs="+", metavar="PATH", help=".asm files or directories")
+    cluster.add_argument(
+        "--threshold",
+        type=float,
+        default=0.8,
+        help="minimum similarity for two files to share a group (default: 0.8)",
+    )
+    cluster.add_argument(
+        "--linkage",
+        choices=("single", "complete"),
+        default="single",
+        help="single joins by the closest pair, complete demands the whole group (default: single)",
+    )
+    cluster.add_argument(
+        "--top",
+        type=int,
+        default=0,
+        help="also lists the N files closest to the first one (default: 0)",
+    )
+    cluster.add_argument("--json", action="store_true", help="output in JSON")
+    _add_global_options(cluster, suppress=True)
+
+    dashboard = sub.add_parser("dashboard", help="serves a folder of reports on localhost")
+    dashboard.add_argument(
+        "directory",
+        nargs="?",
+        default=None,
+        metavar="DIRECTORY",
+        help="folder with the reports (default: output_dir of the configuration)",
+    )
+    dashboard.add_argument("--port", type=int, default=8765, help="TCP port (default: 8765)")
+    dashboard.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="interface to bind (default: 127.0.0.1, local connections only)",
+    )
+    dashboard.add_argument("--token", default=None, help="shared secret required by the page")
+    dashboard.add_argument(
+        "--open", dest="open_browser", action="store_true", help="opens the page in the browser"
+    )
+    _add_global_options(dashboard, suppress=True)
+
+    info = sub.add_parser("info", help="version, catalog and configuration in effect")
+    info.add_argument("--json", action="store_true", help="output in JSON")
     _add_global_options(info, suppress=True)
 
-    examples = sub.add_parser("examples", help="lista, mostra ou grava os exemplos")
-    examples.add_argument("--list", action="store_true", help="lista os nomes e títulos")
-    examples.add_argument("--show", metavar="NOME", default=None, help="imprime o código")
+    examples = sub.add_parser("examples", help="lists, shows or writes the examples")
+    examples.add_argument("--list", action="store_true", help="lists the names and titles")
+    examples.add_argument("--show", metavar="NAME", default=None, help="prints the code")
     examples.add_argument(
-        "--dump", metavar="DIRETÓRIO", default=None, help="grava todos os exemplos como .asm"
+        "--dump", metavar="DIRECTORY", default=None, help="writes all the examples as .asm"
     )
-    examples.add_argument("--json", action="store_true", help="saída em JSON")
+    examples.add_argument("--json", action="store_true", help="output in JSON")
     _add_global_options(examples, suppress=True)
 
-    version = sub.add_parser("version", help="mostra a versão")
-    version.add_argument("--json", action="store_true", help="saída em JSON")
+    version = sub.add_parser("version", help="shows the version")
+    version.add_argument("--json", action="store_true", help="output in JSON")
     _add_global_options(version, suppress=True)
     return parser
 
 
-# ------------------------------------------------------------- utilidades --
+# -------------------------------------------------------------- utilities --
 def _palette(args: argparse.Namespace) -> Palette:
-    """Decide se a saída usa cor, conforme as opções e o terminal.
+    """Decides whether the output uses color, according to the options and the terminal.
 
     Returns:
-        A paleta ligada quando a saída é um terminal e nada pediu para desligar.
+        The palette turned on when the output is a terminal and nothing asked to
+        turn it off.
     """
     if getattr(args, "no_color", False) or os.environ.get("NO_COLOR"):
         return Palette(False)
@@ -433,61 +534,61 @@ def _palette(args: argparse.Namespace) -> Palette:
 
 
 def _severity_rank(severity: str) -> int:
-    """Converte a severidade em número para comparar com o mínimo aceito.
+    """Converts the severity into a number, to compare with the accepted minimum.
 
     Returns:
-        ``0`` para erro, ``1`` para alerta, ``2`` para informação e ``3`` para
-        severidade desconhecida.
+        ``0`` for error, ``1`` for warning, ``2`` for information and ``3`` for
+        an unknown severity.
     """
-    return {ERRO: 0, ALERTA: 1, INFO: 2}.get(severity, 3)
+    return {ERROR: 0, WARNING: 1, INFO: 2}.get(severity, 3)
 
 
 def _platform_dict(analysis: Analysis) -> Dict[str, Any]:
-    """Resume a plataforma detectada para o JSON.
+    """Summarizes the detected platform for the JSON.
 
     Returns:
-        Dicionário com sistema, bits, confiança, ABI e as pistas encontradas.
+        Dictionary with system, bits, confidence, ABI and the evidence found.
     """
-    plataforma = analysis.platform
+    platform = analysis.platform
     return {
-        "os": plataforma.os,
-        "bits": plataforma.bits,
-        "confidence": plataforma.confidence,
-        "abi": plataforma.abi.get("name"),
-        "evidence": {chave: list(valores) for chave, valores in plataforma.evidence.items()},
+        "os": platform.os,
+        "bits": platform.bits,
+        "confidence": platform.confidence,
+        "abi": platform.abi.get("name"),
+        "evidence": {key: list(values) for key, values in platform.evidence.items()},
     }
 
 
 def _emit_json(payload: Any, stream: Optional[TextIO] = None) -> None:
-    """Imprime um dicionário como JSON indentado.
+    """Prints a dictionary as indented JSON.
 
     Args:
-        payload: Estrutura serializável.
-        stream: Destino (padrão ``sys.stdout``).
+        payload: Serializable structure.
+        stream: Destination (default ``sys.stdout``).
     """
-    destino = stream or sys.stdout
-    destino.write(json.dumps(payload, ensure_ascii=False, indent=2, default=str) + "\n")
+    destination = stream or sys.stdout
+    destination.write(json.dumps(payload, ensure_ascii=False, indent=2, default=str) + "\n")
 
 
 def _write(text: str, stream: Optional[TextIO] = None) -> None:
-    """Escreve uma linha no destino, sem `print` (mais fácil de testar)."""
+    """Writes one line to the destination, without ``print`` (easier to test)."""
     (stream or sys.stdout).write(text + "\n")
 
 
 def describe_instruction(ins: Any) -> Dict[str, Any]:
-    """Monta a ficha de uma instrução analisada.
+    """Builds the record of an analyzed instruction.
 
     Args:
-        ins: Objeto :class:`~asmx.parser.Line` de uma instrução.
+        ins: :class:`~asmx.parser.Line` object of an instruction.
 
     Returns:
-        Dicionário com linha, texto, mnemônico, rótulo semântico, explicação,
-        categoria, documentação do acervo e operandos classificados.
+        Dictionary with line, text, mnemonic, semantic label, explanation,
+        category, catalog documentation and classified operands.
 
     Example:
         >>> from asmx.analyzer import analyze
-        >>> describe_instruction(analyze("mov rax, 1").instrs[0])["label"]
-        'Define constante'
+        >>> describe_instruction(analyze("mov rax, 1").instrs[0])["mnemonic"]
+        'mov'
     """
     doc = ISA.get(ins.mnemonic or "")
     return {
@@ -514,16 +615,16 @@ def describe_instruction(ins: Any) -> Dict[str, Any]:
 
 
 def load_config(args: argparse.Namespace) -> SandboxConfig:
-    """Carrega a configuração combinando arquivo, ambiente e opções da linha.
+    """Loads the configuration, combining file, environment and command line options.
 
     Args:
-        args: Namespace já analisado pelo :func:`build_parser`.
+        args: Namespace already parsed by :func:`build_parser`.
 
     Returns:
-        Configuração validada, já com as sobreposições do comando.
+        Validated configuration, already with the overrides of the command.
 
     Raises:
-        ConfigError: Arquivo indicado ausente ou conteúdo inválido.
+        ConfigError: Indicated file missing or invalid content.
     """
     config = SandboxConfig.load(getattr(args, "config", None))
     return config.merged(
@@ -536,20 +637,20 @@ def load_config(args: argparse.Namespace) -> SandboxConfig:
 
 
 def build_payload(args: argparse.Namespace) -> Dict[str, Any]:
-    """Descreve a chamada em um dicionário (usado no log e nos testes).
+    """Describes the call in a dictionary (used in the log and in the tests).
 
     Args:
-        args: Namespace analisado.
+        args: Parsed namespace.
 
     Returns:
-        Dicionário com comando e opções relevantes.
+        Dictionary with the command and the relevant options.
 
     Example:
         >>> build_payload(build_parser().parse_args(["check", "a.asm"]))["command"]
         'check'
     """
-    dados: Dict[str, Any] = {"command": args.command}
-    for campo in (
+    data: Dict[str, Any] = {"command": args.command}
+    for field_name in (
         "file",
         "files",
         "paths",
@@ -561,84 +662,84 @@ def build_payload(args: argparse.Namespace) -> Dict[str, Any]:
         "out",
         "format",
     ):
-        valor = getattr(args, campo, None)
-        if valor not in (None, False, []):
-            dados[campo] = valor
-    return dados
+        value = getattr(args, field_name, None)
+        if value not in (None, False, []):
+            data[field_name] = value
+    return data
 
 
-# ---------------------------------------------------------------- comandos --
+# --------------------------------------------------------------- commands --
 def cmd_check(args: argparse.Namespace, config: SandboxConfig, palette: Palette) -> int:
-    """Executa o comando ``check``.
+    """Runs the ``check`` command.
 
     Args:
-        args: Namespace do comando.
-        config: Configuração em vigor.
-        palette: Paleta de cores da saída.
+        args: Namespace of the command.
+        config: Configuration in effect.
+        palette: Color palette of the output.
 
     Returns:
-        :data:`EXIT_OK` quando nada atinge a severidade mínima, senão
-        :data:`EXIT_PROBLEMS` (ou ``EXIT_OK`` com ``--exit-zero``).
+        :data:`EXIT_OK` when nothing reaches the minimum severity, otherwise
+        :data:`EXIT_PROBLEMS` (or ``EXIT_OK`` with ``--exit-zero``).
     """
-    limite = _severity_rank(args.min_severity)
-    relatorios: List[Dict[str, Any]] = []
-    todos: List[Problem] = []
-    total = {nome: 0 for nome in SUMMARY_KEYS}
-    codigo = EXIT_OK
+    limit = _severity_rank(args.min_severity)
+    reports: List[Dict[str, Any]] = []
+    all_problems: List[Problem] = []
+    total = {name: 0 for name in SUMMARY_KEYS}
+    code = EXIT_OK
 
-    for caminho in args.files:
-        fonte = read_source(caminho, suffixes=SOURCE_SUFFIXES)
-        analise = analyze(fonte.text)
-        problemas = validate(analise)
-        contagem: Dict[str, Any] = {
-            nome: sum(1 for p in problemas if p.severity == sev)
-            for sev, nome in zip(SEVERITIES, SUMMARY_KEYS)
+    for path in args.files:
+        source = read_source(path, suffixes=SOURCE_SUFFIXES)
+        analysis = analyze(source.text)
+        problems = validate(analysis)
+        counts: Dict[str, Any] = {
+            name: sum(1 for p in problems if p.severity == severity)
+            for severity, name in zip(SEVERITIES, SUMMARY_KEYS)
         }
-        for sev, nome in zip(SEVERITIES, SUMMARY_KEYS):
-            total[nome] += contagem[nome]
-        todos.extend(problemas)
-        if any(_severity_rank(p.severity) <= limite for p in problemas):
-            codigo = EXIT_PROBLEMS
-        relatorios.append(
+        for severity, name in zip(SEVERITIES, SUMMARY_KEYS):
+            total[name] += counts[name]
+        all_problems.extend(problems)
+        if any(_severity_rank(p.severity) <= limit for p in problems):
+            code = EXIT_PROBLEMS
+        reports.append(
             {
-                "source": fonte.to_dict(),
-                "platform": _platform_dict(analise),
-                "stats": dict(analise.stats),
-                "problems": [p.to_dict() for p in problemas],
-                "summary": contagem,
+                "source": source.to_dict(),
+                "platform": _platform_dict(analysis),
+                "stats": dict(analysis.stats),
+                "problems": [p.to_dict() for p in problems],
+                "summary": counts,
             }
         )
         log_event(
             logger,
             "check_finished",
-            path=fonte.path,
-            lines=fonte.lines,
-            instructions=analise.stats["instructions"],
-            **contagem,
+            path=source.path,
+            lines=source.lines,
+            instructions=analysis.stats["instructions"],
+            **counts,
         )
         if not args.json:
-            _print_check_report(fonte, analise, problemas, palette, args.summary_only)
+            _print_check_report(source, analysis, problems, palette, args.summary_only)
 
     if args.exit_zero:
-        codigo = EXIT_OK
+        code = EXIT_OK
     if args.json:
         _emit_json(
             {
                 "schema": "asmx-check/1",
                 "command": "check",
-                "files": relatorios,
-                "summary": {"files": len(relatorios), **total},
-                "exit_code": codigo,
+                "files": reports,
+                "summary": {"files": len(reports), **total},
+                "exit_code": code,
             }
         )
-    elif len(relatorios) > 1:
+    elif len(reports) > 1:
         _write(
             palette.paint(
-                "%d arquivo(s): %s" % (len(relatorios), summary(todos)),
-                "erro" if total["errors"] else "alerta",
+                "%d file(s): %s" % (len(reports), summary(all_problems)),
+                "error" if total["errors"] else "warning",
             )
         )
-    return codigo
+    return code
 
 
 def _print_check_report(
@@ -648,41 +749,39 @@ def _print_check_report(
     palette: Palette,
     summary_only: bool,
 ) -> None:
-    """Imprime o relatório legível de um arquivo no comando ``check``.
+    """Prints the readable report of one file in the ``check`` command.
 
     Args:
-        source: Arquivo lido.
-        analysis: Resultado da análise.
-        problems: Problemas encontrados.
-        palette: Paleta de cores.
-        summary_only: Quando ``True``, omite a lista de problemas.
+        source: File that was read.
+        analysis: Result of the analysis.
+        problems: Problems that were found.
+        palette: Color palette.
+        summary_only: When ``True``, omits the problem list.
     """
-    plataforma = analysis.platform
+    platform = analysis.platform
     stats = analysis.stats
     _write(
         "%s %s"
         % (
-            palette.paint(source.name, "forte"),
+            palette.paint(source.name, "bold"),
             palette.paint(
-                "(%d bytes · %d linhas · sha256 %s…)"
+                "(%d bytes · %d lines · sha256 %s…)"
                 % (source.size, source.lines, source.sha256[:12]),
-                "fraco",
+                "dim",
             ),
         )
     )
     if source.encoding != "utf-8":
         _write(
             "  %s"
-            % palette.paint(
-                "codificação detectada: %s (o ideal é UTF-8)" % source.encoding, "alerta"
-            )
+            % palette.paint("detected encoding: %s (UTF-8 is ideal)" % source.encoding, "warning")
         )
     _write(
-        "  plataforma  %s · %d bits · %d%% de confiança  (%s)"
-        % (plataforma.os, plataforma.bits, plataforma.confidence, plataforma.abi.get("name"))
+        "  platform  %s · %d bits · %d%% confidence  (%s)"
+        % (platform.os, platform.bits, platform.confidence, platform.abi.get("name"))
     )
     _write(
-        "  %d instruções · %d blocos · %d syscall(s) · %d chamada(s) · %d rótulo(s)"
+        "  %d instructions · %d blocks · %d syscall(s) · %d call(s) · %d label(s)"
         % (
             stats["instructions"],
             stats["blocks"],
@@ -692,203 +791,204 @@ def _print_check_report(
         )
     )
     if stats["unknown"]:
-        _write("  %s" % palette.paint("sem documentação: " + ", ".join(stats["unknown"]), "alerta"))
+        _write(
+            "  %s"
+            % palette.paint("without documentation: " + ", ".join(stats["unknown"]), "warning")
+        )
     if not problems:
-        _write("  %s" % palette.paint("nenhum problema encontrado", "bom"))
+        _write("  %s" % palette.paint("no problems found", "good"))
         return
     if not summary_only:
-        for problema in problems:
-            marca = {ERRO: "erro  ", ALERTA: "alerta", INFO: "info  "}.get(
-                problema.severity, "?     "
+        for problem in problems:
+            mark = {ERROR: "error  ", WARNING: "warning", INFO: "info   "}.get(
+                problem.severity, "?      "
             )
             _write(
                 "  %s L%-4d %-7s %s"
                 % (
-                    palette.severity(problema.severity, marca),
-                    problema.line,
-                    problema.code,
-                    problema.message,
+                    palette.severity(problem.severity, mark),
+                    problem.line,
+                    problem.code,
+                    problem.message,
                 )
             )
-            if problema.hint:
-                _write("         %s" % palette.paint("→ " + problema.hint, "fraco"))
+            if problem.hint:
+                _write("         %s" % palette.paint("→ " + problem.hint, "dim"))
     _write(
         "  %s"
         % palette.paint(
             summary(list(problems)),
-            "erro" if any(p.severity == ERRO for p in problems) else "alerta",
+            "error" if any(p.severity == ERROR for p in problems) else "warning",
         )
     )
 
 
 def cmd_run(args: argparse.Namespace, config: SandboxConfig, palette: Palette) -> int:
-    """Executa o comando ``run``.
+    """Runs the ``run`` command.
 
     Args:
-        args: Namespace do comando.
-        config: Configuração em vigor (limites de instruções e de tempo).
-        palette: Paleta de cores da saída.
+        args: Namespace of the command.
+        config: Configuration in effect (instruction and time limits).
+        palette: Color palette of the output.
 
     Returns:
-        :data:`EXIT_OK` quando a execução termina limpa, :data:`EXIT_PROBLEMS`
-        quando acusa problema e :data:`EXIT_TIMEOUT` quando estoura o tempo.
+        :data:`EXIT_OK` when the run finishes clean, :data:`EXIT_PROBLEMS` when
+        it reports a problem and :data:`EXIT_TIMEOUT` when the time is exceeded.
 
     Raises:
-        EmulationError: Se ``--entry`` aponta para um rótulo inexistente.
-        SourceNotFoundError: Se o arquivo não existe.
+        EmulationError: When ``--entry`` points to a nonexistent label.
+        SourceNotFoundError: When the file does not exist.
     """
-    fonte = read_source(args.file, suffixes=SOURCE_SUFFIXES)
-    analise = analyze(fonte.text)
-    if args.entry and args.entry not in analise.label_at:
-        raise EmulationError("rótulo não encontrado: %s" % args.entry)
-    maquina = Machine(analise, stdin=args.stdin, entry=args.entry)
-    passos = maquina.run(
+    source = read_source(args.file, suffixes=SOURCE_SUFFIXES)
+    analysis = analyze(source.text)
+    if args.entry and args.entry not in analysis.label_at:
+        raise EmulationError("label not found: %s" % args.entry)
+    machine = Machine(analysis, stdin=args.stdin, entry=args.entry)
+    steps = machine.run(
         limit=args.limit or config.max_steps,
         timeout=args.timeout,
         raise_on_timeout=args.timeout is not None,
     )
-    problemas = list(maquina.issues)
+    problems = list(machine.issues)
 
     log_event(
         logger,
         "run_finished",
-        path=fonte.path,
-        steps=passos,
-        exit_code=maquina.exit_code,
-        issues=len(problemas),
-        timed_out=maquina.timed_out,
+        path=source.path,
+        steps=steps,
+        exit_code=machine.exit_code,
+        issues=len(problems),
+        timed_out=machine.timed_out,
     )
 
     if args.json:
         payload: Dict[str, Any] = {
             "schema": "asmx-run/1",
             "command": "run",
-            "source": fonte.to_dict(),
-            "entry": args.entry or "entrada do programa",
-            "exit_code": maquina.exit_code,
-            "output": maquina.output,
-            "steps": passos,
-            "halted": maquina.halted,
-            "timed_out": maquina.timed_out,
-            "issues": problemas,
-            "registers": {chave: hexs(valor) for chave, valor in maquina.regs.items() if valor},
-            "flags": dict(maquina.flags),
+            "source": source.to_dict(),
+            "entry": args.entry or "program entry point",
+            "exit_code": machine.exit_code,
+            "output": machine.output,
+            "steps": steps,
+            "halted": machine.halted,
+            "timed_out": machine.timed_out,
+            "issues": problems,
+            "registers": {key: hexs(value) for key, value in machine.regs.items() if value},
+            "flags": dict(machine.flags),
         }
         if args.trace:
             payload["trace"] = [
-                {"line": passo.line, "text": passo.text, "note": passo.note}
-                for passo in maquina.trace[-args.max_trace :]
+                {"line": step.line, "text": step.text, "note": step.note}
+                for step in machine.trace[-args.max_trace :]
             ]
         _emit_json(payload)
     else:
         _write(
             "%s %s"
             % (
-                palette.paint(fonte.name, "forte"),
-                palette.paint(
-                    "· entrada: %s" % (args.entry or "ponto de entrada do programa"), "fraco"
-                ),
+                palette.paint(source.name, "bold"),
+                palette.paint("· entry: %s" % (args.entry or "program entry point"), "dim"),
             )
         )
-        if maquina.output:
-            _write("  saída:")
-            for linha in maquina.output.splitlines() or [""]:
-                _write("    %s" % linha)
+        if machine.output:
+            _write("  output:")
+            for line in machine.output.splitlines() or [""]:
+                _write("    %s" % line)
         else:
-            _write("  saída: %s" % palette.paint("(vazia)", "fraco"))
+            _write("  output: %s" % palette.paint("(empty)", "dim"))
         _write(
-            "  %d instruções · código de saída %s"
-            % (passos, maquina.exit_code if maquina.exit_code is not None else "não definido")
+            "  %d instructions · exit code %s"
+            % (steps, machine.exit_code if machine.exit_code is not None else "not set")
         )
-        _write("  RAX=%s  RSP=%s" % (hexs(maquina.regs["rax"]), hexs(maquina.regs["rsp"])))
-        for problema in problemas:
-            _write("  %s" % palette.paint("⚠ " + problema, "alerta"))
-        if not problemas:
-            _write("  %s" % palette.paint("execução sem problemas", "bom"))
+        _write("  RAX=%s  RSP=%s" % (hexs(machine.regs["rax"]), hexs(machine.regs["rsp"])))
+        for problem in problems:
+            _write("  %s" % palette.paint("⚠ " + problem, "warning"))
+        if not problems:
+            _write("  %s" % palette.paint("run with no problems", "good"))
         if args.trace:
             _write("")
-            _write("  histórico:")
-            for passo in maquina.trace[-args.max_trace :]:
-                _write("    L%-4d %-46s %s" % (passo.line, passo.text[:46], passo.note))
+            _write("  history:")
+            for step in machine.trace[-args.max_trace :]:
+                _write("    L%-4d %-46s %s" % (step.line, step.text[:46], step.note))
 
-    if maquina.timed_out:
+    if machine.timed_out:
         return EXIT_TIMEOUT
-    return EXIT_PROBLEMS if problemas else EXIT_OK
+    return EXIT_PROBLEMS if problems else EXIT_OK
 
 
 def cmd_explain(args: argparse.Namespace, config: SandboxConfig, palette: Palette) -> int:
-    """Executa o comando ``explain``.
+    """Runs the ``explain`` command.
 
     Args:
-        args: Namespace do comando.
-        config: Configuração em vigor.
-        palette: Paleta de cores da saída.
+        args: Namespace of the command.
+        config: Configuration in effect.
+        palette: Color palette of the output.
 
     Returns:
-        :data:`EXIT_OK` sempre que a explicação é produzida.
+        :data:`EXIT_OK` whenever the explanation is produced.
 
     Raises:
-        UnknownMnemonicError: Mnemônico fora do acervo.
-        LineNotFoundError: Linha inexistente no arquivo.
+        UnknownMnemonicError: Mnemonic outside the catalog.
+        LineNotFoundError: Line that does not exist in the file.
     """
     if args.mnemonic and args.line is None:
         return _explain_mnemonic(args.mnemonic, args.json, palette)
 
-    fonte = read_source(args.file, suffixes=SOURCE_SUFFIXES)
-    analise = analyze(fonte.text)
-    linha = next((linha for linha in analise.program.lines if linha.n == args.line), None)
-    if linha is None:
-        raise LineNotFoundError(int(args.line), fonte.lines)
-    if linha.kind == "instruction":
-        ficha = describe_instruction(linha)
+    source = read_source(args.file, suffixes=SOURCE_SUFFIXES)
+    analysis = analyze(source.text)
+    line = next((line for line in analysis.program.lines if line.n == args.line), None)
+    if line is None:
+        raise LineNotFoundError(int(args.line), source.lines)
+    if line.kind == "instruction":
+        record = describe_instruction(line)
         if args.json:
             _emit_json(
                 {
                     "schema": "asmx-explain/1",
                     "command": "explain",
-                    "source": fonte.to_dict(),
+                    "source": source.to_dict(),
                     "kind": "instruction",
-                    **ficha,
+                    **record,
                 }
             )
         else:
-            _print_instruction(ficha, palette)
+            _print_instruction(record, palette)
         return EXIT_OK
 
-    detalhe = {
-        "line": linha.n,
-        "kind": linha.kind,
-        "text": linha.text,
-        "label": linha.label,
-        "directive": linha.directive,
-        "args": list(linha.args),
-        "section": linha.section,
-        "func": linha.func,
+    detail = {
+        "line": line.n,
+        "kind": line.kind,
+        "text": line.text,
+        "label": line.label,
+        "directive": line.directive,
+        "args": list(line.args),
+        "section": line.section,
+        "func": line.func,
     }
     if args.json:
         _emit_json(
-            {"schema": "asmx-explain/1", "command": "explain", "source": fonte.to_dict(), **detalhe}
+            {"schema": "asmx-explain/1", "command": "explain", "source": source.to_dict(), **detail}
         )
     else:
         _write(
             "%s %s"
             % (
-                palette.paint("linha %d" % linha.n, "titulo"),
-                palette.paint("(%s)" % linha.kind, "fraco"),
+                palette.paint("line %d" % line.n, "title"),
+                palette.paint("(%s)" % line.kind, "dim"),
             )
         )
-        _write("  %s" % linha.text)
-        if linha.label:
-            _write("  rótulo %s%s" % (linha.label, " (local)" if linha.local_label else ""))
-        if linha.directive:
+        _write("  %s" % line.text)
+        if line.label:
+            _write("  label %s%s" % (line.label, " (local)" if line.local_label else ""))
+        if line.directive:
             _write(
-                "  diretiva %s%s"
+                "  directive %s%s"
                 % (
-                    linha.directive.upper(),
+                    line.directive.upper(),
                     (
-                        " · reserva %s byte(s)" % linha.unit
-                        if linha.reserve
-                        else " · %d byte(s) por item" % linha.unit
+                        " · reserves %s byte(s)" % line.unit
+                        if line.reserve
+                        else " · %d byte(s) per item" % line.unit
                     ),
                 )
             )
@@ -896,21 +996,21 @@ def cmd_explain(args: argparse.Namespace, config: SandboxConfig, palette: Palett
 
 
 def _explain_mnemonic(mnemonic: str, as_json: bool, palette: Palette) -> int:
-    """Mostra a documentação de um mnemônico do acervo.
+    """Shows the documentation of a mnemonic from the catalog.
 
     Args:
-        mnemonic: Nome da instrução (``mov``, ``syscall``...).
-        as_json: Se a saída deve ser JSON.
-        palette: Paleta de cores.
+        mnemonic: Name of the instruction (``mov``, ``syscall``...).
+        as_json: Whether the output should be JSON.
+        palette: Color palette.
 
     Returns:
         :data:`EXIT_OK`.
 
     Raises:
-        UnknownMnemonicError: Quando o acervo não documenta a instrução.
+        UnknownMnemonicError: When the catalog does not document the instruction.
     """
-    chave = mnemonic.strip().lower()
-    doc = ISA.get(chave)
+    key = mnemonic.strip().lower()
+    doc = ISA.get(key)
     if doc is None:
         raise UnknownMnemonicError(mnemonic, len(ISA))
     if as_json:
@@ -919,62 +1019,62 @@ def _explain_mnemonic(mnemonic: str, as_json: bool, palette: Palette) -> int:
                 "schema": "asmx-explain/1",
                 "command": "explain",
                 "kind": "mnemonic",
-                "mnemonic": chave,
+                "mnemonic": key,
                 "documentation": doc,
             }
         )
         return EXIT_OK
-    categoria = CATEGORIES.get(doc["cat"], {"label": doc["cat"]})
+    category = CATEGORIES.get(doc["cat"], {"label": doc["cat"]})
     _write(
         "%s  %s"
         % (
-            palette.paint(chave.upper(), "titulo"),
-            palette.paint("· %s · %s" % (doc["name"], categoria["label"]), "fraco"),
+            palette.paint(key.upper(), "title"),
+            palette.paint("· %s · %s" % (doc["name"], category["label"]), "dim"),
         )
     )
-    _write("  sintaxe  %s" % doc["syntax"])
+    _write("  syntax   %s" % doc["syntax"])
     _write("  %s" % doc["desc"])
     if doc.get("ex"):
-        _write("  exemplo")
-        for exemplo in doc["ex"]:
-            _write("    %s" % exemplo)
+        _write("  example")
+        for example in doc["ex"]:
+            _write("    %s" % example)
     _write("  flags    %s" % doc["flags"])
     if doc.get("note"):
-        _write("  %s" % palette.paint(doc["note"], "fraco"))
+        _write("  %s" % palette.paint(doc["note"], "dim"))
     return EXIT_OK
 
 
-def _print_instruction(ficha: Dict[str, Any], palette: Palette) -> None:
-    """Imprime a ficha de uma instrução analisada.
+def _print_instruction(record: Dict[str, Any], palette: Palette) -> None:
+    """Prints the record of an analyzed instruction.
 
     Args:
-        ficha: Dicionário devolvido por :func:`describe_instruction`.
-        palette: Paleta de cores.
+        record: Dictionary returned by :func:`describe_instruction`.
+        palette: Color palette.
     """
     _write(
         "%s %s"
         % (
-            palette.paint("linha %d" % ficha["line"], "titulo"),
-            palette.paint(str(ficha["mnemonic"]).upper(), "forte"),
+            palette.paint("line %d" % record["line"], "title"),
+            palette.paint(str(record["mnemonic"]).upper(), "bold"),
         )
     )
-    _write("  %s" % ficha["text"])
-    _write("  %s — %s" % (palette.paint(ficha["label"], "bom"), ficha["detail"]))
-    doc = ficha.get("documentation")
+    _write("  %s" % record["text"])
+    _write("  %s — %s" % (palette.paint(record["label"], "good"), record["detail"]))
+    doc = record.get("documentation")
     if doc:
-        _write("  sintaxe  %s" % doc["syntax"])
+        _write("  syntax   %s" % doc["syntax"])
         _write("  flags    %s" % doc["flags"])
         if doc.get("note"):
-            _write("  %s" % palette.paint(doc["note"], "fraco"))
+            _write("  %s" % palette.paint(doc["note"], "dim"))
 
 
 def cmd_info(args: argparse.Namespace, config: SandboxConfig, palette: Palette) -> int:
-    """Executa o comando ``info``.
+    """Runs the ``info`` command.
 
     Args:
-        args: Namespace do comando.
-        config: Configuração em vigor.
-        palette: Paleta de cores da saída.
+        args: Namespace of the command.
+        config: Configuration in effect.
+        palette: Color palette of the output.
 
     Returns:
         :data:`EXIT_OK`.
@@ -982,18 +1082,18 @@ def cmd_info(args: argparse.Namespace, config: SandboxConfig, palette: Palette) 
     try:
         import tkinter  # noqa: F401
 
-        tem_tk = True
-        versao_tk: Optional[str] = str(tkinter.TkVersion)
+        has_tk = True
+        tk_version: Optional[str] = str(tkinter.TkVersion)
     except ImportError:
-        tem_tk = False
-        versao_tk = None
-    estado: LoggingState = configure_logging()
-    dados = {
+        has_tk = False
+        tk_version = None
+    state: LoggingState = configure_logging()
+    data = {
         "schema": "asmx-info/1",
         "command": "info",
         "version": __version__,
         "python": _platform.python_version(),
-        "tkinter": {"available": tem_tk, "version": versao_tk},
+        "tkinter": {"available": has_tk, "version": tk_version},
         "platform": _platform.system().lower(),
         "isa": {
             "mnemonics": len(ISA),
@@ -1004,75 +1104,75 @@ def cmd_info(args: argparse.Namespace, config: SandboxConfig, palette: Palette) 
             "examples": len(EXAMPLES),
         },
         "config": config.to_dict(),
-        "logging": estado.to_dict(),
+        "logging": state.to_dict(),
     }
     if args.json:
-        _emit_json(dados)
+        _emit_json(data)
         return EXIT_OK
-    _write("%s %s" % (palette.paint("ASM X", "titulo"), __version__))
+    _write("%s %s" % (palette.paint("ASM X", "title"), __version__))
     _write(
         "  python %s · tkinter %s"
         % (
-            dados["python"],
+            data["python"],
             (
-                versao_tk
-                if tem_tk
-                else palette.paint("indisponível (só a linha de comando funciona)", "alerta")
+                tk_version
+                if has_tk
+                else palette.paint("unavailable (only the command line works)", "warning")
             ),
         )
     )
     _write(
-        "  acervo: %d instruções · %d categorias · %d syscalls Linux · %d APIs do Windows"
+        "  catalog: %d instructions · %d categories · %d Linux syscalls · %d Windows APIs"
         % (len(ISA), len(CATEGORIES), len(LINUX_SYSCALLS), len(WIN_APIS))
     )
-    _write("  validação: %d regras · exemplos: %d" % (len(ALL_CHECKS), len(EXAMPLES)))
-    _write("  configuração: %s" % config.describe())
-    _write("  log: %s · json=%s" % (estado.level, estado.json_output))
+    _write("  validation: %d rules · examples: %d" % (len(ALL_CHECKS), len(EXAMPLES)))
+    _write("  configuration: %s" % config.describe())
+    _write("  log: %s · json=%s" % (state.level, state.json_output))
     return EXIT_OK
 
 
 def cmd_examples(args: argparse.Namespace, config: SandboxConfig, palette: Palette) -> int:
-    """Executa o comando ``examples``.
+    """Runs the ``examples`` command.
 
     Args:
-        args: Namespace do comando.
-        config: Configuração em vigor.
-        palette: Paleta de cores da saída.
+        args: Namespace of the command.
+        config: Configuration in effect.
+        palette: Color palette of the output.
 
     Returns:
         :data:`EXIT_OK`.
 
     Raises:
-        EmulationError: Nome de exemplo inexistente.
+        EmulationError: Nonexistent example name.
     """
-    nomes = sorted(EXAMPLES)
+    names = sorted(EXAMPLES)
     if args.show:
         if args.show not in EXAMPLES:
             raise EmulationError(
-                "exemplo desconhecido: %s (disponíveis: %s)" % (args.show, ", ".join(nomes))
+                "unknown example: %s (available: %s)" % (args.show, ", ".join(names))
             )
         _write(EXAMPLES[args.show]["code"])
         return EXIT_OK
     if args.dump:
         os.makedirs(args.dump, exist_ok=True)
-        caminhos = []
-        for nome in nomes:
-            caminho = os.path.join(args.dump, "%s.asm" % nome)
-            with open(caminho, "w", encoding="utf-8") as arquivo:
-                arquivo.write(render(nome))
-            caminhos.append(caminho)
-        log_event(logger, "examples_dumped", directory=args.dump, count=len(nomes))
+        paths = []
+        for name in names:
+            path = os.path.join(args.dump, "%s.asm" % name)
+            with open(path, "w", encoding="utf-8") as file:
+                file.write(render(name))
+            paths.append(path)
+        log_event(logger, "examples_dumped", directory=args.dump, count=len(names))
         if args.json:
             _emit_json(
                 {
                     "schema": "asmx-examples/1",
                     "command": "examples",
                     "directory": args.dump,
-                    "files": caminhos,
+                    "files": paths,
                 }
             )
         else:
-            _write(palette.paint("%d exemplos gravados em %s" % (len(nomes), args.dump), "bom"))
+            _write(palette.paint("%d examples written to %s" % (len(names), args.dump), "good"))
         return EXIT_OK
     if args.json:
         _emit_json(
@@ -1085,29 +1185,29 @@ def cmd_examples(args: argparse.Namespace, config: SandboxConfig, palette: Palet
                         "title": EXAMPLES[n]["title"],
                         "lines": EXAMPLES[n]["code"].count("\n") + 1,
                     }
-                    for n in nomes
+                    for n in names
                 ],
             }
         )
         return EXIT_OK
-    for nome in nomes:
-        _write("%s %s" % (palette.paint("%-14s" % nome, "forte"), EXAMPLES[nome]["title"]))
+    for name in names:
+        _write("%s %s" % (palette.paint("%-16s" % name, "bold"), EXAMPLES[name]["title"]))
     _write("")
     _write(
         palette.paint(
-            "use --show NOME para ver o código ou --dump DIRETÓRIO " "para gravar todos", "fraco"
+            "use --show NAME to see the code or --dump DIRECTORY " "to write them all", "dim"
         )
     )
     return EXIT_OK
 
 
 def cmd_version(args: argparse.Namespace, config: SandboxConfig, palette: Palette) -> int:
-    """Executa o comando ``version``.
+    """Runs the ``version`` command.
 
     Args:
-        args: Namespace do comando.
-        config: Configuração em vigor.
-        palette: Paleta de cores da saída.
+        args: Namespace of the command.
+        config: Configuration in effect.
+        palette: Color palette of the output.
 
     Returns:
         :data:`EXIT_OK`.
@@ -1127,239 +1227,606 @@ def cmd_version(args: argparse.Namespace, config: SandboxConfig, palette: Palett
 
 
 def _risk_rank(level: str) -> int:
-    """Converte o nível de risco em número, para comparar com ``--fail-on``.
+    """Converts the risk level into a number, to compare with ``--fail-on``.
 
     Args:
-        level: ``baixo``, ``medio``, ``alto`` ou ``critico``.
+        level: ``low``, ``medium``, ``high`` or ``critical``.
 
     Returns:
-        ``0`` a ``3``; nível desconhecido conta como o mais brando.
+        ``0`` to ``3``; an unknown level counts as the mildest one.
     """
     return RISK_LEVELS.index(level) if level in RISK_LEVELS else 0
 
 
 def _expand_sources(paths: Sequence[str]) -> List[str]:
-    """Expande diretórios em arquivos de assembly.
+    """Expands directories into assembly files.
 
     Args:
-        paths: Arquivos e diretórios indicados na linha de comando.
+        paths: Files and directories given on the command line.
 
     Returns:
-        Caminhos de arquivos, em ordem alfabética dentro de cada diretório;
-        arquivos sem extensão reconhecida também entram quando foram citados
-        diretamente (o leitor reclama só se não existirem).
+        File paths, in alphabetical order inside each directory; files without a
+        recognized extension also enter when they were named directly (the
+        reader only complains if they do not exist).
     """
-    encontrados: List[str] = []
-    for caminho in paths:
-        if os.path.isdir(caminho):
-            for pasta, subpastas, nomes in os.walk(caminho):
-                subpastas[:] = sorted(p for p in subpastas if not p.startswith("."))
-                for nome in sorted(nomes):
-                    if os.path.splitext(nome)[1].lower() in SOURCE_SUFFIXES:
-                        encontrados.append(os.path.join(pasta, nome))
+    found: List[str] = []
+    for path in paths:
+        if os.path.isdir(path):
+            for folder, subfolders, names in os.walk(path):
+                subfolders[:] = sorted(p for p in subfolders if not p.startswith("."))
+                for name in sorted(names):
+                    if os.path.splitext(name)[1].lower() in SOURCE_SUFFIXES:
+                        found.append(os.path.join(folder, name))
         else:
-            encontrados.append(caminho)
-    return encontrados
+            found.append(path)
+    return found
 
 
-def _report_summary(nome: str, dados: Any) -> str:
-    """Resume um relatório em uma linha de terminal.
+def _report_summary(name: str, data: Any) -> str:
+    """Summarizes a report in one terminal line.
 
     Args:
-        nome: Nome do arquivo analisado.
-        dados: :class:`~asmx.report.ReportData` já preenchido.
+        name: Name of the analyzed file.
+        data: :class:`~asmx.report.ReportData` already filled in.
 
     Returns:
-        Linha com risco, contagens e destaques.
+        Line with risk, counts and highlights.
     """
-    contagens = dados.counts
-    destaques = ", ".join(b["label"] for b in dados.behaviors[:3]) or "sem comportamento relevante"
-    return "%-28s %-8s %3d/100  %4d instr  %2d comport  %3d IOC  %2d prob  %s" % (
-        nome[:28],
-        str(dados.risk.get("level", "?")).upper(),
-        int(dados.risk.get("score", 0)),
-        contagens["instructions"],
-        contagens["behaviors"],
-        contagens["iocs"],
-        contagens["problems"],
-        destaques,
+    counts = data.counts
+    highlights = ", ".join(b["label"] for b in data.behaviors[:3]) or "no relevant behavior"
+    return "%-28s %-8s %3d/100  %4d instr  %2d behav  %3d IOC  %2d prob  %s" % (
+        name[:28],
+        str(data.risk.get("level", "?")).upper(),
+        int(data.risk.get("score", 0)),
+        counts["instructions"],
+        counts["behaviors"],
+        counts["iocs"],
+        counts["problems"],
+        highlights,
     )
 
 
 def cmd_report(args: argparse.Namespace, config: SandboxConfig, palette: Palette) -> int:
-    """Executa o comando ``report``.
+    """Runs the ``report`` command.
 
     Args:
-        args: Namespace do comando.
-        config: Configuração em vigor (diretório de saída e limites).
-        palette: Paleta de cores da saída.
+        args: Namespace of the command.
+        config: Configuration in effect (output directory and limits).
+        palette: Color palette of the output.
 
     Returns:
-        :data:`EXIT_OK` ao gravar, :data:`EXIT_PROBLEMS` quando ``--fail-on``
-        for atingido.
+        :data:`EXIT_OK` when writing, :data:`EXIT_PROBLEMS` when ``--fail-on``
+        is reached.
     """
     from .report import collect, write_report
 
-    fonte = read_source(args.file, suffixes=SOURCE_SUFFIXES)
-    dados = collect(
-        fonte.text,
-        source=fonte,
+    source = read_source(args.file, suffixes=SOURCE_SUFFIXES)
+    data = collect(
+        source.text,
+        source=source,
         emulate=not args.no_emulate,
         limit=args.limit or config.max_steps,
         timeout=args.timeout,
         stdin=args.stdin,
         entry=args.entry,
-        command="asmx report %s" % fonte.name,
+        command="asmx report %s" % source.name,
     )
 
-    # `--json` é modo script: imprime o resumo e não grava nada sem `--out`.
-    somente_resumo = args.json and args.out is None
-    destino = args.out
-    if destino is None and not somente_resumo:
+    # `--json` is script mode: it prints the summary and writes nothing without `--out`.
+    summary_only = args.json and args.out is None
+    destination = args.out
+    if destination is None and not summary_only:
         if (args.format or "html") == "html":
             os.makedirs(config.output_dir, exist_ok=True)
-            destino = os.path.join(
-                config.output_dir, "%s.report.html" % os.path.splitext(fonte.name)[0]
+            destination = os.path.join(
+                config.output_dir, "%s.report.html" % os.path.splitext(source.name)[0]
             )
         else:
-            destino = "-"
-    escrito = "-" if somente_resumo else write_report(dados, destino, fmt=args.format)
+            destination = "-"
+    written = "-" if summary_only else write_report(data, destination, fmt=args.format)
 
     if args.json:
         _emit_json(
             {
                 "schema": "asmx-report/1",
                 "command": "report",
-                "file": fonte.name,
-                "output": escrito,
-                "risk": dados.risk,
-                "counts": dados.counts,
-                "behaviors": [b["category"] for b in dados.behaviors],
-                "techniques": [t["id"] for t in dados.techniques],
-                "exit_code": EXIT_PROBLEMS if _atingiu(args.fail_on, dados) else EXIT_OK,
+                "file": source.name,
+                "output": written,
+                "risk": data.risk,
+                "counts": data.counts,
+                "behaviors": [b["category"] for b in data.behaviors],
+                "techniques": [t["id"] for t in data.techniques],
+                "exit_code": EXIT_PROBLEMS if _reached(args.fail_on, data) else EXIT_OK,
             }
         )
-    elif escrito != "-":
+    elif written != "-":
         _write(
-            "%s %s"
-            % (palette.paint("relatório gravado em", "bom"), palette.paint(escrito, "forte"))
+            "%s %s" % (palette.paint("report written to", "good"), palette.paint(written, "bold"))
         )
-        _write("  %s" % _report_summary(fonte.name, dados))
-    if args.open and escrito != "-":
-        webbrowser.open("file://" + os.path.abspath(escrito))
-    return EXIT_PROBLEMS if _atingiu(args.fail_on, dados) else EXIT_OK
+        _write("  %s" % _report_summary(source.name, data))
+    if args.open and written != "-":
+        webbrowser.open("file://" + os.path.abspath(written))
+    return EXIT_PROBLEMS if _reached(args.fail_on, data) else EXIT_OK
 
 
-def _atingiu(limite: Optional[str], dados: Any) -> bool:
-    """Diz se o risco do relatório alcançou o limite pedido.
+def _reached(limit: Optional[str], data: Any) -> bool:
+    """Tells whether the risk of the report reached the requested limit.
 
     Args:
-        limite: Nível passado em ``--fail-on`` (``None`` desliga a checagem).
-        dados: Relatório preenchido.
+        limit: Level passed in ``--fail-on`` (``None`` turns the check off).
+        data: Filled report.
 
     Returns:
-        ``True`` quando o risco do arquivo é igual ou maior que o limite.
+        ``True`` when the risk of the file is equal to or higher than the limit.
     """
-    if not limite:
+    if not limit:
         return False
-    return _risk_rank(str(dados.risk.get("level", "baixo"))) >= _risk_rank(limite)
+    return _risk_rank(str(data.risk.get("level", "low"))) >= _risk_rank(limit)
 
 
 def cmd_analyze(args: argparse.Namespace, config: SandboxConfig, palette: Palette) -> int:
-    """Executa o comando ``analyze`` (vários arquivos e índice comparativo).
+    """Runs the ``analyze`` command (several files and a comparative index).
 
     Args:
-        args: Namespace do comando.
-        config: Configuração em vigor.
-        palette: Paleta de cores da saída.
+        args: Namespace of the command.
+        config: Configuration in effect.
+        palette: Color palette of the output.
 
     Returns:
-        :data:`EXIT_OK`, ou :data:`EXIT_PROBLEMS` quando algum arquivo atinge o
-        risco pedido em ``--fail-on``.
+        :data:`EXIT_OK`, or :data:`EXIT_PROBLEMS` when some file reaches the
+        risk requested in ``--fail-on``.
 
     Raises:
-        ProjectError: Se nenhum arquivo de assembly foi encontrado nos caminhos.
-        SourceNotFoundError: Se um arquivo indicado não existe.
+        ProjectError: When no assembly file was found in the paths.
+        SourceNotFoundError: When an indicated file does not exist.
     """
-    from .report import collect, render_index, write_report
+    from .report import render_index, write_report
 
-    caminhos = _expand_sources(args.paths)
-    if not caminhos:
-        raise ProjectError("nenhum arquivo de assembly encontrado em: %s" % ", ".join(args.paths))
-    pasta = args.out or config.output_dir
-    os.makedirs(pasta, exist_ok=True)
-    extensao = FORMAT_SUFFIX.get(args.format, "html")
-    relatorios: List[Any] = []
-    pior = EXIT_OK
+    paths = _expand_sources(args.paths)
+    if not paths:
+        raise ProjectError("no assembly file found in: %s" % ", ".join(args.paths))
+    folder = args.out or config.output_dir
+    os.makedirs(folder, exist_ok=True)
+    extension = FORMAT_SUFFIX.get(args.format, "html")
+    reports: List[Any] = []
+    analyses: List[Any] = []
+    worst = EXIT_OK
 
-    for caminho in caminhos:
-        fonte = read_source(caminho, suffixes=SOURCE_SUFFIXES)
-        dados = collect(
-            fonte.text,
-            source=fonte,
-            emulate=not args.no_emulate,
-            limit=args.limit or config.max_steps,
-            timeout=args.timeout,
-            command="asmx analyze %s" % " ".join(args.paths),
-        )
-        nome_base = os.path.splitext(fonte.name)[0]
-        destino = os.path.join(pasta, "%s.report.%s" % (nome_base, extensao))
-        write_report(dados, destino, fmt=args.format)
-        dados.source["report_file"] = os.path.basename(destino)
-        relatorios.append(dados)
-        if _atingiu(args.fail_on, dados):
-            pior = EXIT_PROBLEMS
+    for name, data, analysis in _analysis_jobs(paths, args, config, folder, extension):
+        destination = os.path.join(folder, str(data.source.get("report_file")))
+        write_report(data, destination, fmt=args.format)
+        reports.append(data)
+        analyses.append(analysis)
+        if _reached(args.fail_on, data):
+            worst = EXIT_PROBLEMS
         if not args.json:
-            _write("  %s" % _report_summary(fonte.name, dados))
+            _write("  %s" % _report_summary(name, data))
 
-    indice = ""
+    # The manifest is what the dashboard reads and what another tool consumes,
+    # so it is written in every format — `analyze --format md` stays useful.
+    found: List[Dict[str, Any]] = []
+    if getattr(args, "cluster", False):
+        from .similarity import groups
+
+        found = groups(
+            [{"name": str(r.source.get("name")), "analysis": a} for r, a in zip(reports, analyses)],
+            threshold=getattr(args, "threshold", 0.8),
+        )
+    manifest: Dict[str, Any] = {
+        "schema": "asmx-analyze/1",
+        "command": "analyze",
+        "directory": folder,
+        "format": args.format,
+        "files": [
+            {
+                "name": r.source.get("name"),
+                "risk": r.risk.get("level"),
+                "score": r.risk.get("score"),
+                "reason": (r.risk.get("reasons") or [""])[0],
+                "instructions": r.counts.get("instructions", 0),
+                "behaviors": r.counts.get("behaviors", 0),
+                "indicators": r.counts.get("iocs", 0),
+                "problems": r.counts.get("problems", 0),
+                "platform": "%s · %d-bit" % (r.platform.get("os"), r.platform.get("bits", 64)),
+                "report": r.source.get("report_file"),
+            }
+            for r in reports
+        ],
+        "groups": found,
+        "exit_code": worst,
+    }
+    manifest_path = os.path.join(folder, "index.json")
+    with open(manifest_path, "w", encoding="utf-8") as file:
+        json.dump(manifest, file, ensure_ascii=False, indent=2, sort_keys=False)
+    log_event(logger, "manifest_written", path=manifest_path, files=len(reports))
+
+    index = ""
     if args.index and args.format == "html":
-        indice = os.path.join(pasta, "index.html")
-        with open(indice, "w", encoding="utf-8") as arquivo:
-            arquivo.write(
-                render_index(relatorios, command="asmx analyze %s" % " ".join(args.paths))
+        index = os.path.join(folder, "index.html")
+        with open(index, "w", encoding="utf-8") as file:
+            file.write(render_index(reports, command="asmx analyze %s" % " ".join(args.paths)))
+        log_event(logger, "index_written", path=index, files=len(reports))
+
+    manifest["index"] = index
+    if args.json:
+        manifest["counts"] = {r.source.get("name"): r.counts for r in reports}
+        _emit_json(manifest)
+    else:
+        _write("")
+        _write(
+            "%s %d file(s) · %d with high or critical risk%s"
+            % (
+                palette.paint("summary:", "bold"),
+                len(reports),
+                sum(1 for r in reports if _risk_rank(str(r.risk.get("level"))) >= 2),
+                " · %d similar group(s)" % len(found) if found else "",
             )
-        log_event(logger, "index_written", path=indice, files=len(relatorios))
+        )
+        _write(
+            "  reports and manifest in %s%s"
+            % (
+                palette.paint(folder, "good"),
+                " · index at %s" % palette.paint(index, "good") if index else "",
+            )
+        )
+    return worst
+
+
+def _analysis_jobs(
+    paths: Sequence[str],
+    args: argparse.Namespace,
+    config: SandboxConfig,
+    folder: str,
+    extension: str,
+) -> List[Tuple[str, Any, Any]]:
+    """Analyses the files, in parallel processes when asked.
+
+    Each worker opens its own file and returns ``(name, report, analysis)``; the
+    reports are plain dictionaries, so they cross the process boundary without
+    any pickling surprise. A worker that fails on one file does not take the
+    batch down: the error is reported and the file is skipped.
+
+    Args:
+        paths: Files to analyse.
+        args: Namespace of the ``analyze`` command.
+        config: Configuration in effect.
+        folder: Directory where the reports are written.
+        extension: Suffix of each report file.
+
+    Returns:
+        List of ``(source name, ReportData, Analysis)`` in the order of
+        ``paths``.
+    """
+    total = max(1, int(getattr(args, "jobs", 1) or 1))
+    options = {
+        "emulate": not args.no_emulate,
+        "limit": args.limit or config.max_steps,
+        "timeout": args.timeout,
+        "command": "asmx analyze %s" % " ".join(args.paths),
+        "extension": extension,
+    }
+    results: List[Tuple[str, Any, Any]] = []
+    if total == 1 or len(paths) == 1:
+        for path in paths:
+            name, data, analysis, destination = _analyze_file(path, options)
+            data.source["report_file"] = destination
+            results.append((name, data, analysis))
+        return results
+
+    workers = min(total, len(paths))
+    log_event(logger, "analyze_parallel", files=len(paths), workers=workers)
+    with futures.ProcessPoolExecutor(max_workers=workers) as pool:
+        pending = {pool.submit(_analyze_file, path, options): path for path in paths}
+        for future in futures.as_completed(pending):
+            path = pending[future]
+            try:
+                name, data, analysis, destination = future.result()
+            except (AsmxError, OSError) as error:
+                sys.stderr.write("skipping %s: %s\n" % (path, error))
+                continue
+            data.source["report_file"] = destination
+            results.append((name, data, analysis))
+    order = {os.path.basename(path): position for position, path in enumerate(paths)}
+    results.sort(key=lambda pair: order.get(pair[0], len(order)))
+    return results
+
+
+def _analyze_file(path: str, options: Dict[str, Any]) -> Tuple[str, Any, Any, str]:
+    """Analyzes one file; safe to call in another process.
+
+    The function lives at module level and takes plain data, because a closure
+    cannot be pickled — and a worker that cannot be pickled silently turns
+    ``--jobs N`` into a crash.
+
+    Args:
+        path: File to analyse.
+        options: ``emulate``, ``limit``, ``timeout``, ``command`` and
+            ``extension``, all plain values.
+
+    Returns:
+        Tuple ``(source name, ReportData, Analysis, report file name)``.
+
+    Raises:
+        SourceNotFoundError: The file does not exist.
+        SourceReadError: The file cannot be read.
+    """
+    from .report import collect
+
+    source = read_source(path, suffixes=SOURCE_SUFFIXES)
+    analysis = analyze(source.text)
+    data = collect(
+        source.text,
+        source=source,
+        analysis=analysis,
+        emulate=bool(options.get("emulate", True)),
+        limit=int(options.get("limit") or 200000),
+        timeout=options.get("timeout"),
+        command=str(options.get("command") or "asmx analyze"),
+    )
+    base_name = os.path.splitext(source.name)[0]
+    return (
+        source.name,
+        data,
+        analysis,
+        "%s.report.%s" % (base_name, options.get("extension") or "html"),
+    )
+
+
+def cmd_scan(args: argparse.Namespace, config: SandboxConfig, palette: Palette) -> int:
+    """Runs the ``scan`` command (signature rules over one or more sources).
+
+    Args:
+        args: Namespace of the command.
+        config: Configuration in effect.
+        palette: Color palette of the output.
+
+    Returns:
+        :data:`EXIT_OK`, or :data:`EXIT_PROBLEMS` when a match reaches the
+        severity requested in ``--fail-on``.
+
+    Raises:
+        ProjectError: When no assembly file was found in the paths.
+        ConfigError: When a rule file is invalid.
+    """
+    from .rules import load_rules, match_rules, severity_rank, summary as rules_summary
+
+    paths = _expand_sources(args.paths)
+    if not paths:
+        raise ProjectError("no assembly file found in: %s" % ", ".join(args.paths))
+    rules = load_rules(directory=getattr(args, "rules", None))
+    exit_code = EXIT_OK
+    payload: List[Dict[str, Any]] = []
+
+    if not args.json:
+        _write(
+            "%s %d rule(s) from %s"
+            % (
+                palette.paint("rules:", "bold"),
+                len(rules),
+                os.path.dirname(rules[0].source) if rules and rules[0].source else "?",
+            )
+        )
+
+    for path in paths:
+        source = read_source(path, suffixes=SOURCE_SUFFIXES)
+        analysis = analyze(source.text)
+        problems = validate(analysis)
+        matches = match_rules(rules, analysis, problems=problems, text=source.text)
+        payload.append(
+            {
+                "name": source.name,
+                "matches": [m.to_dict() for m in matches],
+                "summary": rules_summary(matches),
+            }
+        )
+        if args.fail_on and any(
+            severity_rank(m.severity) <= severity_rank(args.fail_on) for m in matches
+        ):
+            exit_code = EXIT_PROBLEMS
+        if not args.json:
+            _write("")
+            _write("  %s %s" % (palette.paint(source.name, "bold"), rules_summary(matches)))
+            for match in matches:
+                _write(
+                    "    %-7s %-8s %s"
+                    % (
+                        palette.paint(match.rule_id, "bold"),
+                        match.severity,
+                        match.name,
+                    )
+                )
+                for evidence in match.evidence:
+                    _write("            %s" % evidence)
 
     if args.json:
         _emit_json(
             {
-                "schema": "asmx-analyze/1",
-                "command": "analyze",
-                "directory": pasta,
-                "index": indice,
-                "files": [
-                    {
-                        "name": r.source.get("name"),
-                        "risk": r.risk.get("level"),
-                        "score": r.risk.get("score"),
-                        "counts": r.counts,
-                        "report": r.source.get("report_file"),
-                    }
-                    for r in relatorios
-                ],
-                "exit_code": pior,
+                "schema": "asmx-scan/1",
+                "command": "scan",
+                "rules": len(rules),
+                "files": payload,
+                "exit_code": exit_code,
             }
         )
-    else:
+    elif len(paths) > 1:
+        total = sum(len(item["matches"]) for item in payload)
         _write("")
         _write(
-            "%s %d arquivo(s) · %d com risco alto ou crítico%s"
+            "%s %d file(s) · %d match(es)"
+            % (palette.paint("summary:", "bold"), len(payload), total)
+        )
+    return exit_code
+
+
+def cmd_rules(args: argparse.Namespace, config: SandboxConfig, palette: Palette) -> int:
+    """Runs the ``rules`` command (lists the rule set in effect).
+
+    Args:
+        args: Namespace of the command.
+        config: Configuration in effect.
+        palette: Color palette of the output.
+
+    Returns:
+        :data:`EXIT_OK`.
+    """
+    from .rules import SEVERITIES as RULE_SEVERITIES
+    from .rules import default_rules_dir, load_rules
+
+    directory = getattr(args, "rules", None) or default_rules_dir()
+    rules = load_rules(directory=getattr(args, "rules", None))
+    if args.json:
+        _emit_json(
+            {
+                "schema": "asmx-rules/1",
+                "command": "rules",
+                "directory": directory,
+                "rules": [rule.to_dict() for rule in rules],
+            }
+        )
+        return EXIT_OK
+    _write(
+        "%s %d rule(s) in %s"
+        % (palette.paint("rules:", "bold"), len(rules), palette.paint(directory, "dim"))
+    )
+    for severity in RULE_SEVERITIES:
+        group = [rule for rule in rules if rule.severity == severity]
+        if not group:
+            continue
+        _write("")
+        _write("  %s" % palette.paint("%s (%d)" % (severity, len(group)), "bold"))
+        for rule in group:
+            _write("    %-7s %s" % (rule.id, rule.name))
+            if rule.tags:
+                _write("            tags: %s" % ", ".join(rule.tags))
+    return EXIT_OK
+
+
+def cmd_cluster(args: argparse.Namespace, config: SandboxConfig, palette: Palette) -> int:
+    """Runs the ``cluster`` command (groups sources by similarity).
+
+    Args:
+        args: Namespace of the command.
+        config: Configuration in effect.
+        palette: Color palette of the output.
+
+    Returns:
+        :data:`EXIT_OK`.
+
+    Raises:
+        ProjectError: When no assembly file was found in the paths.
+    """
+    from .similarity import feature_vector, groups, similar_to
+
+    paths = _expand_sources(args.paths)
+    if not paths:
+        raise ProjectError("no assembly file found in: %s" % ", ".join(args.paths))
+    samples: List[Dict[str, Any]] = []
+    for path in paths:
+        source = read_source(path, suffixes=SOURCE_SUFFIXES)
+        samples.append({"name": source.name, "analysis": analyze(source.text)})
+    found = groups(samples, threshold=args.threshold, linkage=args.linkage)
+
+    if args.json:
+        payload: Dict[str, Any] = {
+            "schema": "asmx-cluster/1",
+            "command": "cluster",
+            "threshold": args.threshold,
+            "linkage": args.linkage,
+            "files": len(samples),
+            "groups": found,
+        }
+        if args.top:
+            vectors = [feature_vector(item["analysis"]) for item in samples]
+            payload["closest_to_first"] = [
+                {"name": samples[index]["name"], "similarity": round(score, 4)}
+                for index, score in similar_to(vectors[0], vectors, top=args.top + 1)[1:]
+            ]
+        _emit_json(payload)
+        return EXIT_OK
+
+    _write(
+        "%s %d file(s) · %d group(s) · threshold %.2f (%s linkage)"
+        % (
+            palette.paint("cluster:", "bold"),
+            len(samples),
+            len(found),
+            args.threshold,
+            args.linkage,
+        )
+    )
+    for group in found:
+        _write("")
+        _write(
+            "  %s %s"
             % (
-                palette.paint("resumo:", "forte"),
-                len(relatorios),
-                sum(1 for r in relatorios if _risk_rank(str(r.risk.get("level"))) >= 2),
-                " · índice em %s" % palette.paint(indice, "bom") if indice else "",
+                palette.paint("%d file(s)" % group["size"], "bold"),
+                palette.paint("cohesion %.2f" % group["cohesion"], "dim"),
             )
         )
-    return pior
+        if group["label"]:
+            _write("      shared signal: %s" % group["label"])
+        for member in group["members"]:
+            _write("      %s" % member)
+    if args.top:
+        vectors = [feature_vector(item["analysis"]) for item in samples]
+        _write("")
+        _write("  %s" % palette.paint("closest to %s" % samples[0]["name"], "bold"))
+        for index, score in similar_to(vectors[0], vectors, top=args.top + 1)[1:]:
+            _write("      %.3f  %s" % (score, samples[index]["name"]))
+    return EXIT_OK
 
 
-#: Comandos disponíveis, ligados às funções que os executam.
+def cmd_dashboard(args: argparse.Namespace, config: SandboxConfig, palette: Palette) -> int:
+    """Runs the ``dashboard`` command (serves a folder of reports).
+
+    Args:
+        args: Namespace of the command.
+        config: Configuration in effect.
+        palette: Color palette of the output.
+
+    Returns:
+        :data:`EXIT_OK`, or :data:`EXIT_INPUT` when the served folder has no
+        report at all.
+    """
+    from .dashboard import load_samples, serve
+
+    folder = args.directory or config.output_dir
+    samples = load_samples(folder)
+    if not samples:
+        sys.stderr.write(
+            "no report found in %s\n" "  run: asmx analyze <files> --out %s\n" % (folder, folder)
+        )
+        return EXIT_INPUT
+    server, url = serve(
+        folder,
+        host=args.host,
+        port=args.port,
+        title="ASM X — %s" % os.path.basename(os.path.abspath(folder)),
+        token=args.token,
+        open_browser=args.open_browser,
+    )
+    _write("%s %d sample(s) from %s" % (palette.paint("dashboard:", "bold"), len(samples), folder))
+    _write("  %s" % palette.paint(url, "good"))
+    _write("  read-only · press Ctrl+C to stop")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        _write("")
+        _write("  stopped")
+    finally:
+        server.server_close()
+    return EXIT_OK
+
+
+#: Available commands, bound to the functions that run them.
 COMMANDS: Dict[str, Callable[[argparse.Namespace, SandboxConfig, Palette], int]] = {
     "check": cmd_check,
     "report": cmd_report,
     "analyze": cmd_analyze,
+    "scan": cmd_scan,
+    "rules": cmd_rules,
+    "cluster": cmd_cluster,
+    "dashboard": cmd_dashboard,
     "run": cmd_run,
     "explain": cmd_explain,
     "info": cmd_info,
@@ -1369,48 +1836,49 @@ COMMANDS: Dict[str, Callable[[argparse.Namespace, SandboxConfig, Palette], int]]
 
 
 def launch_gui() -> int:
-    """Abre a interface gráfica, se o Tkinter e um display existirem.
+    """Opens the graphical interface, if Tkinter and a display exist.
 
     Returns:
-        :data:`EXIT_OK` quando a janela fecha normalmente,
-        :data:`EXIT_INPUT` quando não há Tkinter ou display.
+        :data:`EXIT_OK` when the window closes normally, :data:`EXIT_INPUT` when
+        there is no Tkinter or display.
     """
     try:
         from .ui import main as ui_main
-    except ImportError as erro:
+    except ImportError as error:
         sys.stderr.write(
-            "a interface gráfica precisa do Tkinter, que não está instalado (%s).\n"
+            "the graphical interface needs Tkinter, which is not installed (%s).\n"
             "  Debian/Ubuntu:  sudo apt install python3-tk\n"
             "  Fedora:         sudo dnf install python3-tkinter\n"
-            "  Windows/macOS:  reinstale o Python marcando 'tcl/tk'\n"
-            "os comandos de linha de comando continuam disponíveis: asmx --help\n" % erro
+            "  Windows/macOS:  reinstall Python with the 'tcl/tk' option checked\n"
+            "the command line commands remain available: asmx --help\n" % error
         )
         return EXIT_INPUT
     try:
         ui_main()
-    except Exception as erro:  # pragma: no cover - depende de display real
-        sys.stderr.write("não consegui abrir a janela: %s\n" % erro)
+    except Exception as error:  # pragma: no cover - depends on a real display
+        sys.stderr.write("could not open the window: %s\n" % error)
         return EXIT_INPUT
     return EXIT_OK
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    """Ponto de entrada da linha de comando.
+    """Entry point of the command line.
 
-    Sem argumentos (chamada real do sistema) abre a interface gráfica; com
-    ``argv`` explícito, exige um comando — o que mantém os testes previsíveis.
+    With no arguments (a real system call) it opens the graphical interface;
+    with an explicit ``argv`` it requires a command — which keeps the tests
+    predictable.
 
     Args:
-        argv: Argumentos sem o nome do programa; ``None`` usa ``sys.argv[1:]``.
+        argv: Arguments without the program name; ``None`` uses ``sys.argv[1:]``.
 
     Returns:
-        O código de saída do processo (veja o topo do módulo).
+        The exit code of the process (see the top of the module).
     """
-    chamada_real = argv is None
+    real_call = argv is None
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
 
-    if getattr(args, "gui", False) or (chamada_real and not args.command):
+    if getattr(args, "gui", False) or (real_call and not args.command):
         return launch_gui()
     if not args.command:
         parser.print_help()
@@ -1419,11 +1887,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     palette = _palette(args)
     try:
         config = load_config(args)
-    except AsmxError as erro:
-        sys.stderr.write("%s\n" % palette.paint(str(erro), "erro"))
+    except AsmxError as error:
+        sys.stderr.write("%s\n" % palette.paint(str(error), "error"))
         return EXIT_INPUT
-    # No terminal o padrão é falar pouco: o resultado é a saída do comando.
-    # -v traz INFO/DEBUG, -q cala até os erros.
+    # In the terminal the default is to say little: the output of the command is
+    # the result. -v brings INFO/DEBUG, -q silences even the errors.
     config.apply_logging(force=True)
     configure_logging(
         "DEBUG" if args.verbose else ("ERROR" if args.quiet else "WARNING"),
@@ -1434,7 +1902,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     log_event(logger, "command_started", level=10, **build_payload(args))
     try:
-        codigo = COMMANDS[args.command](args, config, palette)
+        code = COMMANDS[args.command](args, config, palette)
     except (
         SourceNotFoundError,
         SourceReadError,
@@ -1443,20 +1911,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         UnknownMnemonicError,
         LineNotFoundError,
         EmulationError,
-    ) as erro:
-        log_event(logger, "command_input_error", level=40, code=erro.code, detail=erro.message)
-        sys.stderr.write("%s\n" % palette.paint(str(erro), "erro"))
+    ) as error:
+        log_event(logger, "command_input_error", level=40, code=error.code, detail=error.message)
+        sys.stderr.write("%s\n" % palette.paint(str(error), "error"))
         return EXIT_INPUT
-    except AnalysisTimeoutError as erro:
-        log_event(logger, "command_timeout", level=40, timeout=erro.timeout, steps=erro.steps)
-        sys.stderr.write("%s\n" % palette.paint(str(erro), "erro"))
+    except AnalysisTimeoutError as error:
+        log_event(logger, "command_timeout", level=40, timeout=error.timeout, steps=error.steps)
+        sys.stderr.write("%s\n" % palette.paint(str(error), "error"))
         return EXIT_TIMEOUT
-    except AsmxError as erro:
-        log_event(logger, "command_failed", level=40, code=erro.code, detail=erro.message)
-        sys.stderr.write("%s\n" % palette.paint(str(erro), "erro"))
+    except AsmxError as error:
+        log_event(logger, "command_failed", level=40, code=error.code, detail=error.message)
+        sys.stderr.write("%s\n" % palette.paint(str(error), "error"))
         return EXIT_INPUT
-    except KeyboardInterrupt:  # pragma: no cover - interação do usuário
-        sys.stderr.write("\ninterrompido\n")
+    except KeyboardInterrupt:  # pragma: no cover - user interaction
+        sys.stderr.write("\ninterrupted\n")
         return 130
-    log_event(logger, "command_finished", exit_code=codigo)
-    return codigo
+    log_event(logger, "command_finished", exit_code=code)
+    return code

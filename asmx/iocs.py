@@ -1,23 +1,23 @@
-"""Indicadores de compromisso e strings interessantes escondidos no fonte.
+"""Indicators of compromise and interesting strings hidden in the source.
 
-A análise de comportamento diz o que o programa *faz*; este módulo responde a
-outra pergunta: o que está *escrito* dentro dele. URLs, endereços IP, domínios,
-caminhos, chaves de registro, comandos e palavras-chave são procurados nos
-literais de dados (``db``, ``dq``...) e nos comentários do fonte — e também na
-memória, depois que o programa roda, com :func:`from_memory`.
+The behavior analysis says what the program *does*; this module answers another
+question: what is *written* inside it. URLs, IP addresses, domains, paths,
+registry keys, commands and keywords are looked for in the data literals
+(``db``, ``dq``...) and in the comments of the source — and also in memory,
+after the program runs, with :func:`from_memory`.
 
-O ponto de partida é :func:`strings_of`, que devolve as strings de cada linha;
-:func:`extract` classifica cada uma e devolve a lista de :class:`Ioc`, já sem
-repetições. Nada aqui levanta exceção: fonte vazia, binária ou absurda devolve
-lista vazia.
+The starting point is :func:`strings_of`, which returns the strings of each
+line; :func:`extract` classifies each one and returns the list of :class:`Ioc`,
+already without repetitions. Nothing here raises an exception: an empty, binary
+or absurd source returns an empty list.
 
 Example:
     >>> from asmx.iocs import extract, summary
-    >>> iocs = extract('msg db "http://exemplo.com/x", 0')
+    >>> iocs = extract('msg db "http://example.com/x", 0')
     >>> [(i.kind, i.value) for i in iocs]
-    [('url', 'http://exemplo.com/x')]
+    [('url', 'http://example.com/x')]
     >>> summary(iocs)
-    '1 indicador(es): 1 URL'
+    '1 indicator(s): 1 URL'
 """
 
 from __future__ import annotations
@@ -40,37 +40,37 @@ __all__ = [
     "from_memory",
 ]
 
-#: Rótulo em português de cada categoria de indicador.
+#: Label of each indicator kind, as shown in the report.
 IOC_KINDS: Dict[str, str] = {
     "url": "URL",
-    "ipv4": "Endereço IPv4",
-    "domain": "Domínio",
-    "email": "Endereço de e-mail",
-    "path_unix": "Caminho Unix",
-    "path_windows": "Caminho Windows",
-    "registry": "Chave de registro",
-    "command": "Comando",
-    "extension": "Extensão sensível",
-    "keyword": "Palavra-chave",
+    "ipv4": "IPv4 address",
+    "domain": "Domain",
+    "email": "Email address",
+    "path_unix": "Unix path",
+    "path_windows": "Windows path",
+    "registry": "Registry key",
+    "command": "Command",
+    "extension": "Sensitive extension",
+    "keyword": "Keyword",
     "string": "String",
 }
 
-#: Nomes curtos usados só no resumo de uma linha (veja :func:`summary`).
-_RESUMO: Dict[str, str] = {
+#: Short names used only in the one-line summary (see :func:`summary`).
+_SHORT_LABELS: Dict[str, str] = {
     "url": "URL",
     "ipv4": "IPv4",
-    "domain": "domínio",
-    "email": "e-mail",
-    "path_unix": "caminho",
-    "path_windows": "caminho Windows",
-    "registry": "registro",
-    "command": "comando",
-    "extension": "extensão",
-    "keyword": "palavra-chave",
+    "domain": "domain",
+    "email": "email",
+    "path_unix": "path",
+    "path_windows": "Windows path",
+    "registry": "registry",
+    "command": "command",
+    "extension": "extension",
+    "keyword": "keyword",
     "string": "string",
 }
 
-#: Categorias reconhecidas por padrão (tudo menos a string genérica).
+#: Kinds recognized by pattern (everything except the generic string).
 _PATTERN_KINDS: Tuple[str, ...] = (
     "url",
     "ipv4",
@@ -84,14 +84,14 @@ _PATTERN_KINDS: Tuple[str, ...] = (
     "keyword",
 )
 
-#: Posição de cada categoria, para a saída ficar sempre na mesma ordem.
-_KIND_ORDER: Dict[str, int] = {kind: indice for indice, kind in enumerate(IOC_KINDS)}
+#: Position of each kind, so that the output always stays in the same order.
+_KIND_ORDER: Dict[str, int] = {kind: index for index, kind in enumerate(IOC_KINDS)}
 
-#: Tamanho máximo do trecho de linha guardado em :attr:`Ioc.context`.
+#: Maximum size of the line excerpt stored in :attr:`Ioc.context`.
 _MAX_CONTEXT = 160
 
-#: Extensões que merecem atenção quando aparecem citadas no fonte.
-_EXTENSOES: Tuple[str, ...] = (
+#: Extensions that deserve attention when they are cited in the source.
+_EXTENSIONS: Tuple[str, ...] = (
     ".exe",
     ".dll",
     ".bat",
@@ -104,8 +104,8 @@ _EXTENSOES: Tuple[str, ...] = (
     ".key",
 )
 
-#: Comandos e executáveis que o relatório destaca quando são citados.
-_COMANDOS: Tuple[str, ...] = (
+#: Commands and executables that the report highlights when they are cited.
+_COMMANDS: Tuple[str, ...] = (
     "cmd.exe",
     "powershell.exe",
     "powershell",
@@ -130,8 +130,8 @@ _COMANDOS: Tuple[str, ...] = (
     "crontab",
 )
 
-#: Palavras de interesse (comparadas sem diferenciar maiúsculas).
-_PALAVRAS: Tuple[str, ...] = (
+#: Words of interest (compared without case distinction).
+_KEYWORDS: Tuple[str, ...] = (
     "password",
     "senha",
     "token",
@@ -146,10 +146,10 @@ _PALAVRAS: Tuple[str, ...] = (
     "wallet",
 )
 
-#: TLDs considerados plausíveis. Ficam de fora, de propósito, os que também são
-#: extensão de arquivo (``md``, ``pl``, ``rs``, ``py``, ``sh``, ``so``, ``zip``,
-#: ``in``, ``it``, ``is``, ``id``): sem isso ``README.md`` e ``script.sh``
-#: apareceriam como domínio.
+#: TLDs considered plausible. The ones that are also a file extension are left
+#: out on purpose (``md``, ``pl``, ``rs``, ``py``, ``sh``, ``so``, ``zip``,
+#: ``in``, ``it``, ``is``, ``id``): without that, ``README.md`` and
+#: ``script.sh`` would show up as a domain.
 _TLDS = frozenset("""
     com org net edu gov mil int info biz name pro aero coop museum travel
     io ai app dev xyz online site store tech cloud blog page live news media
@@ -162,14 +162,15 @@ _TLDS = frozenset("""
     kz uz az ge am tn dz gh ci sn cm ug tz zm zw mu mg ao mz cv na bw
     """.split())
 
-#: Marca os limites de uma palavra: aceita ``_``, ``.`` e ``/`` dos lados, mas
-#: não letra ou dígito. É o que impede ``bot`` de casar dentro de ``botão``.
-_LIM_ESQ = r"(?<![^\W_])"
-_LIM_DIR = r"(?![^\W_])"
+#: Marks the boundaries of a word: it accepts ``_``, ``.`` and ``/`` on the
+#: sides, but not a letter or a digit. It is what keeps ``bot`` from matching
+#: inside ``bottom``.
+_LEFT_BOUNDARY = r"(?<![^\W_])"
+_RIGHT_BOUNDARY = r"(?![^\W_])"
 
-#: Limite dos comandos: um nome de arquivo como ``script.sh`` não é o comando
-#: ``sh``, então o ponto à esquerda também barra a captura.
-_LIM_ESQ_CMD = r"(?<![\w.])"
+#: Command boundary: a file name such as ``script.sh`` is not the command
+#: ``sh``, so the dot on the left also blocks the capture.
+_COMMAND_LEFT_BOUNDARY = r"(?<![\w.])"
 
 _URL_RE = re.compile(r"https?://[^\s\"',;<>()\[\]{}]+", re.I)
 _IPV4_RE = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
@@ -194,18 +195,18 @@ _REGISTRY_RE = re.compile(
     re.I,
 )
 _COMMAND_RE = re.compile(
-    _LIM_ESQ_CMD
+    _COMMAND_LEFT_BOUNDARY
     + r"(?:"
-    + "|".join(re.escape(c) for c in sorted(_COMANDOS, key=len, reverse=True))
+    + "|".join(re.escape(c) for c in sorted(_COMMANDS, key=len, reverse=True))
     + r")"
-    + _LIM_DIR,
+    + _RIGHT_BOUNDARY,
     re.I,
 )
-_EXTENSION_RE = re.compile(r"\.[A-Za-z][A-Za-z0-9]{0,5}" + _LIM_DIR)
+_EXTENSION_RE = re.compile(r"\.[A-Za-z][A-Za-z0-9]{0,5}" + _RIGHT_BOUNDARY)
 _KEYWORD_RE = re.compile(
-    _LIM_ESQ
+    _LEFT_BOUNDARY
     + r"(?:"
-    + "|".join(re.escape(p) for p in sorted(_PALAVRAS, key=len, reverse=True))
+    + "|".join(re.escape(p) for p in sorted(_KEYWORDS, key=len, reverse=True))
     + r")"
     + r"(?![^\W_\d])",
     re.I,
@@ -214,9 +215,9 @@ _LITERAL_RE = re.compile(r"\"((?:[^\"\\]|\\.)*)\"|'((?:[^'\\]|\\.)*)'")
 _DATA_HEAD_RE = re.compile(
     r"(?:[A-Za-z_.$][\w.$@]*\s+)?(?:db|dw|dd|dq|dt|resb|resw|resd|resq)\b", re.I
 )
-_SO_SEPARADORES = re.compile(r"[,;:.\-_/\\|*+=~^\s]+")
+_ONLY_SEPARATORS = re.compile(r"[,;:.\-_/\\|*+=~^\s]+")
 
-#: Escapes que o NASM entende dentro de um literal e o que cada um vira.
+#: Escapes that NASM understands inside a literal and what each one becomes.
 _ESCAPES: Dict[str, str] = {
     "n": "\n",
     "t": "\t",
@@ -229,13 +230,15 @@ _ESCAPES: Dict[str, str] = {
 
 @dataclass(frozen=True)
 class Ioc:
-    """Um indicador encontrado no fonte ou na memória.
+    """An indicator found in the source or in memory.
 
     Attributes:
-        kind: Chave da categoria, uma de :data:`IOC_KINDS`.
-        value: O texto do indicador, como apareceu (extensões em minúsculas).
-        line: Linha do fonte (1-based) ou ``0`` quando veio da memória.
-        context: Trecho da linha onde apareceu, sem espaços duplicados.
+        kind: Key of the kind, one of :data:`IOC_KINDS`.
+        value: The text of the indicator, as it appeared (extensions in lower
+            case).
+        line: Line of the source (1-based) or ``0`` when it came from memory.
+        context: Excerpt of the line where it appeared, without duplicate
+            spaces.
     """
 
     kind: str
@@ -244,11 +247,11 @@ class Ioc:
     context: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
-        """Converte o indicador em dicionário pronto para o relatório.
+        """Convert the indicator into a dictionary ready for the report.
 
         Returns:
-            Dicionário com ``kind``, ``value``, ``line``, ``context`` e o
-            ``label`` em português vindo de :data:`IOC_KINDS`.
+            Dictionary with ``kind``, ``value``, ``line``, ``context`` and the
+            ``label`` coming from :data:`IOC_KINDS`.
         """
         return {
             "kind": self.kind,
@@ -260,14 +263,15 @@ class Ioc:
 
 
 @dataclass(frozen=True)
-class _Linha:
-    """Uma linha do fonte já dividida em código e comentário.
+class _Line:
+    """A line of the source already split into code and comment.
 
     Attributes:
-        n: Número da linha (1-based).
-        raw: Linha original, sem alterações.
-        body: Parte antes do comentário, sem espaços nas pontas.
-        comment: Comentário da linha (com o marcador), vazio quando não existe.
+        n: Line number (1-based).
+        raw: Original line, unchanged.
+        body: Part before the comment, without leading or trailing spaces.
+        comment: Comment of the line (with the marker), empty when there is
+            none.
     """
 
     n: int
@@ -276,289 +280,292 @@ class _Linha:
     comment: str
 
 
-# --------------------------------------------------------------------- linhas -
+# ---------------------------------------------------------------------- lines -
 
 
-def _scan_lines(text: str) -> List[_Linha]:
-    """Divide o texto em linhas já com código e comentário separados.
+def _scan_lines(text: str) -> List[_Line]:
+    """Split the text into lines with code and comment already separated.
 
     Args:
-        text: Fonte completo.
+        text: Complete source.
 
     Returns:
-        Uma :class:`_Linha` por linha do texto, na ordem do arquivo.
+        One :class:`_Line` per line of the text, in file order.
     """
-    linhas: List[_Linha] = []
-    normalizado = text.replace("\r\n", "\n").replace("\r", "\n")
-    for indice, raw in enumerate(normalizado.split("\n")):
+    lines: List[_Line] = []
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    for index, raw in enumerate(normalized.split("\n")):
         try:
             body, comment = strip_comment(raw)
         except Exception:
             body, comment = raw, ""
-        linhas.append(_Linha(n=indice + 1, raw=raw, body=body.strip(), comment=comment))
-    return linhas
+        lines.append(_Line(n=index + 1, raw=raw, body=body.strip(), comment=comment))
+    return lines
 
 
-def _unescape(fragmento: str) -> str:
-    """Traduz os escapes usuais do NASM dentro de um literal.
+def _unescape(fragment: str) -> str:
+    """Translate the usual NASM escapes inside a literal.
 
-    ``\\n``, ``\\t``, ``\\r``, ``\\\\``, ``\\"`` e ``\\'`` viram um caractere;
-    escape desconhecido fica como está, com a contrabarra.
+    ``\\n``, ``\\t``, ``\\r``, ``\\\\``, ``\\"`` and ``\\'`` become one character;
+    an unknown escape stays as it is, with the backslash.
 
     Args:
-        fragmento: Conteúdo do literal, ainda com os escapes.
+        fragment: Content of the literal, still with the escapes.
 
     Returns:
-        O texto já decodificado.
+        The text already decoded.
     """
-    if "\\" not in fragmento:
-        return fragmento
-    saida: List[str] = []
+    if "\\" not in fragment:
+        return fragment
+    output: List[str] = []
     i = 0
-    while i < len(fragmento):
-        char = fragmento[i]
-        if char == "\\" and i + 1 < len(fragmento) and fragmento[i + 1] in _ESCAPES:
-            saida.append(_ESCAPES[fragmento[i + 1]])
+    while i < len(fragment):
+        char = fragment[i]
+        if char == "\\" and i + 1 < len(fragment) and fragment[i + 1] in _ESCAPES:
+            output.append(_ESCAPES[fragment[i + 1]])
             i += 2
             continue
-        saida.append(char)
+        output.append(char)
         i += 1
-    return "".join(saida)
+    return "".join(output)
 
 
 def _literals_of(body: str) -> List[str]:
-    """Extrai os literais de um trecho de código.
+    """Extract the literals of a piece of code.
 
-    Literais vizinhos separados só por vírgula são concatenados, como o
-    montador faria com ``db "a", "b"``; um número ou símbolo no meio quebra a
-    concatenação.
+    Neighboring literals separated only by a comma are concatenated, as the
+    assembler would do with ``db "a", "b"``; a number or symbol in the middle
+    breaks the concatenation.
 
     Args:
-        body: Trecho de código da linha, já sem o comentário.
+        body: Code piece of the line, already without the comment.
 
     Returns:
-        Os textos encontrados, na ordem em que aparecem.
+        The texts found, in the order they appear.
     """
-    valores: List[str] = []
-    pendente: Optional[str] = None
-    fim_anterior = -1
-    for casado in _LITERAL_RE.finditer(body):
-        grupo = casado.group(1)
-        texto = _unescape(grupo if grupo is not None else casado.group(2) or "")
-        entre = body[fim_anterior : casado.start()] if fim_anterior >= 0 else ""
-        if pendente is not None and entre.strip(" \t,") == "":
-            pendente += texto
+    values: List[str] = []
+    pending: Optional[str] = None
+    previous_end = -1
+    for match in _LITERAL_RE.finditer(body):
+        group_name = match.group(1)
+        text = _unescape(group_name if group_name is not None else match.group(2) or "")
+        between = body[previous_end : match.start()] if previous_end >= 0 else ""
+        if pending is not None and between.strip(" \t,") == "":
+            pending += text
         else:
-            if pendente is not None:
-                valores.append(pendente)
-            pendente = texto
-        fim_anterior = casado.end()
-    if pendente is not None:
-        valores.append(pendente)
-    return valores
+            if pending is not None:
+                values.append(pending)
+            pending = text
+        previous_end = match.end()
+    if pending is not None:
+        values.append(pending)
+    return values
 
 
 def _comment_text(comment: str) -> str:
-    """Limpa um comentário: tira o marcador e junta os espaços.
+    """Clean a comment: remove the marker and join the spaces.
 
     Args:
-        comment: Comentário como saiu do parser, com ``;``, ``#`` ou ``//``.
+        comment: Comment as it came out of the parser, with ``;``, ``#`` or
+            ``//``.
 
     Returns:
-        O texto do comentário sem o marcador e sem espaços duplicados.
+        The comment text without the marker and without duplicate spaces.
     """
     return " ".join(comment.lstrip(";#/").split())
 
 
-def _aceita(valor: str, min_length: int) -> bool:
-    """Diz se um texto merece virar indicador.
+def _accepted(value: str, min_length: int) -> bool:
+    """Tell whether a text deserves to become an indicator.
 
     Args:
-        valor: Texto candidato.
-        min_length: Tamanho mínimo, medido sem os espaços das pontas.
+        value: Candidate text.
+        min_length: Minimum size, measured without the leading and trailing
+            spaces.
 
     Returns:
-        ``True`` quando o texto não é vazio, nem só separadores, e alcança o
-        tamanho mínimo.
+        ``True`` when the text is not empty, nor only separators, and reaches
+        the minimum size.
     """
-    texto = valor.strip()
-    if len(texto) < max(1, int(min_length)):
+    text = value.strip()
+    if len(text) < max(1, int(min_length)):
         return False
-    return _SO_SEPARADORES.fullmatch(texto) is None
+    return _ONLY_SEPARATORS.fullmatch(text) is None
 
 
 def _context(raw: str) -> str:
-    """Monta o trecho de linha que acompanha o indicador.
+    """Build the line excerpt that accompanies the indicator.
 
     Args:
-        raw: Linha original do fonte.
+        raw: Original line of the source.
 
     Returns:
-        A linha sem espaços duplicados, cortada em :data:`_MAX_CONTEXT`.
+        The line without duplicate spaces, cut at :data:`_MAX_CONTEXT`.
     """
     return " ".join(raw.split())[:_MAX_CONTEXT]
 
 
-# ----------------------------------------------------------------- detectores -
+# ------------------------------------------------------------------ detectors -
 
 
-def _urls(texto: str) -> List[str]:
-    """Procura URLs ``http``/``https``.
+def _urls(text: str) -> List[str]:
+    """Look for ``http``/``https`` URLs.
 
-    A captura para no primeiro espaço, aspas, vírgula ou fechamento, e a
-    pontuação final da frase não entra.
-
-    Args:
-        texto: Texto a varrer.
-
-    Returns:
-        As URLs encontradas.
-    """
-    achados: List[str] = []
-    for casado in _URL_RE.finditer(texto):
-        valor = casado.group(0).rstrip(".,;:")
-        if len(valor) > len("https://"):
-            achados.append(valor)
-    return achados
-
-
-def _ips(texto: str) -> List[str]:
-    """Procura endereços IPv4 válidos.
-
-    Cada octeto precisa caber em 0-255 e o endereço não pode fazer parte de uma
-    sequência maior de números: ``1.2.3.4.5`` e a versão ``1.2`` ficam de fora.
+    The capture stops at the first space, quote, comma or closing bracket, and
+    the final punctuation of the sentence does not enter.
 
     Args:
-        texto: Texto a varrer.
+        text: Text to scan.
 
     Returns:
-        Os endereços encontrados.
+        The URLs found.
     """
-    achados: List[str] = []
-    for casado in _IPV4_RE.finditer(texto):
-        valor = casado.group(0)
-        octetos = valor.split(".")
-        if all(octeto.isdigit() and int(octeto) <= 255 for octeto in octetos):
-            achados.append(valor)
-    return achados
+    found: List[str] = []
+    for match in _URL_RE.finditer(text):
+        value = match.group(0).rstrip(".,;:")
+        if len(value) > len("https://"):
+            found.append(value)
+    return found
 
 
-def _domains(texto: str) -> List[str]:
-    """Procura domínios com TLD plausível.
+def _ips(text: str) -> List[str]:
+    """Look for valid IPv4 addresses.
 
-    Domínio dentro de URL (depois de ``/``) ou de e-mail (depois de ``@``) não
-    conta: a URL e o e-mail já carregam o nome, e repetir só faria barulho.
-    Nomes de arquivo (``arquivo.asm``) e de seção (``.text``) também ficam de
-    fora, porque a extensão deles não é um TLD.
+    Each octet has to fit in 0-255 and the address cannot be part of a longer
+    sequence of numbers: ``1.2.3.4.5`` and the version ``1.2`` stay out.
 
     Args:
-        texto: Texto a varrer.
+        text: Text to scan.
 
     Returns:
-        Os domínios encontrados.
+        The addresses found.
     """
-    achados: List[str] = []
-    for casado in _DOMAIN_RE.finditer(texto):
-        if casado.group(1).lower() in _TLDS:
-            achados.append(casado.group(0))
-    return achados
+    found: List[str] = []
+    for match in _IPV4_RE.finditer(text):
+        value = match.group(0)
+        octets = value.split(".")
+        if all(octet.isdigit() and int(octet) <= 255 for octet in octets):
+            found.append(value)
+    return found
 
 
-def _emails(texto: str) -> List[str]:
-    """Procura endereços de e-mail.
+def _domains(text: str) -> List[str]:
+    """Look for domains with a plausible TLD.
+
+    A domain inside a URL (after ``/``) or an e-mail (after ``@``) does not
+    count: the URL and the e-mail already carry the name, and repeating it would
+    only add noise. File names (``file.asm``) and section names (``.text``) also
+    stay out, because their extension is not a TLD.
 
     Args:
-        texto: Texto a varrer.
+        text: Text to scan.
 
     Returns:
-        Os e-mails encontrados.
+        The domains found.
     """
-    return [casado.group(0) for casado in _EMAIL_RE.finditer(texto)]
+    found: List[str] = []
+    for match in _DOMAIN_RE.finditer(text):
+        if match.group(1).lower() in _TLDS:
+            found.append(match.group(0))
+    return found
 
 
-def _unix_paths(texto: str) -> List[str]:
-    """Procura caminhos Unix com pelo menos um diretório.
+def _emails(text: str) -> List[str]:
+    """Look for e-mail addresses.
 
     Args:
-        texto: Texto a varrer.
+        text: Text to scan.
 
     Returns:
-        Os caminhos encontrados, como ``/etc/passwd``.
+        The e-mails found.
     """
-    return [casado.group(0) for casado in _PATH_UNIX_RE.finditer(texto)]
+    return [match.group(0) for match in _EMAIL_RE.finditer(text)]
 
 
-def _windows_paths(texto: str) -> List[str]:
-    """Procura caminhos do Windows e nomes UNC.
-
-    Aceita barras escapadas (``C:\\\\Windows``) e simples (``C:\\Windows``),
-    porque o texto varrido já vem normalizado. O último componente não aceita
-    espaço, o que faz a captura parar antes da prosa seguinte.
+def _unix_paths(text: str) -> List[str]:
+    """Look for Unix paths with at least one directory.
 
     Args:
-        texto: Texto a varrer.
+        text: Text to scan.
 
     Returns:
-        Os caminhos encontrados.
+        The paths found, such as ``/etc/passwd``.
     """
-    return [casado.group(0) for casado in _PATH_WIN_RE.finditer(texto)]
+    return [match.group(0) for match in _PATH_UNIX_RE.finditer(text)]
 
 
-def _registry_keys(texto: str) -> List[str]:
-    """Procura chaves de registro do Windows.
+def _windows_paths(text: str) -> List[str]:
+    """Look for Windows paths and UNC names.
+
+    It accepts escaped backslashes (``C:\\\\Windows``) and single ones
+    (``C:\\Windows``), because the scanned text already comes normalized. The last
+    component does not accept a space, which makes the capture stop before the
+    prose that follows.
 
     Args:
-        texto: Texto a varrer.
+        text: Text to scan.
 
     Returns:
-        As chaves encontradas, como ``HKLM\\Software\\Microsoft``.
+        The paths found.
     """
-    return [casado.group(0) for casado in _REGISTRY_RE.finditer(texto)]
+    return [match.group(0) for match in _PATH_WIN_RE.finditer(text)]
 
 
-def _commands(texto: str) -> List[str]:
-    """Procura nomes de comandos e executáveis citados.
+def _registry_keys(text: str) -> List[str]:
+    """Look for Windows registry keys.
 
     Args:
-        texto: Texto a varrer.
+        text: Text to scan.
 
     Returns:
-        Os comandos encontrados, preservando maiúsculas e minúsculas.
+        The keys found, such as ``HKLM\\Software\\Microsoft``.
     """
-    return [casado.group(0) for casado in _COMMAND_RE.finditer(texto)]
+    return [match.group(0) for match in _REGISTRY_RE.finditer(text)]
 
 
-def _extensions(texto: str) -> List[str]:
-    """Procura extensões de arquivo que merecem atenção.
+def _commands(text: str) -> List[str]:
+    """Look for command and executable names that are cited.
 
     Args:
-        texto: Texto a varrer.
+        text: Text to scan.
 
     Returns:
-        As extensões encontradas, sempre em minúsculas.
+        The commands found, preserving upper and lower case.
     """
-    achados: List[str] = []
-    for casado in _EXTENSION_RE.finditer(texto):
-        valor = casado.group(0).lower()
-        if valor in _EXTENSOES:
-            achados.append(valor)
-    return achados
+    return [match.group(0) for match in _COMMAND_RE.finditer(text)]
 
 
-def _keywords(texto: str) -> List[str]:
-    """Procura palavras de interesse, sem diferenciar maiúsculas.
+def _extensions(text: str) -> List[str]:
+    """Look for file extensions that deserve attention.
 
     Args:
-        texto: Texto a varrer.
+        text: Text to scan.
 
     Returns:
-        As palavras encontradas, guardadas como apareceram no texto.
+        The extensions found, always in lower case.
     """
-    return [casado.group(0) for casado in _KEYWORD_RE.finditer(texto)]
+    found: List[str] = []
+    for match in _EXTENSION_RE.finditer(text):
+        value = match.group(0).lower()
+        if value in _EXTENSIONS:
+            found.append(value)
+    return found
 
 
-#: Um detector por categoria de padrão.
-_DETECTORES: Dict[str, Callable[[str], List[str]]] = {
+def _keywords(text: str) -> List[str]:
+    """Look for words of interest, without case distinction.
+
+    Args:
+        text: Text to scan.
+
+    Returns:
+        The words found, stored as they appeared in the text.
+    """
+    return [match.group(0) for match in _KEYWORD_RE.finditer(text)]
+
+
+#: One detector per pattern kind.
+_DETECTORS: Dict[str, Callable[[str], List[str]]] = {
     "url": _urls,
     "ipv4": _ips,
     "domain": _domains,
@@ -572,142 +579,143 @@ _DETECTORES: Dict[str, Callable[[str], List[str]]] = {
 }
 
 
-def _classify(valor: str) -> List[Tuple[str, str]]:
-    """Roda todos os detectores sobre um texto.
+def _classify(value: str) -> List[Tuple[str, str]]:
+    """Run every detector over a text.
 
     Args:
-        valor: Texto a classificar, vindo do fonte ou da memória.
+        value: Text to classify, coming from the source or from memory.
 
     Returns:
-        Pares ``(kind, valor)``; quando nenhum detector reconhece o texto, a
-        resposta é ``[("string", valor)]``.
+        Pairs ``(kind, value)``; when no detector recognizes the text, the
+        answer is ``[("string", value)]``.
     """
-    achados: List[Tuple[str, str]] = []
+    found: List[Tuple[str, str]] = []
     for kind in _PATTERN_KINDS:
-        for encontrado in _DETECTORES[kind](valor):
-            achados.append((kind, encontrado))
-    return achados if achados else [("string", valor)]
+        for candidate in _DETECTORS[kind](value):
+            found.append((kind, candidate))
+    return found if found else [("string", value)]
 
 
 def _fallback_patterns(raw: str) -> List[Tuple[str, str]]:
-    """Procura caminhos e chaves no texto cru de uma linha.
+    """Look for paths and keys in the raw text of a line.
 
-    É a rede de segurança para quando a string está quebrada em pedaços: as
-    contrabarras dobradas do fonte viram simples antes da busca.
-
-    Args:
-        raw: Linha original do fonte.
-
-    Returns:
-        Pares ``(kind, valor)`` encontrados.
-    """
-    normalizado = raw.replace("\\\\", "\\")
-    achados: List[Tuple[str, str]] = [("path_unix", v) for v in _unix_paths(normalizado)]
-    achados += [("path_windows", v) for v in _windows_paths(normalizado)]
-    achados += [("registry", v) for v in _registry_keys(normalizado)]
-    return achados
-
-
-def _precisa_fallback(linha: _Linha) -> bool:
-    """Diz se a linha crua deve passar pela busca de caminhos e chaves.
+    It is the safety net for when the string is broken into pieces: the doubled
+    backslashes of the source become single ones before the search.
 
     Args:
-        linha: Linha já dividida em código e comentário.
+        raw: Original line of the source.
 
     Returns:
-        ``True`` para linhas de dados e para linhas com comentário.
+        Pairs ``(kind, value)`` found.
     """
-    if linha.comment:
+    normalized = raw.replace("\\\\", "\\")
+    found: List[Tuple[str, str]] = [("path_unix", v) for v in _unix_paths(normalized)]
+    found += [("path_windows", v) for v in _windows_paths(normalized)]
+    found += [("registry", v) for v in _registry_keys(normalized)]
+    return found
+
+
+def _needs_fallback(line: _Line) -> bool:
+    """Tell whether the raw line must go through the search for paths and keys.
+
+    Args:
+        line: Line already split into code and comment.
+
+    Returns:
+        ``True`` for data lines and for lines with a comment.
+    """
+    if line.comment:
         return True
-    return _DATA_HEAD_RE.match(linha.body) is not None
+    return _DATA_HEAD_RE.match(line.body) is not None
 
 
 def _add_iocs(
-    destino: List[Ioc],
-    vistos: Set[Tuple[str, str]],
-    valor: str,
+    destination: List[Ioc],
+    seen: Set[Tuple[str, str]],
+    value: str,
     line: int,
     context: str,
 ) -> None:
-    """Classifica um texto e guarda os indicadores ainda inéditos.
+    """Classify a text and store the indicators that are still new.
 
     Args:
-        destino: Lista onde os indicadores são acumulados.
-        vistos: Conjunto de pares ``(kind, value)`` já registrados.
-        valor: Texto a classificar.
-        line: Linha onde o texto apareceu.
-        context: Trecho da linha, para o relatório.
+        destination: List where the indicators are accumulated.
+        seen: Set of ``(kind, value)`` pairs already registered.
+        value: Text to classify.
+        line: Line where the text appeared.
+        context: Excerpt of the line, for the report.
     """
-    for kind, encontrado in _classify(valor):
-        if (kind, encontrado) in vistos:
+    for kind, candidate in _classify(value):
+        if (kind, candidate) in seen:
             continue
-        vistos.add((kind, encontrado))
-        destino.append(Ioc(kind=kind, value=encontrado, line=line, context=context))
+        seen.add((kind, candidate))
+        destination.append(Ioc(kind=kind, value=candidate, line=line, context=context))
 
 
 def _order_key(ioc: Ioc) -> Tuple[int, int, str]:
-    """Monta a chave de ordenação dos indicadores.
+    """Build the sorting key of the indicators.
 
     Args:
-        ioc: Indicador a ordenar.
+        ioc: Indicator to sort.
 
     Returns:
-        Tupla ``(linha, categoria, valor)``.
+        Tuple ``(line, kind, value)``.
     """
     return (ioc.line, _KIND_ORDER.get(ioc.kind, len(_KIND_ORDER)), ioc.value)
 
 
-def _sem_prefixos(iocs: List[Ioc]) -> List[Ioc]:
-    """Descarta o caminho que é só um pedaço de outro caminho da mesma linha.
+def _without_prefixes(iocs: List[Ioc]) -> List[Ioc]:
+    """Drop the path that is only a piece of another path of the same line.
 
-    Quando um literal perde as contrabarras para um escape (``db "C:\\Users"``
-    escrito com uma contrabarra só), a leitura decodificada para no meio do
-    caminho e o resto só aparece no texto cru da linha. Dos dois, fica o mais
-    completo.
+    When a literal loses its backslashes to an escape (``db "C:\\Users"``
+    written with a single backslash), the decoded reading stops in the middle of
+    the path and the rest only appears in the raw text of the line. Of the two,
+    the most complete one stays.
 
     Args:
-        iocs: Indicadores já sem repetição.
+        iocs: Indicators already without repetition.
 
     Returns:
-        A lista sem os caminhos que são prefixo de outro da mesma linha.
+        The list without the paths that are a prefix of another one of the same
+        line.
     """
-    completos = {"path_unix", "path_windows", "registry"}
-    descartar: Set[Tuple[str, str]] = set()
+    complete_kinds = {"path_unix", "path_windows", "registry"}
+    discard: Set[Tuple[str, str]] = set()
     for ioc in iocs:
-        if ioc.kind not in completos:
+        if ioc.kind not in complete_kinds:
             continue
-        for outro in iocs:
-            if outro.kind != ioc.kind or outro.line != ioc.line:
+        for other in iocs:
+            if other.kind != ioc.kind or other.line != ioc.line:
                 continue
-            if len(outro.value) > len(ioc.value) and outro.value.startswith(ioc.value):
-                descartar.add((ioc.kind, ioc.value))
+            if len(other.value) > len(ioc.value) and other.value.startswith(ioc.value):
+                discard.add((ioc.kind, ioc.value))
                 break
-    return [ioc for ioc in iocs if (ioc.kind, ioc.value) not in descartar]
+    return [ioc for ioc in iocs if (ioc.kind, ioc.value) not in discard]
 
 
-# ------------------------------------------------------------------- público -
+# -------------------------------------------------------------------- public -
 
 
 def strings_of(
     text: str, *, min_length: int = 4, include_comments: bool = True
 ) -> List[Tuple[int, str]]:
-    """Lista as strings escritas no fonte, com a linha de cada uma.
+    """List the strings written in the source, with the line of each one.
 
-    Lê os literais de dados (``db "..."``, ``dq '...'``, inclusive listas
-    separadas por vírgula, que são concatenadas) e, quando
-    ``include_comments``, também o texto dos comentários. Escapes como ``\\n``,
-    ``\\t``, ``\\\\`` e ``\\"`` são decodificados nos literais; em comentário o
-    texto entra como está. Strings vazias, só de separadores ou menores que
-    ``min_length`` ficam de fora.
+    It reads the data literals (``db "..."``, ``dq '...'``, including lists
+    separated by commas, which are concatenated) and, when
+    ``include_comments``, the text of the comments as well. Escapes such as
+    ``\\n``, ``\\t``, ``\\\\`` and ``\\"`` are decoded in the literals; in a
+    comment the text enters as it is. Empty strings, strings only of separators
+    or strings shorter than ``min_length`` stay out.
 
     Args:
-        text: Fonte completo.
-        min_length: Tamanho mínimo de uma string para ela entrar na lista.
-        include_comments: Se os comentários também contam como strings.
+        text: Complete source.
+        min_length: Minimum size of a string for it to enter the list.
+        include_comments: Whether the comments also count as strings.
 
     Returns:
-        Lista de ``(linha, texto)`` na ordem do arquivo; lista vazia para
-        entrada vazia, binária ou absurda.
+        List of ``(line, text)`` in file order; an empty list for an empty,
+        binary or absurd input.
 
     Example:
         >>> strings_of('msg db "Ola", 0', min_length=2)
@@ -715,332 +723,334 @@ def strings_of(
     """
     if not isinstance(text, str):
         return []
-    encontradas: List[Tuple[int, str]] = []
+    found_strings: List[Tuple[int, str]] = []
     try:
-        for linha in _scan_lines(text):
-            for valor in _literals_of(linha.body):
-                if _aceita(valor, min_length):
-                    encontradas.append((linha.n, valor))
-            if include_comments and linha.comment:
-                texto = _comment_text(linha.comment)
-                if _aceita(texto, min_length):
-                    encontradas.append((linha.n, texto))
+        for line in _scan_lines(text):
+            for value in _literals_of(line.body):
+                if _accepted(value, min_length):
+                    found_strings.append((line.n, value))
+            if include_comments and line.comment:
+                comment_text = _comment_text(line.comment)
+                if _accepted(comment_text, min_length):
+                    found_strings.append((line.n, comment_text))
     except Exception:
-        return encontradas
-    return encontradas
+        return found_strings
+    return found_strings
 
 
 def extract(text: str, *, min_length: int = 4, include_comments: bool = True) -> List[Ioc]:
-    """Extrai os indicadores de compromisso escritos no fonte.
+    """Extract the indicators of compromise written in the source.
 
-    Roda todas as categorias sobre :func:`strings_of` e, como reforço, procura
-    caminhos e chaves de registro no texto cru das linhas de dados e dos
-    comentários — é o que salva o caso da string quebrada em pedaços. O mesmo
-    par ``(kind, value)`` aparece uma vez só, na primeira linha onde surgiu, e
-    uma string que já caiu em alguma categoria não volta como ``string``. Se um
-    caminho da mesma linha for só um pedaço de outro, fica o mais completo.
+    It runs every kind over :func:`strings_of` and, as a reinforcement, looks
+    for paths and registry keys in the raw text of the data lines and of the
+    comments — that is what saves the case of a string broken into pieces. The
+    same ``(kind, value)`` pair appears only once, at the first line where it
+    showed up, and a string that already fell into some kind does not come back
+    as ``string``. If a path of the same line is only a piece of another one,
+    the most complete one stays.
 
     Args:
-        text: Fonte completo.
-        min_length: Tamanho mínimo de uma string para ela ser classificada.
-        include_comments: Se os comentários também são vasculhados.
+        text: Complete source.
+        min_length: Minimum size of a string for it to be classified.
+        include_comments: Whether the comments are also scanned.
 
     Returns:
-        Os indicadores em ordem de linha; lista vazia para entrada vazia,
-        binária ou absurda.
+        The indicators in line order; an empty list for an empty, binary or
+        absurd input.
 
     Example:
-        >>> iocs = extract('msg db "senha do admin", 0')
+        >>> iocs = extract('msg db "admin password", 0')
         >>> [(i.kind, i.value) for i in iocs]
-        [('keyword', 'admin'), ('keyword', 'senha')]
+        [('keyword', 'admin'), ('keyword', 'password')]
     """
     if not isinstance(text, str):
         return []
-    achados: List[Ioc] = []
-    vistos: Set[Tuple[str, str]] = set()
+    found: List[Ioc] = []
+    seen: Set[Tuple[str, str]] = set()
     try:
-        linhas = _scan_lines(text)
-        for linha in linhas:
-            contexto = _context(linha.raw)
-            for valor in _literals_of(linha.body):
-                if _aceita(valor, min_length):
-                    _add_iocs(achados, vistos, valor, linha.n, contexto)
-            if include_comments and linha.comment:
-                texto = _comment_text(linha.comment)
-                if _aceita(texto, min_length):
-                    _add_iocs(achados, vistos, texto, linha.n, contexto)
-        for linha in linhas:
-            if not _precisa_fallback(linha):
+        lines = _scan_lines(text)
+        for line in lines:
+            context = _context(line.raw)
+            for value in _literals_of(line.body):
+                if _accepted(value, min_length):
+                    _add_iocs(found, seen, value, line.n, context)
+            if include_comments and line.comment:
+                comment_text = _comment_text(line.comment)
+                if _accepted(comment_text, min_length):
+                    _add_iocs(found, seen, comment_text, line.n, context)
+        for line in lines:
+            if not _needs_fallback(line):
                 continue
-            for kind, valor in _fallback_patterns(linha.raw):
-                if (kind, valor) in vistos:
+            for kind, value in _fallback_patterns(line.raw):
+                if (kind, value) in seen:
                     continue
-                vistos.add((kind, valor))
-                achados.append(
-                    Ioc(kind=kind, value=valor, line=linha.n, context=_context(linha.raw))
-                )
+                seen.add((kind, value))
+                found.append(Ioc(kind=kind, value=value, line=line.n, context=_context(line.raw)))
     except Exception:
-        return _sem_prefixos(sorted(achados, key=_order_key))
-    return _sem_prefixos(sorted(achados, key=_order_key))
+        return _without_prefixes(sorted(found, key=_order_key))
+    return _without_prefixes(sorted(found, key=_order_key))
 
 
 def group(iocs: Sequence[Ioc]) -> Dict[str, List[Ioc]]:
-    """Agrupa os indicadores por categoria, sem repetir valor.
+    """Group the indicators by kind, without repeating a value.
 
     Args:
-        iocs: Indicadores a agrupar, em qualquer ordem.
+        iocs: Indicators to group, in any order.
 
     Returns:
-        Dicionário ``kind -> lista``, com as categorias na ordem de
-        :data:`IOC_KINDS`; de cada valor fica a primeira ocorrência.
+        Dictionary ``kind -> list``, with the kinds in the order of
+        :data:`IOC_KINDS`; of each value the first occurrence stays.
     """
-    agrupado: Dict[str, List[Ioc]] = {}
+    grouped: Dict[str, List[Ioc]] = {}
     for ioc in iocs:
-        lista = agrupado.setdefault(ioc.kind, [])
-        if any(existente.value == ioc.value for existente in lista):
+        items = grouped.setdefault(ioc.kind, [])
+        if any(existing.value == ioc.value for existing in items):
             continue
-        lista.append(ioc)
-    ordem = sorted(agrupado, key=lambda kind: _KIND_ORDER.get(kind, len(_KIND_ORDER)))
-    return {kind: agrupado[kind] for kind in ordem}
+        items.append(ioc)
+    order = sorted(grouped, key=lambda kind: _KIND_ORDER.get(kind, len(_KIND_ORDER)))
+    return {kind: grouped[kind] for kind in order}
 
 
 def to_dicts(iocs: Sequence[Ioc]) -> Dict[str, List[Dict[str, Any]]]:
-    """Converte os indicadores agrupados em dicionários prontos para o relatório.
+    """Convert the grouped indicators into dictionaries ready for the report.
 
     Args:
-        iocs: Indicadores a converter.
+        iocs: Indicators to convert.
 
     Returns:
-        Dicionário ``kind -> lista de dicionários``, no formato de
+        Dictionary ``kind -> list of dictionaries``, in the format of
         :meth:`Ioc.to_dict`.
     """
-    return {kind: [ioc.to_dict() for ioc in lista] for kind, lista in group(iocs).items()}
+    return {kind: [ioc.to_dict() for ioc in items] for kind, items in group(iocs).items()}
 
 
 def summary(iocs: Sequence[Ioc]) -> str:
-    """Resume os indicadores numa linha, por categoria.
+    """Summarize the indicators in one line, by kind.
 
     Args:
-        iocs: Indicadores a resumir.
+        iocs: Indicators to summarize.
 
     Returns:
-        Texto como ``"12 indicador(es): 3 URL, 2 IPv4, 1 caminho"``; quando não
-        há nada, ``"0 indicador(es)"``.
+        Text such as ``"12 indicator(s): 3 URL, 2 IPv4, 1 path"``; when there is
+        nothing, ``"0 indicator(s)"``.
     """
-    contagem: Dict[str, int] = {}
+    counts: Dict[str, int] = {}
     for ioc in iocs:
-        contagem[ioc.kind] = contagem.get(ioc.kind, 0) + 1
-    partes = ["%d %s" % (contagem[kind], _RESUMO[kind]) for kind in _KIND_ORDER if kind in contagem]
-    if not partes:
-        return "0 indicador(es)"
-    return "%d indicador(es): %s" % (len(iocs), ", ".join(partes))
+        counts[ioc.kind] = counts.get(ioc.kind, 0) + 1
+    parts = [
+        "%d %s" % (counts[kind], _SHORT_LABELS[kind]) for kind in _KIND_ORDER if kind in counts
+    ]
+    if not parts:
+        return "0 indicator(s)"
+    return "%d indicator(s): %s" % (len(iocs), ", ".join(parts))
 
 
-def _ler_com_rd8(rd8: Callable[[int], Any], addr: int) -> int:
-    """Lê um byte usando ``rd8`` do leitor, tolerando falha de leitura.
-
-    Args:
-        rd8: Método ``rd8`` do leitor.
-        addr: Endereço pedido.
-
-    Returns:
-        O byte lido, ou ``0`` quando a leitura não é possível.
-    """
-    try:
-        valor = rd8(addr)
-    except Exception:
-        return 0
-    return valor & 0xFF if isinstance(valor, int) else 0
-
-
-def _ler_com_mem(read_mem: Callable[[int, int], Any], addr: int) -> int:
-    """Lê um byte usando ``read_mem(addr, 1)``, tolerando falha de leitura.
+def _read_with_rd8(rd8: Callable[[int], Any], addr: int) -> int:
+    """Read a byte using ``rd8`` from the reader, tolerating a read failure.
 
     Args:
-        read_mem: Método ``read_mem`` do leitor.
-        addr: Endereço pedido.
+        rd8: ``rd8`` method of the reader.
+        addr: Requested address.
 
     Returns:
-        O byte lido, ou ``0`` quando a leitura não é possível.
+        The byte read, or ``0`` when the read is not possible.
     """
     try:
-        valor = read_mem(addr, 1)
+        value = rd8(addr)
     except Exception:
         return 0
-    return valor & 0xFF if isinstance(valor, int) else 0
+    return value & 0xFF if isinstance(value, int) else 0
+
+
+def _read_with_mem(read_mem: Callable[[int, int], Any], addr: int) -> int:
+    """Read a byte using ``read_mem(addr, 1)``, tolerating a read failure.
+
+    Args:
+        read_mem: ``read_mem`` method of the reader.
+        addr: Requested address.
+
+    Returns:
+        The byte read, or ``0`` when the read is not possible.
+    """
+    try:
+        value = read_mem(addr, 1)
+    except Exception:
+        return 0
+    return value & 0xFF if isinstance(value, int) else 0
 
 
 def _byte_reader(reader: Any) -> Optional[Callable[[int], int]]:
-    """Escolhe a melhor leitura de byte oferecida pelo leitor.
+    """Choose the best byte read offered by the reader.
 
     Args:
-        reader: Objeto com ``rd8`` ou, na falta dele, ``read_mem``.
+        reader: Object with ``rd8`` or, in its absence, ``read_mem``.
 
     Returns:
-        Função ``endereço -> byte``, ou ``None`` quando o leitor não tem
-        nenhuma das duas.
+        Function ``address -> byte``, or ``None`` when the reader has neither of
+        the two.
     """
     rd8 = getattr(reader, "rd8", None)
     if callable(rd8):
-        return partial(_ler_com_rd8, rd8)
+        return partial(_read_with_rd8, rd8)
     read_mem = getattr(reader, "read_mem", None)
     if callable(read_mem):
-        return partial(_ler_com_mem, read_mem)
+        return partial(_read_with_mem, read_mem)
     return None
 
 
 def _printable(byte: int) -> bool:
-    """Diz se um byte faz parte de um trecho de texto.
+    """Tell whether a byte is part of a piece of text.
 
     Args:
-        byte: Valor de 0 a 255.
+        byte: Value from 0 to 255.
 
     Returns:
-        ``True`` para os imprimíveis ASCII e para os bytes altos usados por
-        UTF-8 e latin-1.
+        ``True`` for the printable ASCII bytes and for the high bytes used by
+        UTF-8 and latin-1.
     """
     return 0x20 <= byte <= 0x7E or byte >= 0x80
 
 
 def _printable_runs(
-    ler: Callable[[int], int], inicio: int, fim: int, min_length: int
+    read_byte: Callable[[int], int], start: int, end: int, min_length: int
 ) -> List[Tuple[int, int]]:
-    """Varre a memória procurando sequências de bytes imprimíveis.
+    """Scan the memory looking for runs of printable bytes.
 
     Args:
-        ler: Função que devolve o byte de um endereço.
-        inicio: Primeiro endereço da varredura.
-        fim: Endereço seguinte ao último (exclusivo).
-        min_length: Tamanho mínimo de uma sequência, em bytes.
+        read_byte: Function that returns the byte of an address.
+        start: First address of the scan.
+        end: Address after the last one (exclusive).
+        min_length: Minimum size of a run, in bytes.
 
     Returns:
-        Pares ``(início, fim)`` de cada sequência aceita.
+        Pairs ``(start, end)`` of each accepted run.
     """
-    corridas: List[Tuple[int, int]] = []
-    i = inicio
-    while i < fim:
+    runs: List[Tuple[int, int]] = []
+    i = start
+    while i < end:
         try:
-            if not _printable(ler(i)):
+            if not _printable(read_byte(i)):
                 i += 1
                 continue
             j = i + 1
-            while j < fim and _printable(ler(j)):
+            while j < end and _printable(read_byte(j)):
                 j += 1
         except Exception:
             break
         if j - i >= min_length:
-            corridas.append((i, j))
+            runs.append((i, j))
         i = j
-    return corridas
+    return runs
 
 
-def _memory_text(reader: Any, ler: Callable[[int], int], inicio: int, fim: int) -> str:
-    """Lê o texto de uma sequência de bytes da memória.
+def _memory_text(reader: Any, read_byte: Callable[[int], int], start: int, end: int) -> str:
+    """Read the text of a run of bytes from memory.
 
-    Usa ``read_cstring`` do leitor e, se ele não devolver nada, remonta o texto
-    a partir dos bytes já lidos.
+    It uses ``read_cstring`` from the reader and, if it returns nothing, rebuilds
+    the text from the bytes already read.
 
     Args:
-        reader: Objeto com ``read_cstring``.
-        ler: Função que devolve o byte de um endereço.
-        inicio: Primeiro endereço da sequência.
-        fim: Endereço seguinte ao último (exclusivo).
+        reader: Object with ``read_cstring``.
+        read_byte: Function that returns the byte of an address.
+        start: First address of the run.
+        end: Address after the last one (exclusive).
 
     Returns:
-        O texto encontrado, sem espaços nas pontas.
+        The text found, without leading or trailing spaces.
     """
     read_cstring = getattr(reader, "read_cstring", None)
-    texto = ""
+    content = ""
     if callable(read_cstring):
         try:
-            lido = read_cstring(inicio, fim - inicio)
+            read_value = read_cstring(start, end - start)
         except Exception:
-            lido = ""
-        if isinstance(lido, str):
-            texto = lido
-    if not texto:
-        pedacos: List[str] = []
-        for addr in range(inicio, fim):
-            pedacos.append(chr(ler(addr) & 0xFF))
-        texto = "".join(pedacos)
-    return texto.strip()
+            read_value = ""
+        if isinstance(read_value, str):
+            content = read_value
+    if not content:
+        pieces: List[str] = []
+        for addr in range(start, end):
+            pieces.append(chr(read_byte(addr) & 0xFF))
+        content = "".join(pieces)
+    return content.strip()
 
 
 def _cstring_runs(
-    read_cstring: Callable[..., Any], inicio: int, fim: int, min_length: int
+    read_cstring: Callable[..., Any], start: int, end: int, min_length: int
 ) -> List[str]:
-    """Varre a memória usando só ``read_cstring`` do leitor.
+    """Scan the memory using only ``read_cstring`` from the reader.
 
-    É o caminho de quem sabe ler strings terminadas em zero, mas não sabe ler
-    byte a byte.
+    It is the path for whoever knows how to read zero-terminated strings but
+    does not know how to read byte by byte.
 
     Args:
-        read_cstring: Método ``read_cstring`` do leitor.
-        inicio: Primeiro endereço da varredura.
-        fim: Endereço seguinte ao último (exclusivo).
-        min_length: Tamanho mínimo de uma string, em caracteres.
+        read_cstring: ``read_cstring`` method of the reader.
+        start: First address of the scan.
+        end: Address after the last one (exclusive).
+        min_length: Minimum size of a string, in characters.
 
     Returns:
-        As strings aceitas, na ordem dos endereços.
+        The accepted strings, in address order.
     """
-    textos: List[str] = []
-    addr = inicio
-    while addr < fim:
+    texts: List[str] = []
+    addr = start
+    while addr < end:
         try:
-            lido = read_cstring(addr, fim - addr)
+            read_value = read_cstring(addr, end - addr)
         except Exception:
             break
-        if not isinstance(lido, str):
+        if not isinstance(read_value, str):
             break
-        if _aceita(lido, min_length):
-            textos.append(lido.strip())
-        addr += len(lido) + 1
-    return textos
+        if _accepted(read_value, min_length):
+            texts.append(read_value.strip())
+        addr += len(read_value) + 1
+    return texts
 
 
 def from_memory(
     reader: Any, *, base: int = 0x00400000, size: int = 0x40000, min_length: int = 4
 ) -> List[Ioc]:
-    """Extrai indicadores das strings que só existem na memória em execução.
+    """Extract indicators from the strings that only exist in running memory.
 
-    Varre ``size`` bytes a partir de ``base`` procurando sequências de bytes
-    imprimíveis de pelo menos ``min_length`` e classifica cada uma com as
-    mesmas categorias de :func:`extract`. Os indicadores saem com ``line``
-    igual a ``0``, porque não vêm de nenhuma linha do fonte.
+    It scans ``size`` bytes from ``base`` looking for runs of printable bytes of
+    at least ``min_length`` and classifies each one with the same kinds of
+    :func:`extract`. The indicators come out with ``line`` equal to ``0``,
+    because they do not come from any line of the source.
 
     Args:
-        reader: Leitor de memória com ``read_cstring`` (o ``Machine`` do ASM X);
-            ``rd8`` ou ``read_mem`` aceleram a varredura.
-        base: Primeiro endereço varrido.
-        size: Quantidade de bytes varridos.
-        min_length: Tamanho mínimo de uma sequência, em bytes.
+        reader: Memory reader with ``read_cstring`` (the ``Machine`` of ASM X);
+            ``rd8`` or ``read_mem`` speed up the scan.
+        base: First address scanned.
+        size: Number of bytes scanned.
+        min_length: Minimum size of a run, in bytes.
 
     Returns:
-        Os indicadores encontrados, na ordem dos endereços; lista vazia quando
-        o leitor não sabe ler strings ou quando não há nada legível na região.
+        The indicators found, in address order; an empty list when the reader
+        does not know how to read strings or when there is nothing readable in
+        the region.
     """
     read_cstring = getattr(reader, "read_cstring", None)
     if not callable(read_cstring):
         return []
     try:
-        inicio = int(base)
-        fim = inicio + max(0, int(size))
-        minimo = max(1, int(min_length))
+        start = int(base)
+        end = start + max(0, int(size))
+        minimum = max(1, int(min_length))
     except Exception:
         return []
-    achados: List[Ioc] = []
-    vistos: Set[Tuple[str, str]] = set()
+    found: List[Ioc] = []
+    seen: Set[Tuple[str, str]] = set()
     try:
-        ler = _byte_reader(reader)
-        textos: List[str] = []
-        if ler is not None:
-            for comeco, termino in _printable_runs(ler, inicio, fim, minimo):
-                textos.append(_memory_text(reader, ler, comeco, termino))
+        read_byte = _byte_reader(reader)
+        texts: List[str] = []
+        if read_byte is not None:
+            for run_start, run_end in _printable_runs(read_byte, start, end, minimum):
+                texts.append(_memory_text(reader, read_byte, run_start, run_end))
         else:
-            textos = _cstring_runs(read_cstring, inicio, fim, minimo)
-        for texto in textos:
-            if _aceita(texto, minimo):
-                _add_iocs(achados, vistos, texto, 0, texto[:_MAX_CONTEXT])
+            texts = _cstring_runs(read_cstring, start, end, minimum)
+        for text in texts:
+            if _accepted(text, minimum):
+                _add_iocs(found, seen, text, 0, text[:_MAX_CONTEXT])
     except Exception:
-        return achados
-    return achados
+        return found
+    return found

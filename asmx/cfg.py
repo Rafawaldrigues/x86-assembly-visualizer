@@ -1,35 +1,36 @@
-"""Grafos de fluxo de controle e de chamadas, com desenho em SVG, DOT e Mermaid.
+"""Control-flow and call graphs, with rendering as SVG, DOT and Mermaid.
 
-O analisador já sabe onde cada bloco começa e termina e para onde cada desvio
-aponta; este módulo transforma isso em :class:`Graph` — nós e arestas prontos
-para virar desenho — e escreve o desenho em três formatos, todos montados por
-concatenação de strings, sem nenhuma biblioteca externa:
+The analyzer already knows where each block starts and ends and where each
+branch points; this module turns that into :class:`Graph` — nodes and edges
+ready to become a drawing — and writes the drawing in three formats, all
+assembled by string concatenation, with no external library:
 
-* :func:`to_svg` — SVG autocontido, feito para ser colado dentro do relatório
-  HTML e também para ser aberto sozinho no navegador;
-* :func:`to_dot` — DOT do Graphviz, para quem preferir renderizar por fora;
-* :func:`to_mermaid` — ``flowchart`` do Mermaid, para o relatório que usa
-  Mermaid.
+* :func:`to_svg` — self-contained SVG, made to be pasted into the HTML report
+  and also to be opened on its own in the browser;
+* :func:`to_dot` — Graphviz DOT, for whoever prefers to render it outside;
+* :func:`to_mermaid` — Mermaid ``flowchart``, for the report that uses Mermaid.
 
-O posicionamento (:func:`layout`) é determinístico: o mesmo grafo produz sempre
-as mesmas coordenadas, porque nada aqui percorre um ``set`` nem depende do hash
-dos nomes.  O desenho sai estável entre execuções e entre máquinas, o que
-também deixa os testes de SVG comparáveis byte a byte.  As camadas descem (a
-entrada em cima, quem ela alcança abaixo), que é a orientação que sobrevive
-bem à coluna estreita do relatório; código inalcançável fica na última linha.
+The placement (:func:`layout`) is deterministic: the same graph always produces
+the same coordinates, because nothing here walks a ``set`` nor depends on the
+hash of the names.  The drawing comes out stable between runs and between
+machines, which also makes the SVG tests comparable byte by byte.  The layers go
+down (the entry on top, what it reaches below), which is the orientation that
+survives the narrow column of the report well; unreachable code stays in the
+last row.
 
-O ``xmlns`` do SVG é escrito com uma referência de caractere (``&#104;``) para
-que o texto final não cite ``http`` em lugar nenhum — o relatório embute o
-desenho e não busca nada na rede.  Depois de lido pelo navegador ou por um
-analisador XML, o valor do atributo é o endereço normal do padrão SVG; o teste
-``test_namespace_do_svg`` e a conferência com o navegador confirmam isso.
+The ``xmlns`` of the SVG is written with a character reference (``&#104;``) so
+that the final text does not cite ``http`` anywhere — the report embeds the
+drawing and fetches nothing from the network.  After being read by the browser
+or by an XML parser, the attribute value is the normal address of the SVG
+standard; the test ``test_svg_namespace`` and the check with the browser confirm
+that.
 
 Example:
     >>> from asmx.analyzer import analyze
-    >>> grafo = control_flow_graph(analyze("_start:\\n    mov rax, 60\\n    syscall"))
-    >>> [(no.id, no.kind) for no in grafo.nodes]
+    >>> graph = control_flow_graph(analyze("_start:\\n    mov rax, 60\\n    syscall"))
+    >>> [(node.id, node.kind) for node in graph.nodes]
     [('b0', 'entry')]
-    >>> to_dot(grafo).splitlines()[0]
+    >>> to_dot(graph).splitlines()[0]
     'digraph cfg {'
 """
 
@@ -46,16 +47,16 @@ from .isa import WIN_APIS
 from .parser import Line
 
 # ---------------------------------------------------------------------------
-# Cores
+# Colors
 # ---------------------------------------------------------------------------
 
-#: Paleta de cada tema: ``dark`` (padrão do relatório) e ``light``.
+#: Palette of each theme: ``dark`` (report default) and ``light``.
 #:
-#: As chaves ``bg``, ``node``, ``node_entry``, ``node_exit``, ``text``,
-#: ``edge``, ``edge_taken``, ``edge_fall``, ``border`` e ``dim`` são as usadas
-#: pelo relatório; ``node_function``, ``node_api``, ``edge_call`` e
-#: ``edge_api`` completam os tipos de nó e de aresta do grafo de chamadas, para
-#: que cada ``kind`` tenha a sua cor.
+#: The keys ``bg``, ``node``, ``node_entry``, ``node_exit``, ``text``,
+#: ``edge``, ``edge_taken``, ``edge_fall``, ``border`` and ``dim`` are the ones
+#: used by the report; ``node_function``, ``node_api``, ``edge_call`` and
+#: ``edge_api`` complete the node and edge kinds of the call graph, so that each
+#: ``kind`` has its own color.
 THEME: Dict[str, Dict[str, str]] = {
     "dark": {
         "bg": "#0f1420",
@@ -91,8 +92,8 @@ THEME: Dict[str, Dict[str, str]] = {
     },
 }
 
-#: Chave de cor do tema usada por cada tipo de nó.
-_COR_DO_NO: Dict[str, str] = {
+#: Theme color key used by each node kind.
+_NODE_COLOR: Dict[str, str] = {
     "entry": "node_entry",
     "block": "node",
     "function": "node_function",
@@ -100,8 +101,8 @@ _COR_DO_NO: Dict[str, str] = {
     "api": "node_api",
 }
 
-#: Chave de cor do tema usada por cada tipo de aresta.
-_COR_DA_ARESTA: Dict[str, str] = {
+#: Theme color key used by each edge kind.
+_EDGE_COLOR: Dict[str, str] = {
     "taken": "edge_taken",
     "fallthrough": "edge_fall",
     "jmp": "edge",
@@ -110,86 +111,86 @@ _COR_DA_ARESTA: Dict[str, str] = {
 }
 
 # ---------------------------------------------------------------------------
-# Medidas do desenho
+# Drawing measurements
 # ---------------------------------------------------------------------------
 
-#: Margem em volta do desenho, em pixels.
-_MARGEM = 26
+#: Margin around the drawing, in pixels.
+_MARGIN = 26
 
-#: Largura e altura de um nó, em pixels.
-_LARGURA_NO = 190
-_ALTURA_NO = 56
+#: Width and height of a node, in pixels.
+_NODE_WIDTH = 190
+_NODE_HEIGHT = 56
 
-#: Espaço entre as colunas e entre as linhas de nós, em pixels.
-_ESPACO_X = 46
-_ESPACO_Y = 42
+#: Space between the columns and between the rows of nodes, in pixels.
+_GAP_X = 46
+_GAP_Y = 42
 
-#: Tamanho da moldura devolvida para um grafo sem nada para desenhar.
-_LARGURA_VAZIA = 360
-_ALTURA_VAZIA = 120
+#: Size of the frame returned for a graph with nothing to draw.
+_EMPTY_WIDTH = 360
+_EMPTY_HEIGHT = 120
 
-#: A partir de quantos nós o desenho usa fonte menor e rótulos mais curtos.
-_LIMITE_GRANDE = 60
+#: From how many nodes on the drawing uses a smaller font and shorter labels.
+_LARGE_LIMIT = 60
 
-#: Tamanho da fonte do nome do nó e do detalhe, nos dois modos.
-_FONTE = 12.5
-_FONTE_DETALHE = 9.5
-_FONTE_GRANDE = 9.0
-_FONTE_DETALHE_GRANDE = 7.5
+#: Font size of the node name and of the detail, in both modes.
+_FONT = 12.5
+_DETAIL_FONT = 9.5
+_LARGE_FONT = 9.0
+_LARGE_DETAIL_FONT = 7.5
 
-#: Fonte dos rótulos de aresta e limite de caracteres no modo econômico.
-_FONTE_ARESTA = 9.0
-_FONTE_ARESTA_GRANDE = 7.5
-_ROTULO_ARESTA_GRANDE = 16
+#: Font of the edge labels and character limit in the economical mode.
+_EDGE_FONT = 9.0
+_LARGE_EDGE_FONT = 7.5
+_LARGE_EDGE_LABEL = 16
 
-#: Raio dos cantos arredondados, em pixels.
-_RAIO = 9
+#: Radius of the rounded corners, in pixels.
+_RADIUS = 9
 
-#: Altura da alça desenhada para um desvio de um bloco para ele mesmo.  Ela
-#: precisa caber no espaço entre duas camadas, junto com o rótulo da aresta.
-_ALTURA_DO_LACO = 24.0
+#: Height of the handle drawn for a branch from a block to itself.  It has to
+#: fit in the space between two layers, together with the edge label.
+_LOOP_HEIGHT = 24.0
 
-#: Recuo da seta para que a ponta não encoste na borda do nó, em pixels.
-_FOLGA_SETA = 3.0
+#: Recess of the arrow so that the tip does not touch the node border, in pixels.
+_ARROW_GAP = 3.0
 
-#: Tamanho máximo do rótulo de uma aresta vindo do analisador.
-_MAX_ROTULO = 28
+#: Maximum size of an edge label coming from the analyzer.
+_MAX_LABEL = 28
 
-#: Endereço do padrão SVG, escrito com uma referência de caractere para que o
-#: texto gerado não cite ``http`` (veja a explicação no topo do módulo).
-_NAMESPACE_SVG = "&#104;ttp://www.w3.org/2000/svg"
+#: Address of the SVG standard, written with a character reference so that the
+#: generated text does not cite ``http`` (see the explanation at the top).
+_SVG_NAMESPACE = "&#104;ttp://www.w3.org/2000/svg"
 
-#: Família tipográfica do desenho: só genéricas, nada de fonte externa.
-_FONTE_FAMILIA = "sans-serif"
+#: Type family of the drawing: generic ones only, no external font.
+_FONT_FAMILY = "sans-serif"
 
-#: Modelo do ``id`` de cada seta: ``asmx-<grafo>-<tema>-<tipo>``.
-_ID_SETA = "asmx-%s-%s-%s"
+#: Template of the ``id`` of each arrow: ``asmx-<graph>-<theme>-<kind>``.
+_ARROW_ID = "asmx-%s-%s-%s"
 
-#: Rótulos que marcam o ponto de entrada, na ordem de prioridade.
-ROTULOS_DE_ENTRADA: Tuple[str, ...] = ("_start", "main", "start", "winmain")
+#: Labels that mark the entry point, in priority order.
+ENTRY_LABELS: Tuple[str, ...] = ("_start", "main", "start", "winmain")
 
-#: Nome dado ao código que está fora de qualquer rótulo (chamador anônimo).
-_NOME_SEM_FUNCAO = "código"
+#: Name given to the code that is outside any label (anonymous caller).
+_NO_FUNCTION_NAME = "code"
 
 
 # ---------------------------------------------------------------------------
-# Estruturas do grafo
+# Graph structures
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class GraphNode:
-    """Um nó do grafo: um bloco básico, uma função ou uma API externa.
+    """A node of the graph: a basic block, a function or an external API.
 
     Attributes:
-        id: Identificador estável (``b0``, ``b1``... ou ``f:soma``).
-        label: Nome do bloco ou da função, como aparece no código.
-        kind: ``entry``, ``block`` ou ``exit`` no fluxo de controle;
-            ``entry``, ``function`` ou ``api`` no grafo de chamadas.
-        lines: Linhas do arquivo cobertas, como ``(12, 20)``; vazio para API.
-        detail: Texto curto mostrado abaixo do nome, como
-            ``8 instruções · L12-L20`` ou ``chamada 3×``.
-        func: Função a que o nó pertence, quando houver.
+        id: Stable identifier (``b0``, ``b1``... or ``f:sum``).
+        label: Name of the block or of the function, as it appears in the code.
+        kind: ``entry``, ``block`` or ``exit`` in the control flow;
+            ``entry``, ``function`` or ``api`` in the call graph.
+        lines: Lines of the file covered, such as ``(12, 20)``; empty for API.
+        detail: Short text shown below the name, such as
+            ``8 instructions · L12-L20`` or ``called 3×``.
+        func: Function the node belongs to, when there is one.
     """
 
     id: str
@@ -200,11 +201,11 @@ class GraphNode:
     func: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        """Converte o nó em dicionário simples, pronto para virar JSON.
+        """Convert the node into a simple dictionary, ready to become JSON.
 
         Returns:
-            Dicionário com ``id``, ``label``, ``kind``, ``lines`` (em lista),
-            ``detail`` e ``func``.
+            Dictionary with ``id``, ``label``, ``kind``, ``lines`` (as a list),
+            ``detail`` and ``func``.
         """
         return {
             "id": self.id,
@@ -218,13 +219,14 @@ class GraphNode:
 
 @dataclass(frozen=True)
 class GraphEdge:
-    """Uma ligação do grafo, já com o rótulo que o desenho mostra.
+    """A link of the graph, already with the label the drawing shows.
 
     Attributes:
-        source: ``id`` do nó de origem.
-        target: ``id`` do nó de destino.
-        label: Texto mostrado no meio da linha, como ``quando igual`` ou ``3×``.
-        kind: ``taken``, ``fallthrough``, ``jmp``, ``call`` ou ``api``.
+        source: ``id`` of the origin node.
+        target: ``id`` of the destination node.
+        label: Text shown in the middle of the line, such as ``when equal`` or
+            ``3×``.
+        kind: ``taken``, ``fallthrough``, ``jmp``, ``call`` or ``api``.
     """
 
     source: str
@@ -233,10 +235,10 @@ class GraphEdge:
     kind: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
-        """Converte a aresta em dicionário simples, pronto para virar JSON.
+        """Convert the edge into a simple dictionary, ready to become JSON.
 
         Returns:
-            Dicionário com ``source``, ``target``, ``label`` e ``kind``.
+            Dictionary with ``source``, ``target``, ``label`` and ``kind``.
         """
         return {
             "source": self.source,
@@ -248,13 +250,13 @@ class GraphEdge:
 
 @dataclass(frozen=True)
 class Graph:
-    """Um grafo inteiro: tipo, título, nós e arestas.
+    """A whole graph: kind, title, nodes and edges.
 
     Attributes:
-        kind: ``cfg`` (fluxo de controle) ou ``calls`` (chamadas).
-        title: Título do desenho, em português.
-        nodes: Nós, na ordem em que devem ser desenhados.
-        edges: Arestas, na ordem em que devem ser desenhadas.
+        kind: ``cfg`` (control flow) or ``calls`` (calls).
+        title: Title of the drawing.
+        nodes: Nodes, in the order they must be drawn.
+        edges: Edges, in the order they must be drawn.
     """
 
     kind: str
@@ -263,577 +265,579 @@ class Graph:
     edges: Tuple[GraphEdge, ...] = ()
 
     def to_dict(self) -> Dict[str, Any]:
-        """Converte o grafo em dicionário simples, pronto para virar JSON.
+        """Convert the graph into a simple dictionary, ready to become JSON.
 
         Returns:
-            Dicionário com ``kind``, ``title``, ``nodes``, ``edges`` e
-            ``empty`` (o resultado de :meth:`is_empty`).
+            Dictionary with ``kind``, ``title``, ``nodes``, ``edges`` and
+            ``empty`` (the result of :meth:`is_empty`).
         """
         return {
             "kind": self.kind,
             "title": self.title,
-            "nodes": [no.to_dict() for no in self.nodes],
-            "edges": [aresta.to_dict() for aresta in self.edges],
+            "nodes": [node.to_dict() for node in self.nodes],
+            "edges": [edge.to_dict() for edge in self.edges],
             "empty": self.is_empty(),
         }
 
     def is_empty(self) -> bool:
-        """Diz se o grafo não tem nada para desenhar.
+        """Tell whether the graph has nothing to draw.
 
         Returns:
-            ``True`` quando não há nó nenhum; um programa sem chamadas devolve
-            um grafo de chamadas vazio.
+            ``True`` when there is no node at all; a program with no calls
+            returns an empty call graph.
         """
         return not self.nodes
 
 
 # ---------------------------------------------------------------------------
-# Texto
+# Text
 # ---------------------------------------------------------------------------
 
 
 def escape(text: str) -> str:
-    """Escapa os caracteres que o XML reserva.
+    """Escape the characters that XML reserves.
 
     Args:
-        text: Texto livre, como nome de bloco ou motivo do desvio.
+        text: Free text, such as a block name or the reason of a branch.
 
     Returns:
-        O texto com ``&``, ``<``, ``>`` e ``"`` trocados por entidades.
+        The text with ``&``, ``<``, ``>`` and ``"`` replaced by entities.
     """
     return (
         text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
     )
 
 
-def _encurtar(texto: str, limite: int) -> str:
-    """Encurta um texto até o limite, marcando o corte com reticências.
+def _shorten(text: str, limit: int) -> str:
+    """Shorten a text up to the limit, marking the cut with an ellipsis.
 
     Args:
-        texto: Texto original.
-        limite: Número máximo de caracteres do resultado.
+        text: Original text.
+        limit: Maximum number of characters of the result.
 
     Returns:
-        O próprio texto quando já cabe; senão, o prefixo terminado em ``…``.
+        The text itself when it already fits; otherwise, the prefix ending in
+        ``…``.
     """
-    if len(texto) <= limite:
-        return texto
-    if limite <= 1:
-        return "…"[:limite]
-    return texto[: limite - 1].rstrip() + "…"
+    if len(text) <= limit:
+        return text
+    if limit <= 1:
+        return "…"[:limit]
+    return text[: limit - 1].rstrip() + "…"
 
 
-def _quebrar(texto: str, limite: int, max_linhas: int = 2) -> List[str]:
-    """Quebra um texto em linhas de no máximo ``limite`` caracteres.
+def _wrap_text(text: str, limit: int, max_lines: int = 2) -> List[str]:
+    """Break a text into lines of at most ``limit`` characters.
 
     Args:
-        texto: Texto original.
-        limite: Número máximo de caracteres por linha.
-        max_linhas: Número máximo de linhas devolvidas.
+        text: Original text.
+        limit: Maximum number of characters per line.
+        max_lines: Maximum number of lines returned.
 
     Returns:
-        As linhas já aparadas; quando o texto não cabe, a última linha termina
-        em ``…`` para deixar claro que faltou pedaço.
+        The lines already trimmed; when the text does not fit, the last line
+        ends in ``…`` to make it clear that a piece is missing.
     """
-    limite = max(4, limite)
-    linhas: List[str] = []
-    atual = ""
-    for palavra in texto.split():
-        if not atual:
-            atual = palavra
-        elif len(atual) + 1 + len(palavra) <= limite:
-            atual = atual + " " + palavra
+    limit = max(4, limit)
+    lines: List[str] = []
+    current = ""
+    for word in text.split():
+        if not current:
+            current = word
+        elif len(current) + 1 + len(word) <= limit:
+            current = current + " " + word
         else:
-            linhas.append(atual)
-            atual = palavra
-    if atual:
-        linhas.append(atual)
-    if len(linhas) > max_linhas:
-        linhas = linhas[:max_linhas]
-        linhas[-1] = _encurtar(linhas[-1] + "…", limite)
-    return [_encurtar(linha, limite) for linha in linhas]
+            lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        lines[-1] = _shorten(lines[-1] + "…", limit)
+    return [_shorten(line, limit) for line in lines]
 
 
-def _caracteres_por_linha(largura: float, fonte: float) -> int:
-    """Estima quantos caracteres cabem numa linha de texto.
-
-    Args:
-        largura: Largura útil da caixa, em pixels.
-        fonte: Tamanho da fonte, em pixels.
-
-    Returns:
-        O número de caracteres que cabe, nunca menor que 6.
-    """
-    return max(6, int((largura - 18) / (fonte * 0.56)))
-
-
-def _largura_do_texto(texto: str, fonte: float) -> float:
-    """Estima a largura de um texto, em pixels.
+def _chars_per_line(width: float, font: float) -> int:
+    """Estimate how many characters fit in a line of text.
 
     Args:
-        texto: Texto a medir.
-        fonte: Tamanho da fonte, em pixels.
+        width: Usable width of the box, in pixels.
+        font: Font size, in pixels.
 
     Returns:
-        A largura estimada, usada para o fundo do rótulo de aresta.
+        The number of characters that fit, never less than 6.
     """
-    return len(texto) * fonte * 0.56
+    return max(6, int((width - 18) / (font * 0.56)))
 
 
-def _numero(valor: float) -> str:
-    """Formata um número sem casas decimais inúteis.
+def _text_width(text: str, font: float) -> float:
+    """Estimate the width of a text, in pixels.
 
     Args:
-        valor: Número a formatar.
+        text: Text to measure.
+        font: Font size, in pixels.
 
     Returns:
-        Texto como ``12`` ou ``12.5``.
+        The estimated width, used for the background of the edge label.
     """
-    if abs(valor - round(valor)) < 0.05:
-        return "%d" % round(valor)
-    return ("%.1f" % valor).rstrip("0").rstrip(".")
+    return len(text) * font * 0.56
+
+
+def _number(value: float) -> str:
+    """Format a number without useless decimal places.
+
+    Args:
+        value: Number to format.
+
+    Returns:
+        Text such as ``12`` or ``12.5``.
+    """
+    if abs(value - round(value)) < 0.05:
+        return "%d" % round(value)
+    return ("%.1f" % value).rstrip("0").rstrip(".")
 
 
 # ---------------------------------------------------------------------------
-# Montagem dos grafos
+# Assembling the graphs
 # ---------------------------------------------------------------------------
 
 
-def _rotulo_de_entrada(analysis: Analysis) -> Optional[str]:
-    """Descobre qual rótulo marca a entrada do programa.
+def _entry_label(analysis: Analysis) -> Optional[str]:
+    """Find which label marks the entry of the program.
 
     Args:
-        analysis: Análise já pronta.
+        analysis: Analysis already done.
 
     Returns:
-        O nome do rótulo (``_start``, ``main``, ``start`` ou ``WinMain``) ou
-        ``None`` quando nenhum deles aparece no código.
+        The label name (``_start``, ``main``, ``start`` or ``WinMain``) or
+        ``None`` when none of them appears in the code.
     """
-    por_minusculas = {nome.lower(): nome for nome in analysis.label_at}
-    for candidato in ROTULOS_DE_ENTRADA:
-        if candidato in analysis.label_at:
-            return candidato
-        if candidato in por_minusculas:
-            return por_minusculas[candidato]
+    by_lower = {name.lower(): name for name in analysis.label_at}
+    for candidate in ENTRY_LABELS:
+        if candidate in analysis.label_at:
+            return candidate
+        if candidate in by_lower:
+            return by_lower[candidate]
     return None
 
 
-def _indice_do_rotulo(analysis: Analysis, nome: str) -> Optional[int]:
-    """Índice da instrução em que um rótulo aparece.
+def _label_index(analysis: Analysis, name: str) -> Optional[int]:
+    """Index of the instruction where a label appears.
 
     Args:
-        analysis: Análise já pronta.
-        nome: Nome do rótulo procurado.
+        analysis: Analysis already done.
+        name: Name of the label being looked for.
 
     Returns:
-        O índice entre as instruções, ou ``None`` quando o rótulo não existe.
+        The index among the instructions, or ``None`` when the label does not
+        exist.
     """
-    indice = analysis.label_at.get(nome)
-    if indice is None or not 0 <= indice < len(analysis.instrs):
+    index = analysis.label_at.get(name)
+    if index is None or not 0 <= index < len(analysis.instrs):
         return None
-    return indice
+    return index
 
 
-def _bloco_de_entrada(analysis: Analysis) -> Optional[int]:
-    """Índice do bloco de entrada do programa.
+def _entry_block(analysis: Analysis) -> Optional[int]:
+    """Index of the entry block of the program.
 
     Args:
-        analysis: Análise já pronta.
+        analysis: Analysis already done.
 
     Returns:
-        O ``id`` do bloco que contém ``_start``/``main``/``start``/``WinMain``;
-        o bloco 0 quando o programa tem blocos mas nenhum desses rótulos; e
-        ``None`` quando não há bloco nenhum.
+        The ``id`` of the block that contains ``_start``/``main``/``start``/
+        ``WinMain``; block 0 when the program has blocks but none of those
+        labels; and ``None`` when there is no block at all.
     """
     if not analysis.blocks:
         return None
-    nome = _rotulo_de_entrada(analysis)
-    if nome is not None:
-        indice = _indice_do_rotulo(analysis, nome)
-        if indice is not None:
-            bloco = analysis.instrs[indice].block
-            if bloco is not None:
-                return bloco
+    name = _entry_label(analysis)
+    if name is not None:
+        index = _label_index(analysis, name)
+        if index is not None:
+            block = analysis.instrs[index].block
+            if block is not None:
+                return block
     return 0
 
 
-def _faixa_de_linhas(instrs: Sequence[Line]) -> Tuple[int, ...]:
-    """Linhas do arquivo cobertas por uma sequência de instruções.
+def _line_range(instrs: Sequence[Line]) -> Tuple[int, ...]:
+    """Lines of the file covered by a sequence of instructions.
 
     Args:
-        instrs: Instruções do bloco ou da função, na ordem.
+        instrs: Instructions of the block or of the function, in order.
 
     Returns:
-        ``(primeira, última)`` ou ``()`` quando a sequência está vazia.
+        ``(first, last)`` or ``()`` when the sequence is empty.
     """
     if not instrs:
         return ()
     return (instrs[0].n, instrs[-1].n)
 
 
-def _detalhe_do_bloco(bloco: Block) -> str:
-    """Monta o texto de apoio de um nó de bloco.
+def _block_detail(block: Block) -> str:
+    """Build the supporting text of a block node.
 
     Args:
-        bloco: Bloco básico devolvido pelo analisador.
+        block: Basic block returned by the analyzer.
 
     Returns:
-        Texto como ``3 instruções · L23-L25``; quando o bloco encerra o fluxo,
-        o motivo entra no fim (``· retorna para quem chamou``).
+        Text such as ``3 instructions · L23-L25``; when the block ends the flow,
+        the reason comes at the end (``· returns to the caller``).
     """
-    quantas = len(bloco.instrs)
-    if not quantas:
-        return "bloco sem instruções"
-    faixa = _faixa_de_linhas(bloco.instrs)
-    detalhe = "%d %s · L%d-L%d" % (
-        quantas,
-        "instrução" if quantas == 1 else "instruções",
-        faixa[0],
-        faixa[1],
+    how_many = len(block.instrs)
+    if not how_many:
+        return "block with no instructions"
+    span = _line_range(block.instrs)
+    detail = "%d %s · L%d-L%d" % (
+        how_many,
+        "instruction" if how_many == 1 else "instructions",
+        span[0],
+        span[1],
     )
-    if bloco.exit:
-        detalhe += " · " + bloco.exit
-    return detalhe
+    if block.exit:
+        detail += " · " + block.exit
+    return detail
 
 
 def control_flow_graph(analysis: Analysis) -> Graph:
-    """Monta o grafo de fluxo de controle: um nó por bloco básico.
+    """Build the control-flow graph: one node per basic block.
 
-    Blocos inalcançáveis continuam no grafo — o relatório precisa mostrar
-    código morto — e o :func:`layout` reserva as últimas colunas para eles.
+    Unreachable blocks stay in the graph — the report needs to show dead code -
+    and :func:`layout` reserves the last columns for them.
 
     Args:
-        analysis: Análise já pronta.
+        analysis: Analysis already done.
 
     Returns:
-        O :class:`Graph` de tipo ``cfg``, vazio quando não há bloco nenhum.
+        The :class:`Graph` of kind ``cfg``, empty when there is no block at all.
     """
-    titulo = "Fluxo de controle"
+    title = "Control-flow graph"
     if not analysis.blocks:
-        return Graph(kind="cfg", title=titulo)
-    entrada = _bloco_de_entrada(analysis)
-    nos: List[GraphNode] = []
-    for bloco in analysis.blocks:
-        if bloco.id == entrada:
-            tipo = "entry"
-        elif bloco.exit:
-            tipo = "exit"
+        return Graph(kind="cfg", title=title)
+    entry = _entry_block(analysis)
+    nodes: List[GraphNode] = []
+    for block in analysis.blocks:
+        if block.id == entry:
+            kind = "entry"
+        elif block.exit:
+            kind = "exit"
         else:
-            tipo = "block"
-        nos.append(
+            kind = "block"
+        nodes.append(
             GraphNode(
-                id="b%d" % bloco.id,
-                label=bloco.name,
-                kind=tipo,
-                lines=_faixa_de_linhas(bloco.instrs),
-                detail=_detalhe_do_bloco(bloco),
-                func=bloco.func,
+                id="b%d" % block.id,
+                label=block.name,
+                kind=kind,
+                lines=_line_range(block.instrs),
+                detail=_block_detail(block),
+                func=block.func,
             )
         )
-    arestas: List[GraphEdge] = []
-    for bloco in analysis.blocks:
-        for aresta in bloco.succ:
-            arestas.append(
+    edges: List[GraphEdge] = []
+    for block in analysis.blocks:
+        for edge in block.succ:
+            edges.append(
                 GraphEdge(
-                    source="b%d" % bloco.id,
-                    target="b%d" % aresta.target,
-                    label=_encurtar(aresta.why, _MAX_ROTULO),
-                    kind=aresta.kind,
+                    source="b%d" % block.id,
+                    target="b%d" % edge.target,
+                    label=_shorten(edge.why, _MAX_LABEL),
+                    kind=edge.kind,
                 )
             )
-    return Graph(kind="cfg", title=titulo, nodes=tuple(nos), edges=tuple(arestas))
+    return Graph(kind="cfg", title=title, nodes=tuple(nodes), edges=tuple(edges))
 
 
-def _chamadas(analysis: Analysis) -> List[Tuple[str, str]]:
-    """Lista as chamadas do código, na ordem em que aparecem.
+def _calls(analysis: Analysis) -> List[Tuple[str, str]]:
+    """List the calls of the code, in the order they appear.
 
     Args:
-        analysis: Análise já pronta.
+        analysis: Analysis already done.
 
     Returns:
-        Pares ``(quem chama, alvo)``; o chamador é ``código`` quando a chamada
-        está fora de qualquer rótulo.
+        Pairs ``(caller, target)``; the caller is ``code`` when the call is
+        outside any label.
     """
-    chamadas: List[Tuple[str, str]] = []
+    calls: List[Tuple[str, str]] = []
     for ins in analysis.instrs:
         if ins.mnemonic != "call" or not ins.operands:
             continue
-        alvo = ins.operands[0].symbol or ins.operands[0].text
-        if not alvo:
+        target = ins.operands[0].symbol or ins.operands[0].text
+        if not target:
             continue
-        chamadas.append((ins.func or _NOME_SEM_FUNCAO, alvo))
-    return chamadas
+        calls.append((ins.func or _NO_FUNCTION_NAME, target))
+    return calls
 
 
-def _funcao_de_entrada(analysis: Analysis) -> Optional[str]:
-    """Nome da função que contém o ponto de entrada.
+def _entry_function(analysis: Analysis) -> Optional[str]:
+    """Name of the function that contains the entry point.
 
     Args:
-        analysis: Análise já pronta.
+        analysis: Analysis already done.
 
     Returns:
-        O nome da função (``_start``, ``main``...) ou ``None`` quando o
-        programa não tem rótulo de entrada conhecido.
+        The function name (``_start``, ``main``...) or ``None`` when the program
+        has no known entry label.
     """
-    nome = _rotulo_de_entrada(analysis)
-    if nome is None:
+    name = _entry_label(analysis)
+    if name is None:
         return None
-    indice = _indice_do_rotulo(analysis, nome)
-    if indice is None:
+    index = _label_index(analysis, name)
+    if index is None:
         return None
-    return analysis.instrs[indice].func or nome
+    return analysis.instrs[index].func or name
 
 
-def _funcoes_em_ordem(analysis: Analysis) -> List[str]:
-    """Nomes das funções na ordem em que os blocos aparecem.
-
-    Args:
-        analysis: Análise já pronta.
-
-    Returns:
-        Lista sem repetição, com a função de entrada na frente quando existe.
-    """
-    nomes: List[str] = []
-    for bloco in analysis.blocks:
-        if bloco.func and bloco.func not in nomes:
-            nomes.append(bloco.func)
-    entrada = _funcao_de_entrada(analysis)
-    if entrada is not None and entrada in nomes:
-        nomes.remove(entrada)
-        nomes.insert(0, entrada)
-    return nomes
-
-
-def _linhas_da_funcao(analysis: Analysis, nome: str) -> Tuple[int, ...]:
-    """Linhas do arquivo cobertas por uma função.
+def _functions_in_order(analysis: Analysis) -> List[str]:
+    """Names of the functions in the order the blocks appear.
 
     Args:
-        analysis: Análise já pronta.
-        nome: Nome da função procurada.
+        analysis: Analysis already done.
 
     Returns:
-        ``(primeira, última)`` ou ``()`` quando nenhum bloco é dessa função.
+        List without repetition, with the entry function first when it exists.
     """
-    faixas = [_faixa_de_linhas(b.instrs) for b in analysis.blocks if b.func == nome]
-    faixas = [faixa for faixa in faixas if faixa]
-    if not faixas:
+    names: List[str] = []
+    for block in analysis.blocks:
+        if block.func and block.func not in names:
+            names.append(block.func)
+    entry = _entry_function(analysis)
+    if entry is not None and entry in names:
+        names.remove(entry)
+        names.insert(0, entry)
+    return names
+
+
+def _function_lines(analysis: Analysis, name: str) -> Tuple[int, ...]:
+    """Lines of the file covered by a function.
+
+    Args:
+        analysis: Analysis already done.
+        name: Name of the function being looked for.
+
+    Returns:
+        ``(first, last)`` or ``()`` when no block belongs to that function.
+    """
+    spans = [_line_range(b.instrs) for b in analysis.blocks if b.func == name]
+    spans = [span for span in spans if span]
+    if not spans:
         return ()
-    return (min(faixa[0] for faixa in faixas), max(faixa[1] for faixa in faixas))
+    return (min(span[0] for span in spans), max(span[1] for span in spans))
 
 
-def _e_api_do_windows(alvo: str) -> bool:
-    """Diz se um alvo de chamada é uma API do Windows conhecida.
-
-    Args:
-        alvo: Nome do alvo, como aparece no ``call``.
-
-    Returns:
-        ``True`` quando o nome (sem ``_`` inicial nem ``@N``) está no acervo.
-    """
-    return re.sub(r"^_+|@.*$", "", alvo.lower()) in WIN_APIS
-
-
-def _detalhe_da_funcao(chamadas_recebidas: int) -> str:
-    """Texto de apoio de um nó de função do grafo de chamadas.
+def _is_windows_api(target: str) -> bool:
+    """Tell whether a call target is a known Windows API.
 
     Args:
-        chamadas_recebidas: Quantas vezes a função é chamada no código.
+        target: Name of the target, as it appears in the ``call``.
 
     Returns:
-        ``chamada 3×`` quando alguém chama, ``nenhuma chamada recebida``
-        quando ninguém chama.
+        ``True`` when the name (without a leading ``_`` or a trailing ``@N``) is
+        in the collection.
     """
-    if chamadas_recebidas:
-        return "chamada %d×" % chamadas_recebidas
-    return "nenhuma chamada recebida"
+    return re.sub(r"^_+|@.*$", "", target.lower()) in WIN_APIS
+
+
+def _function_detail(received: int) -> str:
+    """Supporting text of a function node of the call graph.
+
+    Args:
+        received: How many times the function is called in the code.
+
+    Returns:
+        ``called 3×`` when someone calls it, ``no callers`` when nobody does.
+    """
+    if received:
+        return "called %d×" % received
+    return "no callers"
 
 
 def call_graph(analysis: Analysis) -> Graph:
-    """Monta o grafo de chamadas, com contagem por par chamador/alvo.
+    """Build the call graph, with a count per caller/target pair.
 
-    Entram no desenho as funções envolvidas em alguma chamada (quem chama ou
-    quem é chamado) e um nó ``api`` para cada alvo que não é rótulo do arquivo
-    — API do Windows ou função externa.  Quando o código não chama nada, o
-    grafo volta vazio (:meth:`Graph.is_empty`), porque não há chamada para
-    desenhar.
+    The functions involved in some call enter the drawing (whoever calls or
+    whoever is called) plus an ``api`` node for each target that is not a label
+    of the file — a Windows API or an external function.  When the code calls
+    nothing, the graph comes back empty (:meth:`Graph.is_empty`), because there
+    is no call to draw.
 
     Args:
-        analysis: Análise já pronta.
+        analysis: Analysis already done.
 
     Returns:
-        O :class:`Graph` de tipo ``calls``.
+        The :class:`Graph` of kind ``calls``.
     """
-    titulo = "Grafo de chamadas"
-    chamadas = _chamadas(analysis)
-    if not chamadas:
-        return Graph(kind="calls", title=titulo)
+    title = "Call graph"
+    calls = _calls(analysis)
+    if not calls:
+        return Graph(kind="calls", title=title)
 
-    recebidas: Dict[str, int] = {}
-    pares: List[Tuple[str, str]] = []
-    contagem: Dict[Tuple[str, str], int] = {}
-    for quem, alvo in chamadas:
-        recebidas[alvo] = recebidas.get(alvo, 0) + 1
-        par = (quem, alvo)
-        if par not in contagem:
-            pares.append(par)
-        contagem[par] = contagem.get(par, 0) + 1
+    received: Dict[str, int] = {}
+    pairs: List[Tuple[str, str]] = []
+    counts: Dict[Tuple[str, str], int] = {}
+    for caller, target in calls:
+        received[target] = received.get(target, 0) + 1
+        pair = (caller, target)
+        if pair not in counts:
+            pairs.append(pair)
+        counts[pair] = counts.get(pair, 0) + 1
 
-    internos = set(analysis.label_at)
-    chamadores = {quem for quem, _ in chamadas}
-    recebidos_internos = {alvo for _, alvo in chamadas if alvo in internos}
-    entrada = _funcao_de_entrada(analysis)
+    internal = set(analysis.label_at)
+    callers = {caller for caller, _ in calls}
+    internal_targets = {target for _, target in calls if target in internal}
+    entry = _entry_function(analysis)
 
-    # Toda ponta de aresta precisa de nó: além das funções declaradas, entram
-    # aqui os rótulos internos chamados por ``call`` (um rótulo local, por
-    # exemplo) e o código que está fora de qualquer rótulo.
-    funcoes = _funcoes_em_ordem(analysis)
-    nomes = [nome for nome in funcoes if nome in chamadores or nome in recebidos_internos]
-    for quem, alvo in chamadas:
-        for nome in (quem, alvo if alvo in internos else None):
-            if nome is not None and nome not in funcoes and nome not in nomes:
-                nomes.append(nome)
+    # Every edge endpoint needs a node: besides the declared functions, the
+    # internal labels called by ``call`` (a local label, for example) and the
+    # code that is outside any label enter here.
+    functions = _functions_in_order(analysis)
+    names = [name for name in functions if name in callers or name in internal_targets]
+    for caller, target in calls:
+        for name in (caller, target if target in internal else None):
+            if name is not None and name not in functions and name not in names:
+                names.append(name)
 
-    nos: List[GraphNode] = []
-    for nome in nomes:
-        if nome == entrada:
-            tipo = "entry"
+    nodes: List[GraphNode] = []
+    for name in names:
+        if name == entry:
+            kind = "entry"
         else:
-            tipo = "function"
-        nos.append(
+            kind = "function"
+        nodes.append(
             GraphNode(
-                id="f:" + nome,
-                label=nome,
-                kind=tipo,
-                lines=_linhas_da_funcao(analysis, nome),
-                detail=_detalhe_da_funcao(recebidas.get(nome, 0)),
-                func=None if nome == _NOME_SEM_FUNCAO else nome,
+                id="f:" + name,
+                label=name,
+                kind=kind,
+                lines=_function_lines(analysis, name),
+                detail=_function_detail(received.get(name, 0)),
+                func=None if name == _NO_FUNCTION_NAME else name,
             )
         )
-    criados = {no.id for no in nos}
-    for _, alvo in chamadas:
-        if "f:" + alvo in criados:
+    created = {node.id for node in nodes}
+    for _, target in calls:
+        if "f:" + target in created:
             continue
-        if _e_api_do_windows(alvo):
-            detalhe = "API do Windows · " + _detalhe_da_funcao(recebidas.get(alvo, 0))
+        if _is_windows_api(target):
+            detail = "API call · %d×" % received.get(target, 0)
         else:
-            detalhe = "função externa · " + _detalhe_da_funcao(recebidas.get(alvo, 0))
-        nos.append(GraphNode(id="f:" + alvo, label=alvo, kind="api", lines=(), detail=detalhe))
-        criados.add("f:" + alvo)
+            detail = "external function · %d×" % received.get(target, 0)
+        nodes.append(GraphNode(id="f:" + target, label=target, kind="api", lines=(), detail=detail))
+        created.add("f:" + target)
 
-    arestas = [
+    edges = [
         GraphEdge(
-            source="f:" + quem,
-            target="f:" + alvo,
-            label="%d×" % contagem[(quem, alvo)],
-            kind="call" if alvo in internos else "api",
+            source="f:" + caller,
+            target="f:" + target,
+            label="%d×" % counts[(caller, target)],
+            kind="call" if target in internal else "api",
         )
-        for quem, alvo in pares
+        for caller, target in pairs
     ]
-    return Graph(kind="calls", title=titulo, nodes=tuple(nos), edges=tuple(arestas))
+    return Graph(kind="calls", title=title, nodes=tuple(nodes), edges=tuple(edges))
 
 
 # ---------------------------------------------------------------------------
-# Posicionamento
+# Placement
 # ---------------------------------------------------------------------------
 
 
-def _tem_laco(graph: Graph) -> bool:
-    """Diz se o grafo tem algum desvio de um nó para ele mesmo.
+def _has_loop(graph: Graph) -> bool:
+    """Tell whether the graph has a branch from a node to itself.
 
     Args:
-        graph: Grafo a conferir.
+        graph: Graph to check.
 
     Returns:
-        ``True`` quando existe aresta com origem e destino iguais.
+        ``True`` when there is an edge with the same origin and destination.
     """
-    return any(aresta.source == aresta.target for aresta in graph.edges)
+    return any(edge.source == edge.target for edge in graph.edges)
 
 
-def _chave_de_ordem(
+def _order_key(
     nid: str,
-    antecessores: Dict[str, List[str]],
-    posicao: Dict[str, int],
-    ordem: Dict[str, int],
+    predecessors: Dict[str, List[str]],
+    position: Dict[str, int],
+    order: Dict[str, int],
 ) -> Tuple[int, float, int]:
-    """Chave que decide a ordem dos nós dentro de uma camada.
+    """Key that decides the order of the nodes inside a layer.
 
-    O nó desce para perto da média das posições de quem aponta para ele, o que
-    reduz cruzamentos sem deixar de ser determinístico.
-
-    Args:
-        nid: ``id`` do nó.
-        antecessores: ``id`` -> lista de nós que apontam para ele.
-        posicao: ``id`` -> posição já decidida dentro da própria camada.
-        ordem: ``id`` -> posição do nó na lista original do grafo.
-
-    Returns:
-        Tupla ``(sem_antecessor, média, desempate)`` pronta para o ``sorted``.
-    """
-    anteriores = [posicao[p] for p in antecessores[nid] if p in posicao]
-    if not anteriores:
-        return (1, 0.0, ordem[nid])
-    return (0, sum(anteriores) / float(len(anteriores)), ordem[nid])
-
-
-def _camadas(graph: Graph) -> List[List[str]]:
-    """Agrupa os nós em camadas, pela distância BFS até as entradas.
+    The node goes down close to the average of the positions of whoever points
+    to it, which reduces crossings without ceasing to be deterministic.
 
     Args:
-        graph: Grafo a organizar.
+        nid: ``id`` of the node.
+        predecessors: ``id`` -> list of nodes that point to it.
+        position: ``id`` -> position already decided inside its own layer.
+        order: ``id`` -> position of the node in the original graph list.
 
     Returns:
-        Uma lista de camadas; cada camada é a lista de ``id`` na ordem em que
-        deve ser desenhada.  Nós que nenhuma entrada alcança vão para a última
-        camada, para que código morto não suma do desenho.
+        Tuple ``(no_predecessor, average, tiebreak)`` ready for ``sorted``.
     """
-    ids = [no.id for no in graph.nodes]
-    ordem = {nid: indice for indice, nid in enumerate(ids)}
-    sucessores: Dict[str, List[str]] = {nid: [] for nid in ids}
-    antecessores: Dict[str, List[str]] = {nid: [] for nid in ids}
-    for aresta in graph.edges:
-        if aresta.source in sucessores and aresta.target in sucessores:
-            sucessores[aresta.source].append(aresta.target)
-            antecessores[aresta.target].append(aresta.source)
+    previous = [position[p] for p in predecessors[nid] if p in position]
+    if not previous:
+        return (1, 0.0, order[nid])
+    return (0, sum(previous) / float(len(previous)), order[nid])
 
-    raizes = [no.id for no in graph.nodes if no.kind == "entry"]
-    if not raizes:
-        raizes = [nid for nid in ids if not antecessores[nid]]
-    if not raizes:
-        raizes = ids[:1]
 
-    distancia: Dict[str, int] = {}
-    fila: Deque[str] = deque()
-    for raiz in raizes:
-        if raiz not in distancia:
-            distancia[raiz] = 0
-            fila.append(raiz)
-    while fila:
-        atual = fila.popleft()
-        for vizinho in sucessores[atual]:
-            if vizinho not in distancia:
-                distancia[vizinho] = distancia[atual] + 1
-                fila.append(vizinho)
+def _layers(graph: Graph) -> List[List[str]]:
+    """Group the nodes into layers, by the BFS distance to the entries.
 
-    fundo = max(distancia.values()) + 1 if distancia else 0
+    Args:
+        graph: Graph to organize.
+
+    Returns:
+        A list of layers; each layer is the list of ``id`` in the order it must
+        be drawn.  Nodes that no entry reaches go to the last layer, so that
+        dead code does not vanish from the drawing.
+    """
+    ids = [node.id for node in graph.nodes]
+    order = {nid: index for index, nid in enumerate(ids)}
+    successors: Dict[str, List[str]] = {nid: [] for nid in ids}
+    predecessors: Dict[str, List[str]] = {nid: [] for nid in ids}
+    for edge in graph.edges:
+        if edge.source in successors and edge.target in successors:
+            successors[edge.source].append(edge.target)
+            predecessors[edge.target].append(edge.source)
+
+    roots = [node.id for node in graph.nodes if node.kind == "entry"]
+    if not roots:
+        roots = [nid for nid in ids if not predecessors[nid]]
+    if not roots:
+        roots = ids[:1]
+
+    distance: Dict[str, int] = {}
+    queue: Deque[str] = deque()
+    for root in roots:
+        if root not in distance:
+            distance[root] = 0
+            queue.append(root)
+    while queue:
+        current = queue.popleft()
+        for neighbor in successors[current]:
+            if neighbor not in distance:
+                distance[neighbor] = distance[current] + 1
+                queue.append(neighbor)
+
+    bottom = max(distance.values()) + 1 if distance else 0
     for nid in ids:
-        if nid not in distancia:
-            distancia[nid] = fundo
+        if nid not in distance:
+            distance[nid] = bottom
 
-    por_camada: Dict[int, List[str]] = {}
+    by_layer: Dict[int, List[str]] = {}
     for nid in ids:
-        por_camada.setdefault(distancia[nid], []).append(nid)
+        by_layer.setdefault(distance[nid], []).append(nid)
 
-    posicao: Dict[str, int] = {}
-    camadas: List[List[str]] = []
-    for indice in sorted(por_camada):
-        ordenada = sorted(
-            por_camada[indice],
-            key=lambda nid: _chave_de_ordem(nid, antecessores, posicao, ordem),
+    position: Dict[str, int] = {}
+    layers: List[List[str]] = []
+    for index in sorted(by_layer):
+        ordered = sorted(
+            by_layer[index],
+            key=lambda nid: _order_key(nid, predecessors, position, order),
         )
-        for lugar, nid in enumerate(ordenada):
-            posicao[nid] = lugar
-        camadas.append(ordenada)
-    return camadas
+        for slot, nid in enumerate(ordered):
+            position[nid] = slot
+        layers.append(ordered)
+    return layers
 
 
 def layout(
@@ -844,218 +848,216 @@ def layout(
     gap_x: int = 46,
     gap_y: int = 42,
 ) -> Dict[str, Tuple[int, int]]:
-    """Posiciona os nós em camadas, sem sobreposição e sempre igual.
+    """Place the nodes in layers, without overlap and always the same way.
 
-    As camadas vêm da distância em BFS até a entrada e descem: a entrada fica
-    na primeira linha, quem ela alcança vem abaixo, e os nós inalcançáveis
-    ficam na última linha, lado a lado na ordem do código.  Dentro de uma
-    camada cada nó ocupa uma coluna, então dois nós nunca se sobrepõem.  O
-    fluxo de cima para baixo foi escolhido porque o relatório mostra o desenho
-    numa coluna estreita: uma cadeia longa demais na horizontal encolheria até
-    o texto ficar ilegível.
+    The layers come from the BFS distance to the entry and go down: the entry is
+    in the first row, what it reaches comes below, and the unreachable nodes
+    stay in the last row, side by side in code order.  Inside a layer each node
+    takes a column, so two nodes never overlap.  The top-to-bottom flow was
+    chosen because the report shows the drawing in a narrow column: a chain too
+    long horizontally would shrink until the text became unreadable.
 
     Args:
-        graph: Grafo a posicionar.
-        node_width: Largura de cada nó, em pixels.
-        node_height: Altura de cada nó, em pixels.
-        gap_x: Espaço horizontal entre as colunas, em pixels.
-        gap_y: Espaço vertical entre as camadas, em pixels.
+        graph: Graph to place.
+        node_width: Width of each node, in pixels.
+        node_height: Height of each node, in pixels.
+        gap_x: Horizontal space between the columns, in pixels.
+        gap_y: Vertical space between the layers, in pixels.
 
     Returns:
-        ``id -> (x, y)`` com o canto superior esquerdo de cada nó.  As
-        coordenadas já incluem a margem do desenho; um grafo vazio devolve
-        ``{}``.
+        ``id -> (x, y)`` with the top left corner of each node.  The coordinates
+        already include the drawing margin; an empty graph returns ``{}``.
     """
     if not graph.nodes:
         return {}
-    topo = _MARGEM + (_ALTURA_DO_LACO + 16 if _tem_laco(graph) else 0)
-    posicoes: Dict[str, Tuple[int, int]] = {}
-    for linha, camada in enumerate(_camadas(graph)):
-        for coluna, nid in enumerate(camada):
-            posicoes[nid] = (
-                _MARGEM + coluna * (node_width + gap_x),
-                int(topo + linha * (node_height + gap_y)),
+    top = _MARGIN + (_LOOP_HEIGHT + 16 if _has_loop(graph) else 0)
+    positions: Dict[str, Tuple[int, int]] = {}
+    for line, layer in enumerate(_layers(graph)):
+        for column, nid in enumerate(layer):
+            positions[nid] = (
+                _MARGIN + column * (node_width + gap_x),
+                int(top + line * (node_height + gap_y)),
             )
-    return posicoes
+    return positions
 
 
 def size_of(
     graph: Graph, positions: Optional[Dict[str, Tuple[int, int]]] = None
 ) -> Tuple[int, int]:
-    """Tamanho do desenho, em pixels.
+    """Size of the drawing, in pixels.
 
-    A conta usa o tamanho padrão de nó (:data:`_LARGURA_NO` por
-    :data:`_ALTURA_NO`); posições vindas de um :func:`layout` com outro tamanho
-    de nó precisam ser medidas por fora.
+    The arithmetic uses the default node size (:data:`_NODE_WIDTH` by
+    :data:`_NODE_HEIGHT`); positions coming from a :func:`layout` with another
+    node size have to be measured from the outside.
 
     Args:
-        graph: Grafo a medir.
-        positions: Posições já calculadas por :func:`layout`; quando ``None``,
-            esta função chama o próprio :func:`layout`.
+        graph: Graph to measure.
+        positions: Positions already computed by :func:`layout`; when ``None``,
+            this function calls :func:`layout` itself.
 
     Returns:
-        ``(largura, altura)``, contando a margem em volta; um grafo sem nós
-        devolve o tamanho da moldura usada por :func:`to_svg`.
+        ``(width, height)``, counting the margin around; a graph with no nodes
+        returns the size of the frame used by :func:`to_svg`.
     """
-    posicoes = layout(graph) if positions is None else positions
-    ids = {no.id for no in graph.nodes}
-    pontos = [ponto for nid, ponto in posicoes.items() if nid in ids]
-    if not pontos:
-        return (_LARGURA_VAZIA, _ALTURA_VAZIA)
-    largura = max(x for x, _ in pontos) + _LARGURA_NO + _MARGEM
-    altura = max(y for _, y in pontos) + _ALTURA_NO + _MARGEM
-    return (largura, altura)
+    positions = layout(graph) if positions is None else positions
+    ids = {node.id for node in graph.nodes}
+    points = [point for nid, point in positions.items() if nid in ids]
+    if not points:
+        return (_EMPTY_WIDTH, _EMPTY_HEIGHT)
+    width = max(x for x, _ in points) + _NODE_WIDTH + _MARGIN
+    height = max(y for _, y in points) + _NODE_HEIGHT + _MARGIN
+    return (width, height)
 
 
 # ---------------------------------------------------------------------------
-# Geometria do desenho
+# Drawing geometry
 # ---------------------------------------------------------------------------
 
 
-def _na_borda(
-    centro: Tuple[float, float], alvo: Tuple[float, float], largura: float, altura: float
+def _on_border(
+    center: Tuple[float, float], target: Tuple[float, float], width: float, height: float
 ) -> Tuple[float, float]:
-    """Ponto em que a reta centro->alvo cruza a borda do retângulo do nó.
+    """Point where the center->target line crosses the border of the node box.
 
     Args:
-        centro: Centro do nó, em pixels.
-        alvo: Ponto para onde a reta aponta, em pixels.
-        largura: Largura do nó, em pixels.
-        altura: Altura do nó, em pixels.
+        center: Center of the node, in pixels.
+        target: Point the line points to, in pixels.
+        width: Width of the node, in pixels.
+        height: Height of the node, in pixels.
 
     Returns:
-        O ponto de saída (ou de entrada) na borda do retângulo.
+        The exit (or entry) point on the border of the box.
     """
-    dx = alvo[0] - centro[0]
-    dy = alvo[1] - centro[1]
+    dx = target[0] - center[0]
+    dy = target[1] - center[1]
     if not dx and not dy:
-        return centro
-    escalas = []
+        return center
+    scales = []
     if dx:
-        escalas.append((largura / 2.0) / abs(dx))
+        scales.append((width / 2.0) / abs(dx))
     if dy:
-        escalas.append((altura / 2.0) / abs(dy))
-    escala = min(escalas)
-    return (centro[0] + dx * escala, centro[1] + dy * escala)
+        scales.append((height / 2.0) / abs(dy))
+    scale = min(scales)
+    return (center[0] + dx * scale, center[1] + dy * scale)
 
 
-def _deslocamento_da_aresta(indice: int, total: int, tem_reversa: bool) -> float:
-    """Deslocamento perpendicular de uma aresta, para linhas não se colarem.
-
-    Args:
-        indice: Posição da aresta entre as de mesma origem e destino.
-        total: Quantas arestas existem com essa mesma origem e destino.
-        tem_reversa: Se existe também a aresta no sentido contrário.
-
-    Returns:
-        O deslocamento em pixels, positivo ou negativo.
-    """
-    deslocamento = (indice - (total - 1) / 2.0) * 12.0
-    if tem_reversa:
-        deslocamento += 6.0
-    return deslocamento
-
-
-def _deslocamentos(graph: Graph) -> List[float]:
-    """Calcula o deslocamento perpendicular de cada aresta do grafo.
+def _edge_offset(index: int, total: int, has_reverse: bool) -> float:
+    """Perpendicular offset of an edge, so that lines do not stick together.
 
     Args:
-        graph: Grafo a desenhar.
+        index: Position of the edge among the ones with the same origin and
+            destination.
+        total: How many edges exist with that same origin and destination.
+        has_reverse: Whether the edge in the opposite direction also exists.
 
     Returns:
-        Um deslocamento por aresta, na ordem do grafo; arestas repetidas (mesma
-        origem e destino) e arestas de mão dupla saem paralelas, sem se colar.
+        The offset in pixels, positive or negative.
     """
-    chaves = [(a.source, a.target) for a in graph.edges]
-    totais: Dict[Tuple[str, str], int] = {}
-    for par in chaves:
-        totais[par] = totais.get(par, 0) + 1
-    existentes = set(chaves)
-    vistos: Dict[Tuple[str, str], int] = {}
-    deslocamentos: List[float] = []
-    for par in chaves:
-        indice = vistos.get(par, 0)
-        vistos[par] = indice + 1
-        deslocamentos.append(
-            _deslocamento_da_aresta(indice, totais[par], (par[1], par[0]) in existentes)
-        )
-    return deslocamentos
+    offset = (index - (total - 1) / 2.0) * 12.0
+    if has_reverse:
+        offset += 6.0
+    return offset
 
 
-def _caminho_da_aresta(
-    origem: Tuple[int, int],
-    destino: Tuple[int, int],
-    deslocamento: float,
+def _edge_offsets(graph: Graph) -> List[float]:
+    """Compute the perpendicular offset of each edge of the graph.
+
+    Args:
+        graph: Graph to draw.
+
+    Returns:
+        One offset per edge, in graph order; repeated edges (same origin and
+        destination) and two-way edges come out parallel, without sticking
+        together.
+    """
+    keys = [(a.source, a.target) for a in graph.edges]
+    totals: Dict[Tuple[str, str], int] = {}
+    for pair in keys:
+        totals[pair] = totals.get(pair, 0) + 1
+    existing = set(keys)
+    seen: Dict[Tuple[str, str], int] = {}
+    offsets: List[float] = []
+    for pair in keys:
+        index = seen.get(pair, 0)
+        seen[pair] = index + 1
+        offsets.append(_edge_offset(index, totals[pair], (pair[1], pair[0]) in existing))
+    return offsets
+
+
+def _edge_path(
+    origin: Tuple[int, int],
+    destination: Tuple[int, int],
+    offset: float,
 ) -> Tuple[str, float, float]:
-    """Monta o ``d`` de uma aresta e o ponto onde o rótulo deve ficar.
+    """Build the ``d`` of an edge and the point where the label must go.
 
     Args:
-        origem: Canto superior esquerdo do nó de origem.
-        destino: Canto superior esquerdo do nó de destino.
-        deslocamento: Deslocamento perpendicular, em pixels.
+        origin: Top left corner of the origin node.
+        destination: Top left corner of the destination node.
+        offset: Perpendicular offset, in pixels.
 
     Returns:
-        ``(d, x, y)``: o caminho do SVG e o meio da linha, onde entra o
-        rótulo.  Uma aresta de um nó para ele mesmo vira uma alça acima dele.
+        ``(d, x, y)``: the SVG path and the middle of the line, where the label
+        goes.  An edge from a node to itself becomes a handle above it.
     """
-    if origem == destino:
-        centro_x = origem[0] + _LARGURA_NO / 2.0
-        topo = float(origem[1])
-        esquerda = centro_x - _LARGURA_NO * 0.28
-        direita = centro_x + _LARGURA_NO * 0.28
-        caminho = "M %s %s C %s %s, %s %s, %s %s" % (
-            _numero(esquerda),
-            _numero(topo),
-            _numero(esquerda),
-            _numero(topo - _ALTURA_DO_LACO),
-            _numero(direita),
-            _numero(topo - _ALTURA_DO_LACO),
-            _numero(direita),
-            _numero(topo),
+    if origin == destination:
+        center_x = origin[0] + _NODE_WIDTH / 2.0
+        top = float(origin[1])
+        left = center_x - _NODE_WIDTH * 0.28
+        right = center_x + _NODE_WIDTH * 0.28
+        path = "M %s %s C %s %s, %s %s, %s %s" % (
+            _number(left),
+            _number(top),
+            _number(left),
+            _number(top - _LOOP_HEIGHT),
+            _number(right),
+            _number(top - _LOOP_HEIGHT),
+            _number(right),
+            _number(top),
         )
-        return (caminho, centro_x, topo - _ALTURA_DO_LACO - 6)
+        return (path, center_x, top - _LOOP_HEIGHT - 6)
 
-    centro_origem = (origem[0] + _LARGURA_NO / 2.0, origem[1] + _ALTURA_NO / 2.0)
-    centro_destino = (destino[0] + _LARGURA_NO / 2.0, destino[1] + _ALTURA_NO / 2.0)
-    dx = centro_destino[0] - centro_origem[0]
-    dy = centro_destino[1] - centro_origem[1]
-    comprimento = math.hypot(dx, dy) or 1.0
-    normal = (-dy / comprimento * deslocamento, dx / comprimento * deslocamento)
-    origem_deslocada = (centro_origem[0] + normal[0], centro_origem[1] + normal[1])
-    destino_deslocado = (centro_destino[0] + normal[0], centro_destino[1] + normal[1])
-    inicio = _na_borda(origem_deslocada, destino_deslocado, _LARGURA_NO, _ALTURA_NO)
-    fim = _na_borda(destino_deslocado, origem_deslocada, _LARGURA_NO, _ALTURA_NO)
-    volta_x = inicio[0] - fim[0]
-    volta_y = inicio[1] - fim[1]
-    volta = math.hypot(volta_x, volta_y) or 1.0
-    fim = (fim[0] + volta_x / volta * _FOLGA_SETA, fim[1] + volta_y / volta * _FOLGA_SETA)
-    caminho = "M %s %s L %s %s" % (
-        _numero(inicio[0]),
-        _numero(inicio[1]),
-        _numero(fim[0]),
-        _numero(fim[1]),
+    origin_center = (origin[0] + _NODE_WIDTH / 2.0, origin[1] + _NODE_HEIGHT / 2.0)
+    destination_center = (destination[0] + _NODE_WIDTH / 2.0, destination[1] + _NODE_HEIGHT / 2.0)
+    dx = destination_center[0] - origin_center[0]
+    dy = destination_center[1] - origin_center[1]
+    length = math.hypot(dx, dy) or 1.0
+    normal = (-dy / length * offset, dx / length * offset)
+    shifted_origin = (origin_center[0] + normal[0], origin_center[1] + normal[1])
+    shifted_destination = (destination_center[0] + normal[0], destination_center[1] + normal[1])
+    start = _on_border(shifted_origin, shifted_destination, _NODE_WIDTH, _NODE_HEIGHT)
+    end = _on_border(shifted_destination, shifted_origin, _NODE_WIDTH, _NODE_HEIGHT)
+    back_x = start[0] - end[0]
+    back_y = start[1] - end[1]
+    back = math.hypot(back_x, back_y) or 1.0
+    end = (end[0] + back_x / back * _ARROW_GAP, end[1] + back_y / back * _ARROW_GAP)
+    path = "M %s %s L %s %s" % (
+        _number(start[0]),
+        _number(start[1]),
+        _number(end[0]),
+        _number(end[1]),
     )
-    return (caminho, (inicio[0] + fim[0]) / 2.0, (inicio[1] + fim[1]) / 2.0)
+    return (path, (start[0] + end[0]) / 2.0, (start[1] + end[1]) / 2.0)
 
 
-def _linhas_do_no(
-    no: GraphNode, fonte: float, fonte_detalhe: float, largura: float
+def _node_lines(
+    node: GraphNode, font: float, detail_font: float, width: float
 ) -> Tuple[List[str], List[str]]:
-    """Quebra o nome e o detalhe de um nó no que couber dentro da caixa.
+    """Wrap the name and the detail of a node into what fits inside the box.
 
     Args:
-        no: Nó a desenhar.
-        fonte: Tamanho da fonte do nome, em pixels.
-        fonte_detalhe: Tamanho da fonte do detalhe, em pixels.
-        largura: Largura útil da caixa, em pixels.
+        node: Node to draw.
+        font: Font size of the name, in pixels.
+        detail_font: Font size of the detail, in pixels.
+        width: Usable width of the box, in pixels.
 
     Returns:
-        Duas listas: as linhas do nome (até duas) e as do detalhe (até uma,
-        vazia quando não existe detalhe).
+        Two lists: the lines of the name (up to two) and the ones of the detail
+        (up to one, empty when there is no detail).
     """
-    rotulo = _quebrar(no.label, _caracteres_por_linha(largura, fonte), 2)
-    detalhe = _quebrar(no.detail, _caracteres_por_linha(largura, fonte_detalhe), 1)
-    return (rotulo, detalhe)
+    label = _wrap_text(node.label, _chars_per_line(width, font), 2)
+    detail = _wrap_text(node.detail, _chars_per_line(width, detail_font), 1)
+    return (label, detail)
 
 
 # ---------------------------------------------------------------------------
@@ -1063,366 +1065,366 @@ def _linhas_do_no(
 # ---------------------------------------------------------------------------
 
 
-def _svg_vazio(graph: Graph, cores: Dict[str, str]) -> str:
-    """Desenha a moldura mostrada quando não há nada para desenhar.
+def _empty_svg(graph: Graph, colors: Dict[str, str]) -> str:
+    """Draw the frame shown when there is nothing to draw.
 
     Args:
-        graph: Grafo vazio.
-        cores: Cores do tema escolhido.
+        graph: Empty graph.
+        colors: Colors of the chosen theme.
 
     Returns:
-        Um SVG mínimo, com a mensagem no meio.
+        A minimal SVG, with the message in the middle.
     """
-    fundo = cores.get("bg", "#0f1420")
-    no = cores.get("node", "#1d2839")
-    borda = cores.get("border", "#3a4a63")
-    fraco = cores.get("dim", "#93a3ba")
+    background = colors.get("bg", "#0f1420")
+    node = colors.get("node", "#1d2839")
+    border = colors.get("border", "#3a4a63")
+    dim = colors.get("dim", "#93a3ba")
     if graph.kind == "calls":
-        mensagem = "nenhuma chamada para desenhar"
+        message = "no calls to draw"
     else:
-        mensagem = "sem código para desenhar"
-    linhas = [
+        message = "no code to draw"
+    lines = [
         '<svg xmlns="%s" width="%d" height="%d" viewBox="0 0 %d %d" role="img" '
         'aria-label="%s">'
         % (
-            _NAMESPACE_SVG,
-            _LARGURA_VAZIA,
-            _ALTURA_VAZIA,
-            _LARGURA_VAZIA,
-            _ALTURA_VAZIA,
+            _SVG_NAMESPACE,
+            _EMPTY_WIDTH,
+            _EMPTY_HEIGHT,
+            _EMPTY_WIDTH,
+            _EMPTY_HEIGHT,
             escape(graph.title),
         ),
         "  <title>%s</title>" % escape(graph.title),
         '  <rect x="0" y="0" width="%d" height="%d" fill="%s"/>'
-        % (_LARGURA_VAZIA, _ALTURA_VAZIA, fundo),
+        % (_EMPTY_WIDTH, _EMPTY_HEIGHT, background),
         '  <rect x="16" y="16" width="%d" height="%d" rx="10" fill="%s" stroke="%s" '
-        'stroke-dasharray="7 6"/>' % (_LARGURA_VAZIA - 32, _ALTURA_VAZIA - 32, no, borda),
+        'stroke-dasharray="7 6"/>' % (_EMPTY_WIDTH - 32, _EMPTY_HEIGHT - 32, node, border),
         '  <text x="%d" y="%d" text-anchor="middle" font-family="%s" font-size="13" '
         'fill="%s">%s</text>'
-        % (_LARGURA_VAZIA // 2, _ALTURA_VAZIA // 2 + 5, _FONTE_FAMILIA, fraco, escape(mensagem)),
+        % (_EMPTY_WIDTH // 2, _EMPTY_HEIGHT // 2 + 5, _FONT_FAMILY, dim, escape(message)),
         "</svg>",
     ]
-    return "\n".join(linhas) + "\n"
+    return "\n".join(lines) + "\n"
 
 
 def to_svg(graph: Graph, *, theme: str = "dark") -> str:
-    """Desenha o grafo como um SVG autocontido e determinístico.
+    """Draw the graph as a self-contained and deterministic SVG.
 
-    O desenho não tem ``script``, não usa ``href``, não busca fonte externa e
-    não cita ``http``: pode ser colado dentro do HTML do relatório ou salvo
-    como arquivo ``.svg`` e aberto no navegador.  Grafos com mais de 60 nós
-    saem com fonte menor e rótulos mais curtos, para não virar um borrão — o
-    conteúdo continua o mesmo, só mais apertado.
+    The drawing has no ``script``, does not use ``href``, does not fetch an
+    external font and does not cite ``http``: it can be pasted into the HTML of
+    the report or saved as a ``.svg`` file and opened in the browser.  Graphs
+    with more than 60 nodes come out with a smaller font and shorter labels, so
+    that they do not become a blur — the content stays the same, just tighter.
 
     Args:
-        graph: Grafo devolvido por :func:`control_flow_graph` ou
+        graph: Graph returned by :func:`control_flow_graph` or
             :func:`call_graph`.
-        theme: ``dark`` ou ``light``; qualquer outro valor cai no ``dark``.
+        theme: ``dark`` or ``light``; any other value falls back to ``dark``.
 
     Returns:
-        O documento SVG completo, em texto.
+        The complete SVG document, as text.
     """
-    nome_do_tema = theme if theme in THEME else "dark"
-    cores = THEME[nome_do_tema]
+    theme_name = theme if theme in THEME else "dark"
+    colors = THEME[theme_name]
     if not graph.nodes:
-        return _svg_vazio(graph, cores)
+        return _empty_svg(graph, colors)
 
-    fundo = cores.get("bg", "#0f1420")
-    texto = cores.get("text", "#e8eef8")
-    borda = cores.get("border", "#3a4a63")
-    fraco = cores.get("dim", "#93a3ba")
+    background = colors.get("bg", "#0f1420")
+    text = colors.get("text", "#e8eef8")
+    border = colors.get("border", "#3a4a63")
+    dim = colors.get("dim", "#93a3ba")
 
-    grande = len(graph.nodes) > _LIMITE_GRANDE
-    fonte = _FONTE_GRANDE if grande else _FONTE
-    fonte_detalhe = _FONTE_DETALHE_GRANDE if grande else _FONTE_DETALHE
-    fonte_aresta = _FONTE_ARESTA_GRANDE if grande else _FONTE_ARESTA
-    limite_aresta = _ROTULO_ARESTA_GRANDE if grande else _MAX_ROTULO
+    large = len(graph.nodes) > _LARGE_LIMIT
+    font = _LARGE_FONT if large else _FONT
+    detail_font = _LARGE_DETAIL_FONT if large else _DETAIL_FONT
+    edge_font = _LARGE_EDGE_FONT if large else _EDGE_FONT
+    edge_label_limit = _LARGE_EDGE_LABEL if large else _MAX_LABEL
 
-    posicoes = layout(graph)
-    largura, altura = size_of(graph, posicoes)
+    positions = layout(graph)
+    width, height = size_of(graph, positions)
 
-    # Uma seta por cor usada, na ordem em que as arestas aparecem.
-    setas: List[Tuple[str, str]] = []
-    for aresta in graph.edges:
-        chave = _COR_DA_ARESTA.get(aresta.kind, "edge")
-        cor = cores.get(chave, "#8296b0")
-        if all(cor != existente for _, existente in setas):
-            setas.append((chave, cor))
-    if not setas:
-        setas.append(("edge", cores.get("edge", "#8296b0")))
+    # One arrow per color used, in the order the edges appear.
+    arrows: List[Tuple[str, str]] = []
+    for edge in graph.edges:
+        key = _EDGE_COLOR.get(edge.kind, "edge")
+        color = colors.get(key, "#8296b0")
+        if all(color != existente for _, existente in arrows):
+            arrows.append((key, color))
+    if not arrows:
+        arrows.append(("edge", colors.get("edge", "#8296b0")))
 
-    partes: List[str] = [
+    parts: List[str] = [
         '<svg xmlns="%s" width="%d" height="%d" viewBox="0 0 %d %d" role="img" '
-        'aria-label="%s">'
-        % (_NAMESPACE_SVG, largura, altura, largura, altura, escape(graph.title)),
+        'aria-label="%s">' % (_SVG_NAMESPACE, width, height, width, height, escape(graph.title)),
         "  <title>%s</title>" % escape(graph.title),
         "  <defs>",
     ]
-    for chave, cor in setas:
-        partes.append(
+    for key, color in arrows:
+        parts.append(
             '    <marker id="%s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" '
             'markerHeight="7" orient="auto" markerUnits="strokeWidth">'
-            % (_ID_SETA % (graph.kind, nome_do_tema, chave))
+            % (_ARROW_ID % (graph.kind, theme_name, key))
         )
-        partes.append('      <path d="M 0 0 L 10 5 L 0 10 z" fill="%s"/>' % cor)
-        partes.append("    </marker>")
-    partes.append("  </defs>")
-    partes.append(
-        '  <rect x="0" y="0" width="%d" height="%d" fill="%s"/>' % (largura, altura, fundo)
+        parts.append('      <path d="M 0 0 L 10 5 L 0 10 z" fill="%s"/>' % color)
+        parts.append("    </marker>")
+    parts.append("  </defs>")
+    parts.append(
+        '  <rect x="0" y="0" width="%d" height="%d" fill="%s"/>' % (width, height, background)
     )
 
-    # As arestas saem antes dos nós, para que a linha não invada a caixa.
-    afastamentos = _deslocamentos(graph)
-    partes.append('  <g class="arestas">')
-    for indice, aresta in enumerate(graph.edges):
-        origem = posicoes.get(aresta.source)
-        destino = posicoes.get(aresta.target)
-        if origem is None or destino is None:
+    # The edges come out before the nodes, so that the line does not invade the box.
+    offsets = _edge_offsets(graph)
+    parts.append('  <g class="edges">')
+    for index, edge in enumerate(graph.edges):
+        origin = positions.get(edge.source)
+        destination = positions.get(edge.target)
+        if origin is None or destination is None:
             continue
-        caminho, _, _ = _caminho_da_aresta(origem, destino, afastamentos[indice])
-        cor_aresta = cores.get(_COR_DA_ARESTA.get(aresta.kind, "edge"), "#8296b0")
-        partes.append(
+        path, _, _ = _edge_path(origin, destination, offsets[index])
+        edge_color = colors.get(_EDGE_COLOR.get(edge.kind, "edge"), "#8296b0")
+        parts.append(
             '    <path d="%s" fill="none" stroke="%s" stroke-width="1.6" '
             'stroke-linecap="round" marker-end="url(#%s)"/>'
             % (
-                caminho,
-                cor_aresta,
-                _ID_SETA % (graph.kind, nome_do_tema, _COR_DA_ARESTA.get(aresta.kind, "edge")),
+                path,
+                edge_color,
+                _ARROW_ID % (graph.kind, theme_name, _EDGE_COLOR.get(edge.kind, "edge")),
             )
         )
-    partes.append("  </g>")
+    parts.append("  </g>")
 
-    partes.append('  <g class="nos">')
-    for no in graph.nodes:
-        ponto = posicoes.get(no.id)
-        if ponto is None:
+    parts.append('  <g class="nodes">')
+    for node in graph.nodes:
+        point = positions.get(node.id)
+        if point is None:
             continue
-        x, y = float(ponto[0]), float(ponto[1])
-        cor = cores.get(_COR_DO_NO.get(no.kind, "node"), "#1d2839")
-        rotulo, detalhe = _linhas_do_no(no, fonte, fonte_detalhe, float(_LARGURA_NO))
-        altura_rotulo = fonte + 3.0
-        altura_detalhe = fonte_detalhe + 2.5
-        total = len(rotulo) * altura_rotulo + len(detalhe) * altura_detalhe
-        base = y + (_ALTURA_NO - total) / 2.0 + fonte * 0.85
-        partes.append('    <g class="no no-%s">' % no.kind)
-        partes.append(
-            "      <title>%s</title>" % escape(no.label + (": " + no.detail if no.detail else ""))
+        x, y = float(point[0]), float(point[1])
+        color = colors.get(_NODE_COLOR.get(node.kind, "node"), "#1d2839")
+        label, detail = _node_lines(node, font, detail_font, float(_NODE_WIDTH))
+        label_height = font + 3.0
+        detail_height = detail_font + 2.5
+        total = len(label) * label_height + len(detail) * detail_height
+        base = y + (_NODE_HEIGHT - total) / 2.0 + font * 0.85
+        parts.append('    <g class="node node-%s">' % node.kind)
+        parts.append(
+            "      <title>%s</title>"
+            % escape(node.label + (": " + node.detail if node.detail else ""))
         )
-        partes.append(
+        parts.append(
             '      <rect x="%s" y="%s" width="%d" height="%d" rx="%d" fill="%s" '
             'stroke="%s" stroke-width="1.5"/>'
-            % (_numero(x), _numero(y), _LARGURA_NO, _ALTURA_NO, _RAIO, cor, borda)
+            % (_number(x), _number(y), _NODE_WIDTH, _NODE_HEIGHT, _RADIUS, color, border)
         )
-        for indice, linha in enumerate(rotulo):
-            partes.append(
+        for index, line in enumerate(label):
+            parts.append(
                 '      <text x="%s" y="%s" text-anchor="middle" font-family="%s" '
                 'font-size="%s" font-weight="600" fill="%s">%s</text>'
                 % (
-                    _numero(x + _LARGURA_NO / 2.0),
-                    _numero(base + indice * altura_rotulo),
-                    _FONTE_FAMILIA,
-                    _numero(fonte),
-                    texto,
-                    escape(linha),
+                    _number(x + _NODE_WIDTH / 2.0),
+                    _number(base + index * label_height),
+                    _FONT_FAMILY,
+                    _number(font),
+                    text,
+                    escape(line),
                 )
             )
-        for indice, linha in enumerate(detalhe):
-            partes.append(
+        for index, line in enumerate(detail):
+            parts.append(
                 '      <text x="%s" y="%s" text-anchor="middle" font-family="%s" '
                 'font-size="%s" fill="%s">%s</text>'
                 % (
-                    _numero(x + _LARGURA_NO / 2.0),
-                    _numero(base + len(rotulo) * altura_rotulo + indice * altura_detalhe),
-                    _FONTE_FAMILIA,
-                    _numero(fonte_detalhe),
-                    fraco,
-                    escape(linha),
+                    _number(x + _NODE_WIDTH / 2.0),
+                    _number(base + len(label) * label_height + index * detail_height),
+                    _FONT_FAMILY,
+                    _number(detail_font),
+                    dim,
+                    escape(line),
                 )
             )
-        partes.append("    </g>")
-    partes.append("  </g>")
+        parts.append("    </g>")
+    parts.append("  </g>")
 
-    # Os rótulos ficam por cima de tudo, com fundo semitransparente.
-    partes.append('  <g class="rotulos">')
-    for indice, aresta in enumerate(graph.edges):
-        origem = posicoes.get(aresta.source)
-        destino = posicoes.get(aresta.target)
-        if origem is None or destino is None or not aresta.label:
+    # The labels stay on top of everything, with a semi-transparent background.
+    parts.append('  <g class="labels">')
+    for index, edge in enumerate(graph.edges):
+        origin = positions.get(edge.source)
+        destination = positions.get(edge.target)
+        if origin is None or destination is None or not edge.label:
             continue
-        _, meio_x, meio_y = _caminho_da_aresta(origem, destino, afastamentos[indice])
-        linha = _encurtar(aresta.label, limite_aresta)
-        cor_aresta = cores.get(_COR_DA_ARESTA.get(aresta.kind, "edge"), "#8296b0")
-        largura_texto = _largura_do_texto(linha, fonte_aresta)
-        partes.append(
+        _, middle_x, middle_y = _edge_path(origin, destination, offsets[index])
+        line = _shorten(edge.label, edge_label_limit)
+        edge_color = colors.get(_EDGE_COLOR.get(edge.kind, "edge"), "#8296b0")
+        text_width = _text_width(line, edge_font)
+        parts.append(
             '    <rect x="%s" y="%s" width="%s" height="%s" rx="4" fill="%s" '
             'fill-opacity="0.82"/>'
             % (
-                _numero(meio_x - largura_texto / 2.0 - 4),
-                _numero(meio_y - fonte_aresta),
-                _numero(largura_texto + 8),
-                _numero(fonte_aresta + 4),
-                fundo,
+                _number(middle_x - text_width / 2.0 - 4),
+                _number(middle_y - edge_font),
+                _number(text_width + 8),
+                _number(edge_font + 4),
+                background,
             )
         )
-        partes.append(
+        parts.append(
             '    <text x="%s" y="%s" text-anchor="middle" font-family="%s" '
             'font-size="%s" fill="%s">%s</text>'
             % (
-                _numero(meio_x),
-                _numero(meio_y),
-                _FONTE_FAMILIA,
-                _numero(fonte_aresta),
-                cor_aresta,
-                escape(linha),
+                _number(middle_x),
+                _number(middle_y),
+                _FONT_FAMILY,
+                _number(edge_font),
+                edge_color,
+                escape(line),
             )
         )
-    partes.append("  </g>")
-    partes.append("</svg>")
-    return "\n".join(partes) + "\n"
+    parts.append("  </g>")
+    parts.append("</svg>")
+    return "\n".join(parts) + "\n"
 
 
 # ---------------------------------------------------------------------------
-# DOT e Mermaid
+# DOT and Mermaid
 # ---------------------------------------------------------------------------
 
 
-def _escapar_dot(texto: str) -> str:
-    """Escapa um texto para caber entre aspas no DOT.
+def _dot_escape(text: str) -> str:
+    """Escape a text so that it fits between quotes in DOT.
 
     Args:
-        texto: Texto livre.
+        text: Free text.
 
     Returns:
-        O texto com barras e aspas escapadas e quebras de linha em ``\\n``.
+        The text with backslashes and quotes escaped and line breaks as ``\\n``.
     """
-    return texto.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    return text.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
 
 
-def _rotulo_do_no(no: GraphNode) -> str:
-    """Rótulo do nó nos formatos que aceitam quebra de linha.
+def _node_label(node: GraphNode) -> str:
+    """Label of the node in the formats that accept a line break.
 
     Args:
-        no: Nó a rotular.
+        node: Node to label.
 
     Returns:
-        O nome e, quando existe, o detalhe na linha de baixo.
+        The name and, when it exists, the detail on the line below.
     """
-    if no.detail:
-        return no.label + "\n" + no.detail
-    return no.label
+    if node.detail:
+        return node.label + "\n" + node.detail
+    return node.label
 
 
 def to_dot(graph: Graph) -> str:
-    """Escreve o grafo em DOT, o formato do Graphviz.
+    """Write the graph as DOT, the Graphviz format.
 
     Args:
-        graph: Grafo a escrever.
+        graph: Graph to write.
 
     Returns:
-        Um ``digraph`` válido, com uma cor por tipo de nó e de aresta.
+        A valid ``digraph``, with one color per node and edge kind.
     """
-    nome = "cfg" if graph.kind == "cfg" else "calls"
-    linhas = [
-        "digraph %s {" % nome,
+    name = "cfg" if graph.kind == "cfg" else "calls"
+    lines = [
+        "digraph %s {" % name,
         "  rankdir=TB;",
-        '  label="%s";' % _escapar_dot(graph.title),
+        '  label="%s";' % _dot_escape(graph.title),
         '  labelloc="t";',
         '  fontname="Helvetica";',
         '  node [shape=box, style=filled, fontname="Helvetica", fontsize=11];',
         '  edge [fontname="Helvetica", fontsize=9];',
     ]
-    cores = THEME["dark"]
+    colors = THEME["dark"]
     if not graph.nodes:
-        linhas.append("  // sem nada para desenhar")
-    for no in graph.nodes:
-        linhas.append(
+        lines.append("  // nothing to draw")
+    for node in graph.nodes:
+        lines.append(
             '  "%s" [label="%s", fillcolor="%s", color="%s", fontcolor="%s"];'
             % (
-                _escapar_dot(no.id),
-                _escapar_dot(_rotulo_do_no(no)),
-                cores.get(_COR_DO_NO.get(no.kind, "node"), "#1d2839"),
-                cores.get("border", "#3a4a63"),
-                cores.get("text", "#e8eef8"),
+                _dot_escape(node.id),
+                _dot_escape(_node_label(node)),
+                colors.get(_NODE_COLOR.get(node.kind, "node"), "#1d2839"),
+                colors.get("border", "#3a4a63"),
+                colors.get("text", "#e8eef8"),
             )
         )
-    for aresta in graph.edges:
-        atributos = ['color="%s"' % cores.get(_COR_DA_ARESTA.get(aresta.kind, "edge"), "#8296b0")]
-        if aresta.label:
-            atributos.append('label="%s"' % _escapar_dot(aresta.label))
-        linhas.append(
+    for edge in graph.edges:
+        attributes = ['color="%s"' % colors.get(_EDGE_COLOR.get(edge.kind, "edge"), "#8296b0")]
+        if edge.label:
+            attributes.append('label="%s"' % _dot_escape(edge.label))
+        lines.append(
             '  "%s" -> "%s" [%s];'
-            % (_escapar_dot(aresta.source), _escapar_dot(aresta.target), ", ".join(atributos))
+            % (_dot_escape(edge.source), _dot_escape(edge.target), ", ".join(attributes))
         )
-    linhas.append("}")
-    return "\n".join(linhas) + "\n"
+    lines.append("}")
+    return "\n".join(lines) + "\n"
 
 
-def _escapar_mermaid(texto: str) -> str:
-    """Escapa um texto para caber entre aspas no Mermaid.
+def _mermaid_escape(text: str) -> str:
+    """Escape a text so that it fits between quotes in Mermaid.
 
     Args:
-        texto: Texto livre.
+        text: Free text.
 
     Returns:
-        O texto com aspas, ``&``, ``<`` e ``>`` trocados por entidades que o
-        Mermaid entende.
+        The text with quotes, ``&``, ``<`` and ``>`` replaced by entities that
+        Mermaid understands.
     """
     return (
-        texto.replace("&", "#amp;").replace('"', "#quot;").replace("<", "#lt;").replace(">", "#gt;")
+        text.replace("&", "#amp;").replace('"', "#quot;").replace("<", "#lt;").replace(">", "#gt;")
     )
 
 
-def _id_mermaid(nid: str, usados: Dict[str, int]) -> str:
-    """Transforma o ``id`` do nó num identificador aceito pelo Mermaid.
+def _mermaid_id(nid: str, used: Dict[str, int]) -> str:
+    """Turn the ``id`` of the node into an identifier accepted by Mermaid.
 
     Args:
-        nid: ``id`` original, como ``b0`` ou ``f:soma``.
-        usados: Contador de ids já usados, para desempatar colisões.
+        nid: Original ``id``, such as ``b0`` or ``f:sum``.
+        used: Counter of ids already used, to break collisions.
 
     Returns:
-        Um identificador só com letras, números e ``_``, sem repetição.
+        An identifier with only letters, digits and ``_``, without repetition.
     """
     base = re.sub(r"[^0-9A-Za-z_]", "_", nid)
     if not base or base[0].isdigit():
         base = "n_" + base
-    usados[base] = usados.get(base, 0) + 1
-    if usados[base] > 1:
-        base = "%s_%d" % (base, usados[base])
+    used[base] = used.get(base, 0) + 1
+    if used[base] > 1:
+        base = "%s_%d" % (base, used[base])
     return base
 
 
 def to_mermaid(graph: Graph) -> str:
-    """Escreve o grafo como um ``flowchart`` do Mermaid.
+    """Write the graph as a Mermaid ``flowchart``.
 
     Args:
-        graph: Grafo a escrever.
+        graph: Graph to write.
 
     Returns:
-        O diagrama em texto, com os rótulos entre ``["..."]`` e a contagem de
-        chamadas nas arestas.
+        The diagram as text, with the labels between ``["..."]`` and the call
+        count on the edges.
     """
-    linhas = ["flowchart TD"]
+    lines = ["flowchart TD"]
     if not graph.nodes:
         if graph.kind == "calls":
-            mensagem = "nenhuma chamada para desenhar"
+            message = "no calls to draw"
         else:
-            mensagem = "sem código para desenhar"
-        linhas.append('    vazio["%s"]' % _escapar_mermaid(mensagem))
-        return "\n".join(linhas) + "\n"
+            message = "no code to draw"
+        lines.append('    empty["%s"]' % _mermaid_escape(message))
+        return "\n".join(lines) + "\n"
 
-    usados: Dict[str, int] = {}
-    identificadores: Dict[str, str] = {}
-    for no in graph.nodes:
-        identificadores[no.id] = _id_mermaid(no.id, usados)
-        rotulo = _escapar_mermaid(_rotulo_do_no(no)).replace("\n", "<br/>")
-        linhas.append('    %s["%s"]' % (identificadores[no.id], rotulo))
-    for aresta in graph.edges:
-        origem = identificadores.get(aresta.source)
-        destino = identificadores.get(aresta.target)
-        if origem is None or destino is None:
+    used: Dict[str, int] = {}
+    identifiers: Dict[str, str] = {}
+    for node in graph.nodes:
+        identifiers[node.id] = _mermaid_id(node.id, used)
+        label = _mermaid_escape(_node_label(node)).replace("\n", "<br/>")
+        lines.append('    %s["%s"]' % (identifiers[node.id], label))
+    for edge in graph.edges:
+        origin = identifiers.get(edge.source)
+        destination = identifiers.get(edge.target)
+        if origin is None or destination is None:
             continue
-        if aresta.label:
-            linhas.append('    %s -->|"%s"| %s' % (origem, _escapar_mermaid(aresta.label), destino))
+        if edge.label:
+            lines.append('    %s -->|"%s"| %s' % (origin, _mermaid_escape(edge.label), destination))
         else:
-            linhas.append("    %s --> %s" % (origem, destino))
-    return "\n".join(linhas) + "\n"
+            lines.append("    %s --> %s" % (origin, destination))
+    return "\n".join(lines) + "\n"

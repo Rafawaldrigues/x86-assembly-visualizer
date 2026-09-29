@@ -1,4 +1,4 @@
-"""Testes de canto do projeto: branches, cenários, gravação e erros."""
+"""Corner case tests of the project: branches, scenarios, persistence and errors."""
 
 import json
 import os
@@ -31,279 +31,279 @@ from asmx.workspace import (
 HELLO = EXAMPLES["linux-hello"]["code"]
 
 
-class BaseProjeto(unittest.TestCase):
-    """Projeto com duas branches e diretório temporário à mão."""
+class BaseProject(unittest.TestCase):
+    """Project with two branches and a temporary directory at hand."""
 
     def setUp(self) -> None:
         self.dir = tempfile.TemporaryDirectory()
-        self.projeto = Project.new(code=HELLO, name="teste")
+        self.project = Project.new(code=HELLO, name="test")
 
     def tearDown(self) -> None:
         self.dir.cleanup()
 
-    def caminho(self, nome: str) -> str:
-        return os.path.join(self.dir.name, nome)
+    def path(self, name: str) -> str:
+        return os.path.join(self.dir.name, name)
 
 
-class TestBranches(BaseProjeto):
-    """Caminhos de erro e operações de branch."""
+class TestBranches(BaseProject):
+    """Error paths and branch operations."""
 
-    def test_fork_de_origem_inexistente(self) -> None:
+    def test_fork_from_a_nonexistent_source(self) -> None:
         with self.assertRaises(BranchNotFoundError):
-            self.projeto.fork("nova", from_branch="nao_existe")
+            self.project.fork("new", from_branch="does_not_exist")
 
-    def test_nome_repetido(self) -> None:
-        self.projeto.fork("a")
+    def test_repeated_name(self) -> None:
+        self.project.fork("a")
         with self.assertRaises(BranchExistsError):
-            self.projeto.fork("a")
+            self.project.fork("a")
 
-    def test_nome_vazio(self) -> None:
+    def test_empty_name(self) -> None:
         with self.assertRaises(EmptyBranchNameError):
-            self.projeto.fork("   ")
+            self.project.fork("   ")
 
-    def test_switch_inexistente(self) -> None:
+    def test_switch_to_a_nonexistent_branch(self) -> None:
         with self.assertRaises(BranchNotFoundError):
-            self.projeto.switch("nao_existe")
+            self.project.switch("does_not_exist")
 
-    def test_apagar_inexistente(self) -> None:
+    def test_delete_a_nonexistent_branch(self) -> None:
         with self.assertRaises(BranchNotFoundError):
-            self.projeto.delete_branch("nao_existe")
+            self.project.delete_branch("does_not_exist")
 
-    def test_apagar_ultima(self) -> None:
+    def test_delete_the_last_branch(self) -> None:
         with self.assertRaises(LastBranchError):
-            self.projeto.delete_branch("principal")
+            self.project.delete_branch("principal")
 
-    def test_apagar_deixa_filhas_sem_pai(self) -> None:
-        self.projeto.fork("filha")
-        self.projeto.delete_branch("principal")
-        self.assertIsNone(self.projeto.branches["filha"].parent)
+    def test_delete_leaves_the_children_without_a_parent(self) -> None:
+        self.project.fork("child")
+        self.project.delete_branch("principal")
+        self.assertIsNone(self.project.branches["child"].parent)
 
-    def test_renomear_inexistente(self) -> None:
+    def test_rename_a_nonexistent_branch(self) -> None:
         with self.assertRaises(BranchNotFoundError):
-            self.projeto.rename_branch("nao_existe", "nova")
+            self.project.rename_branch("does_not_exist", "new")
 
-    def test_renomear_para_nome_existente(self) -> None:
-        self.projeto.fork("b")
+    def test_rename_to_an_existing_name(self) -> None:
+        self.project.fork("b")
         with self.assertRaises(BranchExistsError):
-            self.projeto.rename_branch("principal", "b")
+            self.project.rename_branch("principal", "b")
 
-    def test_diff_de_branch_inexistente(self) -> None:
+    def test_diff_of_a_nonexistent_branch(self) -> None:
         with self.assertRaises(BranchNotFoundError):
-            self.projeto.diff("principal", "nao_existe")
+            self.project.diff("principal", "does_not_exist")
 
-    def test_branch_ativa_inexistente_volta_para_a_primeira(self) -> None:
-        self.projeto.active = "sumiu"
-        self.assertEqual(self.projeto.branch.name, "principal")
+    def test_nonexistent_active_branch_falls_back_to_the_first_one(self) -> None:
+        self.project.active = "vanished"
+        self.assertEqual(self.project.branch.name, "principal")
 
-    def test_fork_copia_anotacoes_e_breakpoints(self) -> None:
-        self.projeto.set_note(1, "nota")
-        self.projeto.toggle_breakpoint(3)
-        copia = self.projeto.fork("copia")
-        self.assertEqual(copia.notes["1"], "nota")
-        self.assertEqual(copia.breakpoints, [3])
+    def test_fork_copies_notes_and_breakpoints(self) -> None:
+        self.project.set_note(1, "note")
+        self.project.toggle_breakpoint(3)
+        copy = self.project.fork("copy")
+        self.assertEqual(copy.notes["1"], "note")
+        self.assertEqual(copy.breakpoints, [3])
 
-    def test_rename_branch_dataclass(self) -> None:
+    def test_branch_dataclass(self) -> None:
         branch = Branch(name="x", code="nop")
         self.assertEqual(branch.to_dict()["name"], "x")
         self.assertIn("created", branch.to_dict())
 
 
-class TestCenarios(BaseProjeto):
-    """Cenários: adicionar, remover, buscar e executar."""
+class TestScenarios(BaseProject):
+    """Scenarios: add, remove, search and run."""
 
-    def test_adicionar_e_substituir(self) -> None:
-        self.projeto.add_scenario(Scenario(name="a", expect_exit=0))
-        self.projeto.add_scenario(Scenario(name="a", expect_exit=1))
-        self.assertEqual(len(self.projeto.branch.scenarios), 1)
-        self.assertEqual(self.projeto.scenario("a").expect_exit, 1)
+    def test_add_and_replace(self) -> None:
+        self.project.add_scenario(Scenario(name="a", expect_exit=0))
+        self.project.add_scenario(Scenario(name="a", expect_exit=1))
+        self.assertEqual(len(self.project.branch.scenarios), 1)
+        self.assertEqual(self.project.scenario("a").expect_exit, 1)
 
-    def test_remover(self) -> None:
-        self.projeto.add_scenario(Scenario(name="a"))
-        self.projeto.remove_scenario("a")
-        self.assertEqual(self.projeto.branch.scenarios, [])
+    def test_remove(self) -> None:
+        self.project.add_scenario(Scenario(name="a"))
+        self.project.remove_scenario("a")
+        self.assertEqual(self.project.branch.scenarios, [])
 
-    def test_buscar_inexistente(self) -> None:
+    def test_search_for_a_nonexistent_scenario(self) -> None:
         with self.assertRaises(ScenarioError):
-            self.projeto.scenario("nao_existe")
+            self.project.scenario("does_not_exist")
 
-    def test_entrada_inexistente(self) -> None:
+    def test_nonexistent_entry(self) -> None:
         with self.assertRaises(ScenarioError):
-            run_scenario(HELLO, Scenario(name="x", entry="nao_existe"))
+            run_scenario(HELLO, Scenario(name="x", entry="does_not_exist"))
 
-    def test_saida_esperada_errada(self) -> None:
-        resultado = run_scenario(HELLO, Scenario(name="x", expect_output="outra"))
-        self.assertFalse(resultado.passed)
-        self.assertIn("saída diferente", resultado.reason)
+    def test_wrong_expected_output(self) -> None:
+        result = run_scenario(HELLO, Scenario(name="x", expect_output="other"))
+        self.assertFalse(result.passed)
+        self.assertIn("output differs", result.reason)
 
-    def test_codigo_de_saida_errado(self) -> None:
-        resultado = run_scenario(HELLO, Scenario(name="x", expect_exit=7))
-        self.assertFalse(resultado.passed)
-        self.assertIn("código de saída", resultado.reason)
+    def test_wrong_exit_code(self) -> None:
+        result = run_scenario(HELLO, Scenario(name="x", expect_exit=7))
+        self.assertFalse(result.passed)
+        self.assertIn("exit code", result.reason)
 
-    def test_espera_problema_que_nao_acontece(self) -> None:
-        resultado = run_scenario(HELLO, Scenario(name="x", expect_issue=True))
-        self.assertFalse(resultado.passed)
-        self.assertIn("esperava", resultado.reason)
+    def test_expects_a_problem_that_does_not_happen(self) -> None:
+        result = run_scenario(HELLO, Scenario(name="x", expect_issue=True))
+        self.assertFalse(result.passed)
+        self.assertIn("expected", result.reason)
 
-    def test_problema_inesperado_reprova(self) -> None:
-        resultado = run_scenario("inicio:\njmp inicio", Scenario(name="x", max_steps=500))
-        self.assertFalse(resultado.passed)
-        self.assertIn("laço infinito", resultado.reason)
+    def test_unexpected_problem_fails_the_scenario(self) -> None:
+        result = run_scenario("start:\njmp start", Scenario(name="x", max_steps=500))
+        self.assertFalse(result.passed)
+        self.assertIn("the run reported:", result.reason)
 
-    def test_timeout_reprova_com_motivo(self) -> None:
-        codigo = "inicio:\njmp inicio"
-        resultado = run_scenario(codigo, Scenario(name="x", max_steps=100000, timeout=0.0))
-        self.assertFalse(resultado.passed)
-        self.assertIn("timeout", resultado.reason)
+    def test_timeout_fails_with_a_reason(self) -> None:
+        code = "start:\njmp start"
+        result = run_scenario(code, Scenario(name="x", max_steps=100000, timeout=0.0))
+        self.assertFalse(result.passed)
+        self.assertIn("timeout", result.reason)
 
-    def test_todos_os_cenarios(self) -> None:
-        cenarios = [Scenario(name="a", expect_exit=0), Scenario(name="b", expect_exit=9)]
-        resultados = run_all_scenarios(HELLO, cenarios)
-        self.assertEqual([r.passed for r in resultados], [True, False])
-        self.assertEqual(resultados[0].scenario, "a")
+    def test_all_scenarios(self) -> None:
+        scenarios = [Scenario(name="a", expect_exit=0), Scenario(name="b", expect_exit=9)]
+        results = run_all_scenarios(HELLO, scenarios)
+        self.assertEqual([r.passed for r in results], [True, False])
+        self.assertEqual(results[0].scenario, "a")
 
-    def test_resultado_serializa(self) -> None:
-        resultado = run_scenario(HELLO, Scenario(name="x", expect_exit=0))
-        dados = resultado.to_dict()
-        self.assertEqual(dados["scenario"], "x")
-        self.assertTrue(dados["passed"])
-        self.assertIsInstance(resultado, ScenarioResult)
+    def test_result_serializes(self) -> None:
+        result = run_scenario(HELLO, Scenario(name="x", expect_exit=0))
+        data = result.to_dict()
+        self.assertEqual(data["scenario"], "x")
+        self.assertTrue(data["passed"])
+        self.assertIsInstance(result, ScenarioResult)
 
-    def test_scenario_from_dict_ignora_campos_novos(self) -> None:
-        cenario = Scenario.from_dict({"name": "a", "campo_do_futuro": 1, "max_steps": 10})
-        self.assertEqual(cenario.name, "a")
-        self.assertEqual(cenario.max_steps, 10)
+    def test_scenario_from_dict_ignores_new_fields(self) -> None:
+        scenario = Scenario.from_dict({"name": "a", "field_from_the_future": 1, "max_steps": 10})
+        self.assertEqual(scenario.name, "a")
+        self.assertEqual(scenario.max_steps, 10)
 
-    def test_registradores_iniciais_aceitam_texto_e_numero(self) -> None:
-        codigo = EXAMPLES["escala"]["code"]
-        resultado = run_scenario(codigo, Scenario(name="x", entry="soma_ate", regs={"rdi": "0x10"}))
-        self.assertTrue(resultado.passed, resultado.reason)
-        self.assertGreater(resultado.steps, 0)
+    def test_initial_registers_accept_text_and_number(self) -> None:
+        code = EXAMPLES["overflow"]["code"]
+        result = run_scenario(code, Scenario(name="x", entry="sum_until", regs={"rdi": "0x10"}))
+        self.assertTrue(result.passed, result.reason)
+        self.assertGreater(result.steps, 0)
 
-    def test_parse_reg_values_variantes(self) -> None:
+    def test_parse_reg_values_variants(self) -> None:
         self.assertEqual(parse_reg_values("rax=1;rbx=2\nrcx=3"), {"rax": 1, "rbx": 2, "rcx": 3})
         self.assertEqual(parse_reg_values(""), {})
-        self.assertEqual(parse_reg_values("lixo"), {})
+        self.assertEqual(parse_reg_values("junk"), {})
 
 
-class TestPersistencia(BaseProjeto):
-    """Gravar, carregar e recusar arquivos estranhos."""
+class TestPersistence(BaseProject):
+    """Write, load and refuse strange files."""
 
     def test_to_dict(self) -> None:
-        dados = self.projeto.to_dict()
-        self.assertEqual(dados["format"], FORMAT)
-        self.assertEqual(dados["active"], "principal")
-        self.assertIn("saved", dados)
-        self.assertIn("principal", dados["branches"])
+        data = self.project.to_dict()
+        self.assertEqual(data["format"], FORMAT)
+        self.assertEqual(data["active"], "principal")
+        self.assertIn("saved", data)
+        self.assertIn("principal", data["branches"])
 
-    def test_salvar_sem_caminho(self) -> None:
+    def test_save_without_a_path(self) -> None:
         with self.assertRaises(ProjectError):
-            self.projeto.save()
+            self.project.save()
 
-    def test_salvar_em_diretorio(self) -> None:
+    def test_save_into_a_directory(self) -> None:
         with self.assertRaises(SourceWriteError):
-            self.projeto.save(self.dir.name)
+            self.project.save(self.dir.name)
 
-    def test_carregar_inexistente(self) -> None:
+    def test_load_a_nonexistent_file(self) -> None:
         with self.assertRaises(SourceNotFoundError):
-            Project.load(self.caminho("nada.asmproj"))
+            Project.load(self.path("nothing.asmproj"))
 
-    def test_carregar_json_invalido(self) -> None:
-        caminho = self.caminho("ruim.asmproj")
-        with open(caminho, "w", encoding="utf-8") as arquivo:
-            arquivo.write("{nao e json}")
+    def test_load_invalid_json(self) -> None:
+        path = self.path("bad.asmproj")
+        with open(path, "w", encoding="utf-8") as file:
+            file.write("{not json}")
         with self.assertRaises(ProjectFormatError):
-            Project.load(caminho)
+            Project.load(path)
 
-    def test_carregar_lista_em_vez_de_objeto(self) -> None:
-        caminho = self.caminho("lista.asmproj")
-        with open(caminho, "w", encoding="utf-8") as arquivo:
-            json.dump([1, 2], arquivo)
+    def test_load_a_list_instead_of_an_object(self) -> None:
+        path = self.path("list.asmproj")
+        with open(path, "w", encoding="utf-8") as file:
+            json.dump([1, 2], file)
         with self.assertRaises(ProjectFormatError):
-            Project.load(caminho)
+            Project.load(path)
 
-    def test_carregar_formato_de_outro_programa(self) -> None:
-        caminho = self.caminho("outro.asmproj")
-        with open(caminho, "w", encoding="utf-8") as arquivo:
-            json.dump({"format": "outra-ferramenta/9", "branches": {}}, arquivo)
+    def test_load_a_format_from_another_program(self) -> None:
+        path = self.path("other.asmproj")
+        with open(path, "w", encoding="utf-8") as file:
+            json.dump({"format": "other-tool/9", "branches": {}}, file)
         with self.assertRaises(ProjectFormatError):
-            Project.load(caminho)
+            Project.load(path)
 
-    def test_carregar_branch_que_nao_e_objeto(self) -> None:
-        caminho = self.caminho("estranho.asmproj")
-        with open(caminho, "w", encoding="utf-8") as arquivo:
-            json.dump({"format": FORMAT, "branches": {"a": 3}}, arquivo)
+    def test_load_a_branch_that_is_not_an_object(self) -> None:
+        path = self.path("strange.asmproj")
+        with open(path, "w", encoding="utf-8") as file:
+            json.dump({"format": FORMAT, "branches": {"a": 3}}, file)
         with self.assertRaises(ProjectFormatError):
-            Project.load(caminho)
+            Project.load(path)
 
-    def test_carregar_sem_branches_cria_principal(self) -> None:
-        caminho = self.caminho("vazio.asmproj")
-        with open(caminho, "w", encoding="utf-8") as arquivo:
-            json.dump({"name": "vazio", "branches": {}}, arquivo)
-        projeto = Project.load(caminho)
-        self.assertEqual(list(projeto.branches), ["principal"])
-        self.assertFalse(projeto.dirty)
+    def test_load_without_branches_creates_the_principal_one(self) -> None:
+        path = self.path("empty.asmproj")
+        with open(path, "w", encoding="utf-8") as file:
+            json.dump({"name": "empty", "branches": {}}, file)
+        project = Project.load(path)
+        self.assertEqual(list(project.branches), ["principal"])
+        self.assertFalse(project.dirty)
 
-    def test_branch_ativa_invalida_no_arquivo(self) -> None:
-        caminho = self.caminho("ativo.asmproj")
-        with open(caminho, "w", encoding="utf-8") as arquivo:
-            json.dump({"active": "sumiu", "branches": {"principal": {"code": "nop"}}}, arquivo)
-        self.assertEqual(Project.load(caminho).active, "principal")
+    def test_invalid_active_branch_in_the_file(self) -> None:
+        path = self.path("active.asmproj")
+        with open(path, "w", encoding="utf-8") as file:
+            json.dump({"active": "vanished", "branches": {"principal": {"code": "nop"}}}, file)
+        self.assertEqual(Project.load(path).active, "principal")
 
-    def test_importar_asm(self) -> None:
-        caminho = self.caminho("fonte.asm")
-        with open(caminho, "w", encoding="utf-8") as arquivo:
-            arquivo.write(HELLO)
-        projeto = Project.from_asm_file(caminho)
-        self.assertEqual(projeto.name, "fonte")
-        self.assertEqual(projeto.code, HELLO)
+    def test_import_asm(self) -> None:
+        path = self.path("source.asm")
+        with open(path, "w", encoding="utf-8") as file:
+            file.write(HELLO)
+        project = Project.from_asm_file(path)
+        self.assertEqual(project.name, "source")
+        self.assertEqual(project.code, HELLO)
 
-    def test_exportar_para_caminho_invalido(self) -> None:
+    def test_export_to_an_invalid_path(self) -> None:
         with self.assertRaises(SourceWriteError):
-            self.projeto.export_asm(self.dir.name)
+            self.project.export_asm(self.dir.name)
 
-    def test_exportar_e_reimportar(self) -> None:
-        destino = self.caminho("saida.asm")
-        self.projeto.export_asm(destino)
-        with open(destino, encoding="utf-8") as arquivo:
-            self.assertEqual(arquivo.read(), HELLO)
+    def test_export_and_reimport(self) -> None:
+        destination = self.path("output.asm")
+        self.project.export_asm(destination)
+        with open(destination, encoding="utf-8") as file:
+            self.assertEqual(file.read(), HELLO)
 
 
-class TestMarcas(BaseProjeto):
-    """Anotações, breakpoints e a marca de alteração."""
+class TestMarks(BaseProject):
+    """Notes, breakpoints and the change mark."""
 
-    def test_anotacao_vazia_remove(self) -> None:
-        self.projeto.set_note(2, "algo")
-        self.projeto.set_note(2, "   ")
-        self.assertEqual(self.projeto.note(2), "")
+    def test_empty_note_removes_it(self) -> None:
+        self.project.set_note(2, "something")
+        self.project.set_note(2, "   ")
+        self.assertEqual(self.project.note(2), "")
 
-    def test_anotacao_apara_espacos(self) -> None:
-        self.projeto.set_note(2, "  olha isto  ")
-        self.assertEqual(self.projeto.note(2), "olha isto")
+    def test_note_is_trimmed(self) -> None:
+        self.project.set_note(2, "  look at this  ")
+        self.assertEqual(self.project.note(2), "look at this")
 
-    def test_breakpoints_ordenados(self) -> None:
-        self.projeto.toggle_breakpoint(9)
-        self.projeto.toggle_breakpoint(3)
-        self.assertEqual(self.projeto.branch.breakpoints, [3, 9])
+    def test_breakpoints_are_sorted(self) -> None:
+        self.project.toggle_breakpoint(9)
+        self.project.toggle_breakpoint(3)
+        self.assertEqual(self.project.branch.breakpoints, [3, 9])
 
-    def test_dirty_ao_anotar_e_ao_mexer_em_breakpoint(self) -> None:
-        self.projeto.dirty = False
-        self.projeto.set_note(1, "x")
-        self.assertTrue(self.projeto.dirty)
-        self.projeto.dirty = False
-        self.projeto.toggle_breakpoint(1)
-        self.assertTrue(self.projeto.dirty)
+    def test_dirty_on_note_and_on_breakpoint(self) -> None:
+        self.project.dirty = False
+        self.project.set_note(1, "x")
+        self.assertTrue(self.project.dirty)
+        self.project.dirty = False
+        self.project.toggle_breakpoint(1)
+        self.assertTrue(self.project.dirty)
 
-    def test_set_code_igual_nao_suja(self) -> None:
-        self.projeto.set_code(HELLO)
-        self.assertFalse(self.projeto.dirty)
+    def test_same_code_does_not_make_it_dirty(self) -> None:
+        self.project.set_code(HELLO)
+        self.assertFalse(self.project.dirty)
 
-    def test_salvar_marca_limpo_e_renomeia(self) -> None:
-        self.projeto.set_code("nop")
-        caminho = self.projeto.save(self.caminho("meu.asmproj"))
-        self.assertEqual(caminho, self.caminho("meu.asmproj"))
-        self.assertFalse(self.projeto.dirty)
-        self.assertEqual(self.projeto.name, "meu")
+    def test_saving_marks_it_clean_and_renames_it(self) -> None:
+        self.project.set_code("nop")
+        path = self.project.save(self.path("mine.asmproj"))
+        self.assertEqual(path, self.path("mine.asmproj"))
+        self.assertFalse(self.project.dirty)
+        self.assertEqual(self.project.name, "mine")
 
 
 if __name__ == "__main__":

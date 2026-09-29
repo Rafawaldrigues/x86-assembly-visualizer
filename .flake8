@@ -1,9 +1,9 @@
-# Configuração do flake8.
+# flake8 configuration.
 #
-# O black cuida da formatação (veja [tool.black] no pyproject.toml) e o flake8
-# cuida do resto: nomes, imports, complexidade e linhas longas. As duas
-# ferramentas concordam em 100 colunas, e E203/W503 são ignorados porque o
-# próprio black produz essas duas formas.
+# black handles formatting (see [tool.black] in pyproject.toml) and flake8
+# handles the rest: names, imports, complexity and long lines. Both tools agree
+# on 100 columns, and E203/W503 are ignored because black itself produces those
+# two shapes.
 [flake8]
 max-line-length = 100
 extend-ignore = E203, W503
@@ -15,8 +15,8 @@ exclude =
     build,
     dist,
     *.egg-info
-# A máquina virtual e o analisador são tabelas de despacho longas (um if/elif por
-# instrução), então a complexidade ciclomática delas é alta por natureza e está
-# coberta por testes; o limite aqui serve para pegar função nova que cresça sem
-# necessidade. O `Machine.step`, que é a maior delas, traz um noqa explícito.
+# The virtual machine and the analyzer are long dispatch tables (one if/elif per
+# instruction), so their cyclomatic complexity is high by nature and is covered
+# by tests; the limit here is there to catch a new function that grows without
+# need. `Machine.step`, the largest of them, carries an explicit noqa.
 max-complexity = 45

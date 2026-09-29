@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-"""Grava os exemplos embutidos como arquivos ``.asm`` de verdade.
+"""Writes the built-in examples as real ``.asm`` files.
 
-O acervo de exemplos vive em :mod:`asmx.examples` para a interface e a linha de
-comando abrirem sem tocar no disco. Este utilitário materializa os mesmos
-textos em ``examples/*.asm``, para quem quiser montar com ``nasm``/``ld`` de
-verdade ou abrir no editor sem passar pelo ASM X.
+The example collection lives in :mod:`asmx.examples` so the interface and the
+command line can open it without touching the disk. This utility materializes the same
+texts in ``examples/*.asm``, for whoever wants to assemble with real
+``nasm``/``ld`` or open them in an editor without going through ASM X.
 
-O conteúdo gravado é byte a byte o mesmo de :data:`asmx.examples.EXAMPLES`
-(mais a quebra de linha final), então existe um teste que compara os dois e
-acusa quando alguém edita um lado só.
+The content written is byte for byte the same as :data:`asmx.examples.EXAMPLES`
+(plus the final newline), so there is a test that compares both and complains
+when someone edits only one side.
 
 Usage:
-    python3 tools/export_examples.py [DIRETÓRIO]
-    python3 tools/export_examples.py --check      # só confere, não grava
+    python3 tools/export_examples.py [DIRECTORY]
+    python3 tools/export_examples.py --check      # check only, does not write
 
 Exit codes:
-    0  exemplos gravados (ou conferidos) com sucesso
-    1  divergência encontrada no modo ``--check``
+    0  examples written (or checked) successfully
+    1  divergence found in ``--check`` mode
 """
 
 from __future__ import annotations
@@ -28,20 +28,20 @@ from typing import List
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RAIZ)
 
-from asmx.examples import EXAMPLES, render  # noqa: E402  (o sys.path vem antes)
+from asmx.examples import EXAMPLES, render  # noqa: E402  (sys.path comes first)
 
-#: Diretório padrão de saída, relativo à raiz do projeto.
+#: Default output directory, relative to the project root.
 DESTINO_PADRAO = os.path.join(RAIZ, "examples")
 
 
 def export(destino: str = DESTINO_PADRAO) -> List[str]:
-    """Grava todos os exemplos como ``.asm``.
+    """Writes every example as ``.asm``.
 
     Args:
-        destino: Diretório de saída (criado se não existir).
+        destino: Output directory (created when it does not exist).
 
     Returns:
-        Lista dos caminhos gravados, em ordem alfabética.
+        List of the written paths, in alphabetical order.
     """
     os.makedirs(destino, exist_ok=True)
     caminhos = []
@@ -54,40 +54,40 @@ def export(destino: str = DESTINO_PADRAO) -> List[str]:
 
 
 def check(destino: str = DESTINO_PADRAO) -> List[str]:
-    """Compara os arquivos em disco com os exemplos embutidos.
+    """Compares the files on disk with the built-in examples.
 
     Args:
-        destino: Diretório onde os arquivos deveriam estar.
+        destino: Directory where the files should be.
 
     Returns:
-        Lista de problemas encontrados (vazia quando está tudo igual).
+        List of problems found (empty when everything matches).
     """
     problemas = []
     for nome in sorted(EXAMPLES):
         caminho = os.path.join(destino, "%s.asm" % nome)
         if not os.path.exists(caminho):
-            problemas.append("falta o arquivo %s" % caminho)
+            problemas.append("missing file %s" % caminho)
             continue
         with open(caminho, encoding="utf-8") as arquivo:
             atual = arquivo.read()
         if atual != render(nome):
-            problemas.append("%s está diferente de asmx/examples.py" % caminho)
+            problemas.append("%s differs from asmx/examples.py" % caminho)
     extras = {f for f in os.listdir(destino) if f.endswith(".asm")} - {
         "%s.asm" % n for n in EXAMPLES
     }
     for extra in sorted(extras):
-        problemas.append("arquivo sem exemplo correspondente: %s" % extra)
+        problemas.append("file without a matching example: %s" % extra)
     return problemas
 
 
 def main(argv: List[str]) -> int:
-    """Ponto de entrada do utilitário.
+    """Entry point of the utility.
 
     Args:
-        argv: Argumentos sem o nome do programa.
+        argv: Arguments without the program name.
 
     Returns:
-        Código de saída descrito no topo do módulo.
+        Exit code described at the top of the module.
     """
     conferir = "--check" in argv
     restantes = [a for a in argv if not a.startswith("-")]
@@ -99,11 +99,11 @@ def main(argv: List[str]) -> int:
             print(problema)
         if problemas:
             return 1
-        print("os %d exemplos em %s estão iguais aos do pacote" % (len(EXAMPLES), destino))
+        print("the %d examples in %s match the package" % (len(EXAMPLES), destino))
         return 0
 
     caminhos = export(destino)
-    print("gravados %d exemplos em %s" % (len(caminhos), destino))
+    print("%d examples written to %s" % (len(caminhos), destino))
     return 0
 
 

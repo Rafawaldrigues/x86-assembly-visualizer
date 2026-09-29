@@ -1,9 +1,9 @@
-"""Testes dos comportamentos: categorias, confiança, ATT&CK e honestidade.
+"""Tests of the behaviors: categories, confidence, ATT&CK and honesty.
 
-Cada categoria tem um trecho de assembly escrito à mão, os exemplos prontos são
-conferidos com o resultado que o relatório espera e as regras de confiança,
-serialização, técnicas e resumo entram como casos próprios. Nenhum teste
-escreve número de syscall à mão: tudo sai de :data:`asmx.isa.LINUX_SYSCALLS`.
+Every category has a hand-written piece of assembly, the ready examples are
+checked against the result the report expects and the confidence, serialization,
+technique and summary rules enter as cases of their own. No test writes a
+syscall number by hand: everything comes from :data:`asmx.isa.LINUX_SYSCALLS`.
 """
 
 import types
@@ -28,156 +28,156 @@ from asmx.examples import EXAMPLES
 from asmx.isa import LINUX_SYSCALLS
 from asmx.linter import Problem, validate
 
-#: Nome da syscall -> número, lido do acervo.
-NUMERO_DA_SYSCALL: Dict[str, int] = {
-    dados[0]: numero for numero, dados in LINUX_SYSCALLS.items() if dados
+#: Syscall name -> number, read from the collection.
+SYSCALL_NUMBER: Dict[str, int] = {
+    data[0]: number for number, data in LINUX_SYSCALLS.items() if data
 }
 
-#: Categorias exigidas e a gravidade de cada uma.
-CATEGORIAS_ESPERADAS: Dict[str, str] = {
-    "console-io": "baixo",
-    "network": "alto",
-    "filesystem": "medio",
-    "process": "alto",
-    "memory": "medio",
-    "anti-analysis": "alto",
-    "crypto": "medio",
-    "persistence": "alto",
-    "environment": "baixo",
-    "data-processing": "baixo",
-    "string-handling": "baixo",
-    "self-modifying": "alto",
+#: Required categories and the severity of each one.
+EXPECTED_CATEGORIES: Dict[str, str] = {
+    "console-io": "low",
+    "network": "high",
+    "filesystem": "medium",
+    "process": "high",
+    "memory": "medium",
+    "anti-analysis": "high",
+    "crypto": "medium",
+    "persistence": "high",
+    "environment": "low",
+    "data-processing": "low",
+    "string-handling": "low",
+    "self-modifying": "high",
 }
 
-#: Exemplos prontos que o relatório mostra e que precisam continuar previsíveis.
-EXEMPLOS_CONFERIDOS: Sequence[str] = (
+#: Ready examples the report shows and that must stay predictable.
+CHECKED_EXAMPLES: Sequence[str] = (
     "linux-hello",
     "linux-loop",
-    "linux-funcao",
+    "linux-function",
     "windows-hello",
     "gcc-att",
     "bubble",
-    "quebrado",
-    "escala",
-    "suspeito",
+    "broken",
+    "overflow",
+    "suspicious",
 )
 
-#: Táticas em pt-BR aceitas nas fichas do ATT&CK.
-TATICAS: Set[str] = {
-    "Execução",
-    "Comando e Controle",
-    "Descoberta",
-    "Evasão de Defesa",
-    "Persistência",
-    "Impacto",
-    "Coleta",
-    "Exfiltração",
+#: Tactics accepted in the ATT&CK records.
+TACTICS: Set[str] = {
+    "Execution",
+    "Command and Control",
+    "Discovery",
+    "Defense Evasion",
+    "Persistence",
+    "Impact",
+    "Collection",
+    "Exfiltration",
 }
 
 
-def fonte_syscalls(*nomes: str) -> str:
-    """Monta um fonte com uma syscall por nome, usando os números do acervo.
+def syscall_source(*names: str) -> str:
+    """Builds a source with one syscall per name, using the collection numbers.
 
     Args:
-        *nomes: Nomes das syscalls, como estão em ``LINUX_SYSCALLS``.
+        *names: Syscall names, as they are in ``LINUX_SYSCALLS``.
 
     Returns:
-        O código assembly pronto para :func:`asmx.analyzer.analyze`.
+        The assembly code ready for :func:`asmx.analyzer.analyze`.
     """
-    linhas = ["section .text", "_start:"]
-    for nome in nomes:
-        linhas.append("    mov rax, %d" % NUMERO_DA_SYSCALL[nome])
-        linhas.append("    syscall")
-    linhas.append("    ret")
-    return "\n".join(linhas)
+    lines = ["section .text", "_start:"]
+    for name in names:
+        lines.append("    mov rax, %d" % SYSCALL_NUMBER[name])
+        lines.append("    syscall")
+    lines.append("    ret")
+    return "\n".join(lines)
 
 
-def comportamentos(codigo: str, com_problemas: bool = True) -> List[Behavior]:
-    """Classifica um fonte e devolve os comportamentos encontrados.
+def behaviors_of(code: str, with_problems: bool = True) -> List[Behavior]:
+    """Classifies a source and returns the behaviors found.
 
     Args:
-        codigo: Fonte assembly.
-        com_problemas: Se deve passar os problemas do validador (``False``
-            passa uma lista vazia, para medir só os sinais do próprio fonte).
+        code: Assembly source.
+        with_problems: Whether to pass the validator issues (``False`` passes an
+            empty list, to measure only the signals of the source itself).
 
     Returns:
-        A lista devolvida por :func:`asmx.behavior.classify`.
+        The list returned by :func:`asmx.behavior.classify`.
     """
-    analise = analyze(codigo)
-    problemas = validate(analise) if com_problemas else []
-    return classify(analise, problemas)
+    analysis = analyze(code)
+    problems = validate(analysis) if with_problems else []
+    return classify(analysis, problems)
 
 
-def categorias(codigo: str, com_problemas: bool = True) -> Set[str]:
-    """Devolve o conjunto de categorias acionadas por um fonte.
+def categories_of(code: str, with_problems: bool = True) -> Set[str]:
+    """Returns the set of categories triggered by a source.
 
     Args:
-        codigo: Fonte assembly.
-        com_problemas: Repassado para :func:`comportamentos`.
+        code: Assembly source.
+        with_problems: Forwarded to :func:`behaviors_of`.
 
     Returns:
-        Conjunto com as chaves das categorias encontradas.
+        Set with the keys of the categories found.
     """
-    return {b.category for b in comportamentos(codigo, com_problemas)}
+    return {b.category for b in behaviors_of(code, with_problems)}
 
 
-def achar(codigo: str, categoria: str) -> Optional[Behavior]:
-    """Procura o comportamento de uma categoria num fonte.
+def find_behavior(code: str, category: str) -> Optional[Behavior]:
+    """Looks for the behavior of one category in a source.
 
     Args:
-        codigo: Fonte assembly.
-        categoria: Chave procurada.
+        code: Assembly source.
+        category: Key being searched for.
 
     Returns:
-        O :class:`~asmx.behavior.Behavior` correspondente, ou ``None``.
+        The matching :class:`~asmx.behavior.Behavior`, or ``None``.
     """
-    for achado in comportamentos(codigo):
-        if achado.category == categoria:
-            return achado
+    for found in behaviors_of(code):
+        if found.category == category:
+            return found
     return None
 
 
-def fabrica(mitre: Sequence[str] = ()) -> Behavior:
-    """Monta um comportamento à mão, para testar serialização e técnicas.
+def make_behavior(mitre: Sequence[str] = ()) -> Behavior:
+    """Builds a behavior by hand, to test serialization and techniques.
 
     Args:
-        mitre: Identificadores de técnica que o comportamento cita.
+        mitre: Technique identifiers the behavior cites.
 
     Returns:
-        Um :class:`~asmx.behavior.Behavior` de rede, com uma evidência.
+        A network :class:`~asmx.behavior.Behavior`, with one evidence item.
     """
     return Behavior(
         category="network",
-        label="Comunicação de rede",
-        description="teste",
-        severity="alto",
+        label="Network communication",
+        description="test",
+        severity="high",
         confidence=60,
         lines=(1,),
-        evidence=("linha 1: syscall socket (cria socket)",),
+        evidence=("line 1: syscall socket (creates a socket)",),
         mitre=tuple(mitre),
     )
 
 
-class TestCatalogo(unittest.TestCase):
-    """As tabelas públicas precisam bater com o que o relatório espera."""
+class TestCatalog(unittest.TestCase):
+    """The public tables must match what the report expects."""
 
-    def test_categorias_exigidas(self) -> None:
-        self.assertEqual(set(BEHAVIOR_CATEGORIES), set(CATEGORIAS_ESPERADAS))
+    def test_required_categories(self) -> None:
+        self.assertEqual(set(BEHAVIOR_CATEGORIES), set(EXPECTED_CATEGORIES))
 
-    def test_gravidade_de_cada_categoria(self) -> None:
-        for chave, gravidade in CATEGORIAS_ESPERADAS.items():
-            with self.subTest(categoria=chave):
-                self.assertEqual(BEHAVIOR_CATEGORIES[chave]["severity"], gravidade)
+    def test_severity_of_each_category(self) -> None:
+        for key, severity in EXPECTED_CATEGORIES.items():
+            with self.subTest(category=key):
+                self.assertEqual(BEHAVIOR_CATEGORIES[key]["severity"], severity)
 
-    def test_categorias_tem_rotulo_e_descricao(self) -> None:
-        for chave, ficha in BEHAVIOR_CATEGORIES.items():
-            with self.subTest(categoria=chave):
-                self.assertEqual(set(ficha), {"label", "description", "severity"})
-                self.assertTrue(ficha["label"].strip())
-                self.assertTrue(ficha["description"].strip())
+    def test_categories_have_label_and_description(self) -> None:
+        for key, entry in BEHAVIOR_CATEGORIES.items():
+            with self.subTest(category=key):
+                self.assertEqual(set(entry), {"label", "description", "severity"})
+                self.assertTrue(entry["label"].strip())
+                self.assertTrue(entry["description"].strip())
 
-    def test_mitre_tem_as_tecnicas_do_projeto(self) -> None:
-        esperadas = {
+    def test_mitre_has_the_project_techniques(self) -> None:
+        expected = {
             "T1005",
             "T1012",
             "T1027",
@@ -196,66 +196,68 @@ class TestCatalogo(unittest.TestCase):
             "T1547",
             "T1622",
         }
-        self.assertEqual(set(MITRE_TECHNIQUES), esperadas)
+        self.assertEqual(set(MITRE_TECHNIQUES), expected)
 
-    def test_mitre_tem_url_e_tatica_validas(self) -> None:
-        for tecnica, ficha in MITRE_TECHNIQUES.items():
-            with self.subTest(tecnica=tecnica):
-                self.assertEqual(ficha["url"], "https://attack.mitre.org/techniques/%s/" % tecnica)
-                self.assertIn(ficha["tactic"], TATICAS)
-                self.assertTrue(ficha["name"].strip())
+    def test_mitre_has_valid_url_and_tactic(self) -> None:
+        for technique, entry in MITRE_TECHNIQUES.items():
+            with self.subTest(technique=technique):
+                self.assertEqual(
+                    entry["url"], "https://attack.mitre.org/techniques/%s/" % technique
+                )
+                self.assertIn(entry["tactic"], TACTICS)
+                self.assertTrue(entry["name"].strip())
 
-    def test_toda_descricao_de_tecnica_fala_em_indicio(self) -> None:
-        for tecnica, ficha in MITRE_TECHNIQUES.items():
-            with self.subTest(tecnica=tecnica):
-                self.assertIn("Indício", ficha["description"])
-                self.assertIn("não prova", ficha["description"])
+    def test_every_technique_description_mentions_a_hint(self) -> None:
+        for technique, entry in MITRE_TECHNIQUES.items():
+            with self.subTest(technique=technique):
+                self.assertIn("A hint", entry["description"])
+                self.assertIn("not proof", entry["description"])
 
-    def test_mitre_dos_comportamentos_existe_no_catalogo(self) -> None:
-        for nome in EXEMPLOS_CONFERIDOS:
-            with self.subTest(exemplo=nome):
-                for achado in comportamentos(EXAMPLES[nome]["code"]):
-                    self.assertTrue(set(achado.mitre) <= set(MITRE_TECHNIQUES))
+    def test_behavior_mitre_exists_in_the_catalog(self) -> None:
+        for name in CHECKED_EXAMPLES:
+            with self.subTest(example=name):
+                for found in behaviors_of(EXAMPLES[name]["code"]):
+                    self.assertTrue(set(found.mitre) <= set(MITRE_TECHNIQUES))
 
-    def test_todas_as_categorias_sao_acionaveis(self) -> None:
-        casos = {
-            "console-io": fonte_syscalls("write"),
-            "network": fonte_syscalls("socket"),
-            "filesystem": fonte_syscalls("open"),
-            "process": fonte_syscalls("execve"),
+    def test_all_categories_are_reachable(self) -> None:
+        cases = {
+            "console-io": syscall_source("write"),
+            "network": syscall_source("socket"),
+            "filesystem": syscall_source("open"),
+            "process": syscall_source("execve"),
             "memory": "section .text\nmain:\n    mov rax, rdi\n    mov [rax], rbx\n    ret\n",
             "anti-analysis": "section .text\nmain:\n    int 3\n    ret\n",
-            "crypto": fonte_syscalls("getrandom"),
+            "crypto": syscall_source("getrandom"),
             "persistence": 'section .data\n    c db "RunOnce", 0\nsection .text\nmain:\n    ret\n',
-            "environment": fonte_syscalls("getpid"),
-            "data-processing": "section .text\nmain:\n.laco:\n    add rax, 1\n    jmp .laco\n",
+            "environment": syscall_source("getpid"),
+            "data-processing": "section .text\nmain:\n.loop:\n    add rax, 1\n    jmp .loop\n",
             "string-handling": "section .text\nmain:\n    rep movsb\n    ret\n",
             "self-modifying": (
-                "section .text\nalvo:\n    nop\n_start:\n    mov byte [alvo], 1\n    ret\n"
+                "section .text\ntarget:\n    nop\n_start:\n    mov byte [target], 1\n    ret\n"
             ),
         }
-        self.assertEqual(set(casos), set(BEHAVIOR_CATEGORIES))
-        for categoria, codigo in casos.items():
-            with self.subTest(categoria=categoria):
-                self.assertIn(categoria, categorias(codigo))
+        self.assertEqual(set(cases), set(BEHAVIOR_CATEGORIES))
+        for category, code in cases.items():
+            with self.subTest(category=category):
+                self.assertIn(category, categories_of(code))
 
 
-class TestConsoleERede(unittest.TestCase):
-    """Console e rede: os sinais mais comuns num programa de exemplo."""
+class TestConsoleAndNetwork(unittest.TestCase):
+    """Console and network: the most common signals in a sample program."""
 
-    def test_console_por_syscall_write(self) -> None:
-        achado = achar(fonte_syscalls("write"), "console-io")
-        assert achado is not None
-        self.assertEqual(achado.severity, "baixo")
-        self.assertIn("syscall write", achado.evidence[0])
+    def test_console_by_write_syscall(self) -> None:
+        found = find_behavior(syscall_source("write"), "console-io")
+        assert found is not None
+        self.assertEqual(found.severity, "low")
+        self.assertIn("syscall write", found.evidence[0])
 
-    def test_console_por_syscall_read(self) -> None:
-        achado = achar(fonte_syscalls("read"), "console-io")
-        assert achado is not None
-        self.assertIn("syscall read", achado.evidence[0])
+    def test_console_by_read_syscall(self) -> None:
+        found = find_behavior(syscall_source("read"), "console-io")
+        assert found is not None
+        self.assertIn("syscall read", found.evidence[0])
 
-    def test_console_pelas_apis_do_windows(self) -> None:
-        codigo = (
+    def test_console_by_windows_apis(self) -> None:
+        code = (
             "extern GetStdHandle\n"
             "extern WriteConsoleA\n"
             "section .text\n"
@@ -266,319 +268,319 @@ class TestConsoleERede(unittest.TestCase):
             "    mov rcx, rax\n"
             "    mov rdx, msg\n"
             "    mov r8, 5\n"
-            "    mov r9, escritos\n"
+            "    mov r9, written\n"
             "    call WriteConsoleA\n"
             "    ret\n"
         )
-        achado = achar(codigo, "console-io")
-        assert achado is not None
-        self.assertEqual(len(achado.evidence), 2)
-        self.assertIn("GetStdHandle", achado.evidence[0])
+        found = find_behavior(code, "console-io")
+        assert found is not None
+        self.assertEqual(len(found.evidence), 2)
+        self.assertIn("GetStdHandle", found.evidence[0])
 
-    def test_rede_por_socket(self) -> None:
-        achado = achar(fonte_syscalls("socket"), "network")
-        assert achado is not None
-        self.assertEqual(achado.severity, "alto")
-        self.assertIn("T1095", achado.mitre)
+    def test_network_by_socket(self) -> None:
+        found = find_behavior(syscall_source("socket"), "network")
+        assert found is not None
+        self.assertEqual(found.severity, "high")
+        self.assertIn("T1095", found.mitre)
 
-    def test_rede_por_url_em_string(self) -> None:
-        codigo = (
+    def test_network_by_url_in_string(self) -> None:
+        code = (
             "section .data\n"
-            '    url db "https://coleta.exemplo.com/beacon", 0\n'
+            '    url db "https://collect.example.com/beacon", 0\n'
             "section .text\n"
             "main:\n"
             "    ret\n"
         )
-        achado = achar(codigo, "network")
-        assert achado is not None
-        self.assertIn("https://coleta.exemplo.com/beacon", achado.evidence[0])
-        self.assertIn("T1071", achado.mitre)
+        found = find_behavior(code, "network")
+        assert found is not None
+        self.assertIn("https://collect.example.com/beacon", found.evidence[0])
+        self.assertIn("T1071", found.mitre)
 
-    def test_rede_por_ip_em_string(self) -> None:
-        codigo = (
-            "section .data\n" '    ip db "10.0.0.7", 0\n' "section .text\n" "main:\n" "    ret\n"
-        )
-        self.assertIn("network", categorias(codigo))
+    def test_network_by_ip_in_string(self) -> None:
+        code = "section .data\n" '    ip db "10.0.0.7", 0\n' "section .text\n" "main:\n" "    ret\n"
+        self.assertIn("network", categories_of(code))
 
-    def test_rede_por_wsastartup(self) -> None:
-        codigo = "extern WSAStartup\nsection .text\nmain:\n    call WSAStartup\n    ret\n"
-        achado = achar(codigo, "network")
-        assert achado is not None
-        self.assertIn("WSAStartup", achado.evidence[0])
-        self.assertIn("T1095", achado.mitre)
+    def test_network_by_wsastartup(self) -> None:
+        code = "extern WSAStartup\nsection .text\nmain:\n    call WSAStartup\n    ret\n"
+        found = find_behavior(code, "network")
+        assert found is not None
+        self.assertIn("WSAStartup", found.evidence[0])
+        self.assertIn("T1095", found.mitre)
 
-    def test_rede_por_download_de_url(self) -> None:
-        codigo = (
+    def test_network_by_url_download(self) -> None:
+        code = (
             "extern URLDownloadToFileA\n"
             "section .text\n"
             "main:\n"
             "    call URLDownloadToFileA\n"
             "    ret\n"
         )
-        achado = achar(codigo, "network")
-        assert achado is not None
-        self.assertIn("T1105", achado.mitre)
+        found = find_behavior(code, "network")
+        assert found is not None
+        self.assertIn("T1105", found.mitre)
 
-    def test_linux_hello_nao_tem_rede(self) -> None:
-        self.assertNotIn("network", categorias(EXAMPLES["linux-hello"]["code"]))
+    def test_linux_hello_has_no_network(self) -> None:
+        self.assertNotIn("network", categories_of(EXAMPLES["linux-hello"]["code"]))
 
-    def test_arquivos_por_syscall_open(self) -> None:
-        achado = achar(fonte_syscalls("open"), "filesystem")
-        assert achado is not None
-        self.assertEqual(achado.severity, "medio")
-        self.assertIn("T1005", achado.mitre)
+    def test_files_by_open_syscall(self) -> None:
+        found = find_behavior(syscall_source("open"), "filesystem")
+        assert found is not None
+        self.assertEqual(found.severity, "medium")
+        self.assertIn("T1005", found.mitre)
 
-    def test_arquivos_por_caminho_unix(self) -> None:
-        codigo = (
+    def test_files_by_unix_path(self) -> None:
+        code = (
             "section .data\n"
-            '    caminho db "/etc/passwd", 0\n'
+            '    path db "/etc/passwd", 0\n'
             "section .text\n"
             "main:\n"
             "    ret\n"
         )
-        achado = achar(codigo, "filesystem")
-        assert achado is not None
-        self.assertIn("/etc/", achado.evidence[0])
-        self.assertIn("T1083", achado.mitre)
+        found = find_behavior(code, "filesystem")
+        assert found is not None
+        self.assertIn("/etc/", found.evidence[0])
+        self.assertIn("T1083", found.mitre)
 
-    def test_arquivos_por_caminho_windows(self) -> None:
-        codigo = (
+    def test_files_by_windows_path(self) -> None:
+        code = (
             "section .data\n"
-            '    caminho db "C:\\Users\\Public\\dados.txt", 0\n'
+            '    path db "C:\\Users\\Public\\data.txt", 0\n'
             "section .text\n"
             "main:\n"
             "    ret\n"
         )
-        self.assertIn("filesystem", categorias(codigo))
+        self.assertIn("filesystem", categories_of(code))
 
-    def test_arquivos_pela_api_createfile(self) -> None:
-        codigo = "extern CreateFileA\nsection .text\nmain:\n    call CreateFileA\n    ret\n"
-        achado = achar(codigo, "filesystem")
-        assert achado is not None
-        self.assertIn("CreateFileA", achado.evidence[0])
+    def test_files_by_createfile_api(self) -> None:
+        code = "extern CreateFileA\nsection .text\nmain:\n    call CreateFileA\n    ret\n"
+        found = find_behavior(code, "filesystem")
+        assert found is not None
+        self.assertIn("CreateFileA", found.evidence[0])
 
 
-class TestProcessoEMemoria(unittest.TestCase):
-    """Processo e memória, incluindo o alarme falso que foi corrigido."""
+class TestProcessAndMemory(unittest.TestCase):
+    """Process and memory, including the false alarm that was fixed."""
 
-    def test_processo_por_execve(self) -> None:
-        achado = achar(fonte_syscalls("execve"), "process")
-        assert achado is not None
-        self.assertEqual(achado.severity, "alto")
-        self.assertIn("T1059", achado.mitre)
+    def test_process_by_execve(self) -> None:
+        found = find_behavior(syscall_source("execve"), "process")
+        assert found is not None
+        self.assertEqual(found.severity, "high")
+        self.assertIn("T1059", found.mitre)
 
-    def test_processo_por_createprocess(self) -> None:
-        codigo = "extern CreateProcessA\nsection .text\nmain:\n    call CreateProcessA\n    ret\n"
-        achado = achar(codigo, "process")
-        assert achado is not None
-        self.assertIn("CreateProcessA", achado.evidence[0])
+    def test_process_by_createprocess(self) -> None:
+        code = "extern CreateProcessA\nsection .text\nmain:\n    call CreateProcessA\n    ret\n"
+        found = find_behavior(code, "process")
+        assert found is not None
+        self.assertIn("CreateProcessA", found.evidence[0])
 
-    def test_processo_por_funcao_externa_de_execucao(self) -> None:
-        codigo = "extern system\nsection .text\nmain:\n    call system\n    ret\n"
-        achado = achar(codigo, "process")
-        assert achado is not None
-        self.assertIn("call system", achado.evidence[0])
+    def test_process_by_external_execution_function(self) -> None:
+        code = "extern system\nsection .text\nmain:\n    call system\n    ret\n"
+        found = find_behavior(code, "process")
+        assert found is not None
+        self.assertIn("call system", found.evidence[0])
 
-    def test_encerrar_o_programa_nao_e_processo(self) -> None:
+    def test_ending_the_program_is_not_process(self) -> None:
         exitprocess = (
             "extern ExitProcess\nsection .text\nmain:\n    xor rcx, rcx\n    call ExitProcess\n"
         )
-        self.assertNotIn("process", categorias(exitprocess))
-        self.assertEqual(categorias(exitprocess), set())
-        self.assertNotIn("process", categorias(fonte_syscalls("exit")))
+        self.assertNotIn("process", categories_of(exitprocess))
+        self.assertEqual(categories_of(exitprocess), set())
+        self.assertNotIn("process", categories_of(syscall_source("exit")))
 
-    def test_chamada_indireta_nao_e_funcao_externa(self) -> None:
-        codigo = "section .text\nmain:\n    call [rbx]\n    ret\n"
-        self.assertEqual(categorias(codigo), set())
+    def test_indirect_call_is_not_an_external_function(self) -> None:
+        code = "section .text\nmain:\n    call [rbx]\n    ret\n"
+        self.assertEqual(categories_of(code), set())
 
-    def test_memoria_por_escrita_em_ponteiro(self) -> None:
-        codigo = "section .text\nmain:\n    mov rax, rdi\n    mov [rax], rbx\n    ret\n"
-        achado = achar(codigo, "memory")
-        assert achado is not None
-        self.assertIn("endereço apontado", achado.evidence[0])
+    def test_memory_by_write_through_pointer(self) -> None:
+        code = "section .text\nmain:\n    mov rax, rdi\n    mov [rax], rbx\n    ret\n"
+        found = find_behavior(code, "memory")
+        assert found is not None
+        self.assertIn("address pointed to", found.evidence[0])
 
-    def test_memoria_por_simbolo_nao_declarado(self) -> None:
-        codigo = "section .text\nmain:\n    mov [contador], 1\n    ret\n"
-        achado = achar(codigo, "memory")
-        assert achado is not None
-        self.assertIn("contador", achado.evidence[0])
+    def test_memory_by_undeclared_symbol(self) -> None:
+        code = "section .text\nmain:\n    mov [counter], 1\n    ret\n"
+        found = find_behavior(code, "memory")
+        assert found is not None
+        self.assertIn("counter", found.evidence[0])
 
-    def test_memoria_por_mmap_e_mprotect(self) -> None:
-        achado = achar(fonte_syscalls("mmap", "mprotect"), "memory")
-        assert achado is not None
-        self.assertIn("T1055", achado.mitre)
+    def test_memory_by_mmap_and_mprotect(self) -> None:
+        found = find_behavior(syscall_source("mmap", "mprotect"), "memory")
+        assert found is not None
+        self.assertIn("T1055", found.mitre)
 
-    def test_memoria_por_virtualalloc(self) -> None:
-        codigo = "extern VirtualAlloc\nsection .text\nmain:\n    call VirtualAlloc\n    ret\n"
-        achado = achar(codigo, "memory")
-        assert achado is not None
-        self.assertIn("VirtualAlloc", achado.evidence[0])
+    def test_memory_by_virtualalloc(self) -> None:
+        code = "extern VirtualAlloc\nsection .text\nmain:\n    call VirtualAlloc\n    ret\n"
+        found = find_behavior(code, "memory")
+        assert found is not None
+        self.assertIn("VirtualAlloc", found.evidence[0])
 
-    def test_memoria_nao_dispara_em_variavel_local(self) -> None:
-        codigo = "section .text\nmain:\n    mov [rbp-8], rax\n    mov rax, [rbp-8]\n    ret\n"
-        self.assertNotIn("memory", categorias(codigo))
+    def test_memory_does_not_fire_on_local_variable(self) -> None:
+        code = "section .text\nmain:\n    mov [rbp-8], rax\n    mov rax, [rbp-8]\n    ret\n"
+        self.assertNotIn("memory", categories_of(code))
 
 
-class TestEvasaoCryptoEPersistencia(unittest.TestCase):
-    """Os sinais de gravidade alta e os indícios fracos."""
+class TestEvasionCryptoAndPersistence(unittest.TestCase):
+    """The high severity signals and the weak hints."""
 
-    def test_anti_analysis_por_int3(self) -> None:
-        achado = achar("section .text\nmain:\n    int 3\n    ret\n", "anti-analysis")
-        assert achado is not None
-        self.assertIn("int 3", achado.evidence[0])
-        self.assertIn("T1622", achado.mitre)
+    def test_anti_analysis_by_int3(self) -> None:
+        found = find_behavior("section .text\nmain:\n    int 3\n    ret\n", "anti-analysis")
+        assert found is not None
+        self.assertIn("int 3", found.evidence[0])
+        self.assertIn("T1622", found.mitre)
 
-    def test_anti_analysis_por_cpuid_e_rdtsc(self) -> None:
-        achado = achar("section .text\nmain:\n    cpuid\n    rdtsc\n    ret\n", "anti-analysis")
-        assert achado is not None
-        self.assertEqual(len(achado.evidence), 2)
-        self.assertIn("T1497", achado.mitre)
+    def test_anti_analysis_by_cpuid_and_rdtsc(self) -> None:
+        found = find_behavior(
+            "section .text\nmain:\n    cpuid\n    rdtsc\n    ret\n", "anti-analysis"
+        )
+        assert found is not None
+        self.assertEqual(len(found.evidence), 2)
+        self.assertIn("T1497", found.mitre)
 
-    def test_anti_analysis_por_int3_colado(self) -> None:
-        achado = achar("section .text\nmain:\n    int3\n    ret\n", "anti-analysis")
-        assert achado is not None
-        self.assertIn("int 3", achado.evidence[0])
+    def test_anti_analysis_by_glued_int3(self) -> None:
+        found = find_behavior("section .text\nmain:\n    int3\n    ret\n", "anti-analysis")
+        assert found is not None
+        self.assertIn("int 3", found.evidence[0])
 
-    def test_anti_analysis_por_aviso_sem_instrucao_na_linha(self) -> None:
-        codigo = "section .text\nmain:\n    nop\n"
-        problemas = [Problem(2, "info", "INT001", "falha interna na regra check_x")]
-        achados = classify(analyze(codigo), problemas)
-        categorias_achadas = {b.category for b in achados}
-        self.assertIn("anti-analysis", categorias_achadas)
-        achado = [b for b in achados if b.category == "anti-analysis"][0]
-        self.assertIn("check_x", achado.evidence[0])
-        self.assertLessEqual(achado.confidence, 50)
+    def test_anti_analysis_by_warning_without_instruction_on_the_line(self) -> None:
+        code = "section .text\nmain:\n    nop\n"
+        problems = [Problem(2, "info", "INT001", "internal failure in rule check_x")]
+        found = classify(analyze(code), problems)
+        found_categories = {b.category for b in found}
+        self.assertIn("anti-analysis", found_categories)
+        behavior = [b for b in found if b.category == "anti-analysis"][0]
+        self.assertIn("check_x", behavior.evidence[0])
+        self.assertLessEqual(behavior.confidence, 50)
 
-    def test_anti_analysis_por_ptrace(self) -> None:
-        achado = achar(fonte_syscalls("ptrace"), "anti-analysis")
-        assert achado is not None
-        self.assertIn("syscall ptrace", achado.evidence[0])
-        self.assertIn("T1622", achado.mitre)
+    def test_anti_analysis_by_ptrace(self) -> None:
+        found = find_behavior(syscall_source("ptrace"), "anti-analysis")
+        assert found is not None
+        self.assertIn("syscall ptrace", found.evidence[0])
+        self.assertIn("T1622", found.mitre)
 
-    def test_anti_analysis_por_tempo_em_laco_e_fraco(self) -> None:
-        codigo = "section .text\nmain:\n.laco:\n    mov rax, 201\n    syscall\n    jmp .laco\n"
-        achado = achar(codigo, "anti-analysis")
-        assert achado is not None
-        self.assertLessEqual(achado.confidence, 50)
-        self.assertIn("indício", achado.evidence[0])
+    def test_anti_analysis_by_time_in_loop_is_weak(self) -> None:
+        code = "section .text\nmain:\n.loop:\n    mov rax, 201\n    syscall\n    jmp .loop\n"
+        found = find_behavior(code, "anti-analysis")
+        assert found is not None
+        self.assertLessEqual(found.confidence, 50)
+        self.assertIn("hint", found.evidence[0])
 
-    def test_anti_analysis_com_aviso_de_fluxo_do_validador(self) -> None:
-        codigo = "section .text\nmain:\n.parado:\n    jmp .parado\n"
-        com = categorias(codigo)
-        sem = categorias(codigo, com_problemas=False)
-        self.assertIn("anti-analysis", com)
-        self.assertNotIn("anti-analysis", sem)
+    def test_anti_analysis_with_validator_flow_warning(self) -> None:
+        code = "section .text\nmain:\n.stuck:\n    jmp .stuck\n"
+        with_warning = categories_of(code)
+        without_warning = categories_of(code, with_problems=False)
+        self.assertIn("anti-analysis", with_warning)
+        self.assertNotIn("anti-analysis", without_warning)
 
-    def test_anti_analysis_por_aviso_e_sempre_fraco(self) -> None:
-        codigo = "section .text\nmain:\n.parado:\n    jmp .parado\n"
-        achado = achar(codigo, "anti-analysis")
-        assert achado is not None
-        self.assertLessEqual(achado.confidence, 50)
-        self.assertIn("FLOW002", achado.evidence[0])
+    def test_anti_analysis_by_warning_is_always_weak(self) -> None:
+        code = "section .text\nmain:\n.stuck:\n    jmp .stuck\n"
+        found = find_behavior(code, "anti-analysis")
+        assert found is not None
+        self.assertLessEqual(found.confidence, 50)
+        self.assertIn("FLOW002", found.evidence[0])
 
-    def test_crypto_por_getrandom(self) -> None:
-        achado = achar(fonte_syscalls("getrandom"), "crypto")
-        assert achado is not None
-        self.assertEqual(achado.severity, "medio")
-        self.assertIn("syscall getrandom", achado.evidence[0])
+    def test_crypto_by_getrandom(self) -> None:
+        found = find_behavior(syscall_source("getrandom"), "crypto")
+        assert found is not None
+        self.assertEqual(found.severity, "medium")
+        self.assertIn("syscall getrandom", found.evidence[0])
 
-    def test_crypto_por_laco_de_bits_e_fraco(self) -> None:
-        codigo = (
+    def test_crypto_by_bit_loop_is_weak(self) -> None:
+        code = (
             "section .text\n"
             "main:\n"
-            ".laco:\n"
+            ".loop:\n"
             "    xor rbx, rcx\n"
             "    shl rbx, 3\n"
             "    shr rbx, 1\n"
             "    rol rbx, 2\n"
             "    ror rbx, 5\n"
-            "    jmp .laco\n"
+            "    jmp .loop\n"
         )
-        achado = achar(codigo, "crypto")
-        assert achado is not None
-        self.assertLessEqual(achado.confidence, 50)
-        self.assertIn("indício", achado.evidence[0])
-        self.assertIn("T1027", achado.mitre)
+        found = find_behavior(code, "crypto")
+        assert found is not None
+        self.assertLessEqual(found.confidence, 50)
+        self.assertIn("hint", found.evidence[0])
+        self.assertIn("T1027", found.mitre)
 
-    def test_xor_de_zerar_nao_conta_como_cifra(self) -> None:
-        codigo = (
+    def test_zeroing_xor_does_not_count_as_cipher(self) -> None:
+        code = (
             "section .text\n"
             "main:\n"
-            ".laco:\n"
+            ".loop:\n"
             "    xor rax, rax\n"
             "    xor rbx, rbx\n"
             "    xor rcx, rcx\n"
             "    xor rdx, rdx\n"
-            "    jmp .laco\n"
+            "    jmp .loop\n"
         )
-        self.assertNotIn("crypto", categorias(codigo))
+        self.assertNotIn("crypto", categories_of(code))
 
-    def test_persistencia_por_chave_run(self) -> None:
-        codigo = (
+    def test_persistence_by_run_key(self) -> None:
+        code = (
             "section .data\n"
-            '    chave db "Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0\n'
+            '    key db "Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0\n'
             "section .text\n"
             "main:\n"
             "    ret\n"
         )
-        achado = achar(codigo, "persistence")
-        assert achado is not None
-        self.assertEqual(achado.severity, "alto")
-        self.assertIn("T1547", achado.mitre)
+        found = find_behavior(code, "persistence")
+        assert found is not None
+        self.assertEqual(found.severity, "high")
+        self.assertIn("T1547", found.mitre)
 
-    def test_persistencia_por_cron(self) -> None:
-        codigo = (
+    def test_persistence_by_cron(self) -> None:
+        code = (
             "section .data\n"
-            '    alvo db "/etc/cron.d/backdoor", 0\n'
+            '    target db "/etc/cron.d/backdoor", 0\n'
             "section .text\n"
             "main:\n"
             "    ret\n"
         )
-        achado = achar(codigo, "persistence")
-        assert achado is not None
-        self.assertIn("T1543", achado.mitre)
+        found = find_behavior(code, "persistence")
+        assert found is not None
+        self.assertIn("T1543", found.mitre)
 
-    def test_persistencia_por_arquivo_em_laco(self) -> None:
-        codigo = (
+    def test_persistence_by_file_in_loop(self) -> None:
+        code = (
             "section .data\n"
-            '    nome db "x", 0\n'
+            '    text db "x", 0\n'
             "section .text\n"
             "main:\n"
-            ".laco:\n"
+            ".loop:\n"
             "    mov rax, 2\n"
             "    syscall\n"
-            "    jmp .laco\n"
+            "    jmp .loop\n"
         )
-        achado = achar(codigo, "persistence")
-        assert achado is not None
-        self.assertIn("syscall open", achado.evidence[0])
-        self.assertIn("filesystem", categorias(codigo))
+        found = find_behavior(code, "persistence")
+        assert found is not None
+        self.assertIn("syscall open", found.evidence[0])
+        self.assertIn("filesystem", categories_of(code))
 
-    def test_persistencia_por_api_de_arquivo_em_laco(self) -> None:
-        codigo = (
+    def test_persistence_by_file_api_in_loop(self) -> None:
+        code = (
             "extern CreateFileA\n"
             "section .text\n"
             "main:\n"
-            ".laco:\n"
+            ".loop:\n"
             "    call CreateFileA\n"
-            "    jmp .laco\n"
+            "    jmp .loop\n"
         )
-        achado = achar(codigo, "persistence")
-        assert achado is not None
-        self.assertIn("API CreateFileA", achado.evidence[0])
+        found = find_behavior(code, "persistence")
+        assert found is not None
+        self.assertIn("API CreateFileA", found.evidence[0])
 
 
-class TestAmbienteEAlgoritmo(unittest.TestCase):
-    """As categorias de gravidade baixa e o código automodificável."""
+class TestEnvironmentAndAlgorithm(unittest.TestCase):
+    """The low severity categories and the self-modifying code."""
 
-    def test_ambiente_por_getpid_e_time(self) -> None:
-        achado = achar(fonte_syscalls("getpid", "time"), "environment")
-        assert achado is not None
-        self.assertIn("T1057", achado.mitre)
-        self.assertIn("T1082", achado.mitre)
+    def test_environment_by_getpid_and_time(self) -> None:
+        found = find_behavior(syscall_source("getpid", "time"), "environment")
+        assert found is not None
+        self.assertIn("T1057", found.mitre)
+        self.assertIn("T1082", found.mitre)
 
-    def test_ambiente_pelas_apis_do_windows(self) -> None:
-        codigo = (
+    def test_environment_by_windows_apis(self) -> None:
+        code = (
             "extern GetLastError\n"
             "extern GetVersion\n"
             "section .text\n"
@@ -587,237 +589,237 @@ class TestAmbienteEAlgoritmo(unittest.TestCase):
             "    call GetVersion\n"
             "    ret\n"
         )
-        achado = achar(codigo, "environment")
-        assert achado is not None
-        self.assertEqual(len(achado.evidence), 2)
+        found = find_behavior(code, "environment")
+        assert found is not None
+        self.assertEqual(len(found.evidence), 2)
 
-    def test_processamento_de_dados_por_laco(self) -> None:
-        codigo = (
+    def test_data_processing_by_loop(self) -> None:
+        code = (
             "section .text\n"
             "main:\n"
             "    mov rcx, 5\n"
-            ".laco:\n"
+            ".loop:\n"
             "    add rax, rcx\n"
             "    dec rcx\n"
-            "    jnz .laco\n"
+            "    jnz .loop\n"
             "    ret\n"
         )
-        achado = achar(codigo, "data-processing")
-        assert achado is not None
-        self.assertIn("add rax rcx", achado.evidence[0])
-        self.assertEqual(achado.mitre, ())
+        found = find_behavior(code, "data-processing")
+        assert found is not None
+        self.assertIn("add rax rcx", found.evidence[0])
+        self.assertEqual(found.mitre, ())
 
-    def test_laco_so_de_comparacao_nao_e_algoritmo(self) -> None:
-        codigo = (
-            "section .text\n" "main:\n" ".laco:\n" "    cmp rcx, 0\n" "    jne .laco\n" "    ret\n"
+    def test_comparison_only_loop_is_not_an_algorithm(self) -> None:
+        code = (
+            "section .text\n" "main:\n" ".loop:\n" "    cmp rcx, 0\n" "    jne .loop\n" "    ret\n"
         )
-        self.assertNotIn("data-processing", categorias(codigo))
+        self.assertNotIn("data-processing", categories_of(code))
 
-    def test_string_handling_por_rep_movsb(self) -> None:
-        codigo = "section .text\nmain:\n    cld\n    rep movsb\n    ret\n"
-        achado = achar(codigo, "string-handling")
-        assert achado is not None
-        self.assertIn("rep movsb", achado.evidence[0])
+    def test_string_handling_by_rep_movsb(self) -> None:
+        code = "section .text\nmain:\n    cld\n    rep movsb\n    ret\n"
+        found = find_behavior(code, "string-handling")
+        assert found is not None
+        self.assertIn("rep movsb", found.evidence[0])
 
-    def test_string_handling_por_laco_indexado(self) -> None:
-        codigo = (
+    def test_string_handling_by_indexed_loop(self) -> None:
+        code = (
             "section .data\n"
-            "    vetor db 1, 2, 3, 4\n"
+            "    array db 1, 2, 3, 4\n"
             "section .text\n"
             "main:\n"
             "    mov rsi, 0\n"
-            ".laco:\n"
-            "    mov al, [vetor + rsi]\n"
-            "    mov [vetor + rsi], al\n"
+            ".loop:\n"
+            "    mov al, [array + rsi]\n"
+            "    mov [array + rsi], al\n"
             "    inc rsi\n"
             "    cmp rsi, 4\n"
-            "    jb .laco\n"
+            "    jb .loop\n"
             "    ret\n"
         )
-        achado = achar(codigo, "string-handling")
-        assert achado is not None
-        self.assertLessEqual(achado.confidence, 50)
+        found = find_behavior(code, "string-handling")
+        assert found is not None
+        self.assertLessEqual(found.confidence, 50)
 
-    def test_auto_modificavel_por_escrita_em_rotulo_de_codigo(self) -> None:
-        codigo = (
+    def test_self_modifying_by_write_to_code_label(self) -> None:
+        code = (
             "section .text\n"
-            "alvo:\n"
+            "target:\n"
             "    nop\n"
             "_start:\n"
-            "    mov byte [alvo], 0x90\n"
+            "    mov byte [target], 0x90\n"
             "    ret\n"
         )
-        achado = achar(codigo, "self-modifying")
-        assert achado is not None
-        self.assertEqual(achado.severity, "alto")
-        self.assertIn("alvo", achado.evidence[0])
-        self.assertIn("T1027", achado.mitre)
+        found = find_behavior(code, "self-modifying")
+        assert found is not None
+        self.assertEqual(found.severity, "high")
+        self.assertIn("target", found.evidence[0])
+        self.assertIn("T1027", found.mitre)
 
-    def test_escrita_em_variavel_de_dados_nao_e_auto_modificavel(self) -> None:
-        codigo = (
+    def test_write_to_data_variable_is_not_self_modifying(self) -> None:
+        code = (
             "section .data\n"
-            "    alvo db 0\n"
+            "    target db 0\n"
             "section .text\n"
             "main:\n"
-            "    mov byte [alvo], 1\n"
+            "    mov byte [target], 1\n"
             "    ret\n"
         )
-        self.assertNotIn("self-modifying", categorias(codigo))
+        self.assertNotIn("self-modifying", categories_of(code))
 
-    def test_auto_modificavel_sem_diretiva_de_secao(self) -> None:
-        codigo = "alvo:\n    nop\n_start:\n    mov byte [alvo], 0x90\n    ret\n"
-        self.assertIn("self-modifying", categorias(codigo))
+    def test_self_modifying_without_section_directive(self) -> None:
+        code = "target:\n    nop\n_start:\n    mov byte [target], 0x90\n    ret\n"
+        self.assertIn("self-modifying", categories_of(code))
 
-    def test_memoria_por_rtlmovememory(self) -> None:
-        codigo = "extern RtlMoveMemory\nsection .text\nmain:\n    call RtlMoveMemory\n    ret\n"
-        achado = achar(codigo, "memory")
-        assert achado is not None
-        self.assertIn("RtlMoveMemory", achado.evidence[0])
-        self.assertIn("memória do processo", achado.evidence[0])
+    def test_memory_by_rtlmovememory(self) -> None:
+        code = "extern RtlMoveMemory\nsection .text\nmain:\n    call RtlMoveMemory\n    ret\n"
+        found = find_behavior(code, "memory")
+        assert found is not None
+        self.assertIn("RtlMoveMemory", found.evidence[0])
+        self.assertIn("process memory", found.evidence[0])
 
 
-class TestExemplos(unittest.TestCase):
-    """Os exemplos prontos precisam manter a leitura que o relatório promete."""
+class TestExamples(unittest.TestCase):
+    """The ready examples must keep the reading the report promises."""
 
     def test_linux_hello(self) -> None:
-        achados = comportamentos(EXAMPLES["linux-hello"]["code"])
-        self.assertEqual([b.category for b in achados], ["console-io"])
-        self.assertEqual(achados[0].severity, "baixo")
+        found = behaviors_of(EXAMPLES["linux-hello"]["code"])
+        self.assertEqual([b.category for b in found], ["console-io"])
+        self.assertEqual(found[0].severity, "low")
 
     def test_linux_loop(self) -> None:
-        self.assertEqual(categorias(EXAMPLES["linux-loop"]["code"]), {"console-io"})
+        self.assertEqual(categories_of(EXAMPLES["linux-loop"]["code"]), {"console-io"})
 
-    def test_linux_funcao(self) -> None:
-        achadas = categorias(EXAMPLES["linux-funcao"]["code"])
-        self.assertIn("console-io", achadas)
-        self.assertIn("memory", achadas)
-        self.assertNotIn("network", achadas)
+    def test_linux_function(self) -> None:
+        found = categories_of(EXAMPLES["linux-function"]["code"])
+        self.assertIn("console-io", found)
+        self.assertIn("memory", found)
+        self.assertNotIn("network", found)
 
-    def test_windows_hello_apenas_console(self) -> None:
-        achados = comportamentos(EXAMPLES["windows-hello"]["code"])
-        self.assertEqual([b.category for b in achados], ["console-io"])
-        self.assertEqual(achados[0].severity, "baixo")
+    def test_windows_hello_only_console(self) -> None:
+        found = behaviors_of(EXAMPLES["windows-hello"]["code"])
+        self.assertEqual([b.category for b in found], ["console-io"])
+        self.assertEqual(found[0].severity, "low")
 
-    def test_windows_hello_nao_tem_comportamento_alto(self) -> None:
-        for achado in comportamentos(EXAMPLES["windows-hello"]["code"]):
-            self.assertNotEqual(achado.severity, "alto")
+    def test_windows_hello_has_no_high_behavior(self) -> None:
+        for found in behaviors_of(EXAMPLES["windows-hello"]["code"]):
+            self.assertNotEqual(found.severity, "high")
 
-    def test_gcc_att_nao_levanta_e_nao_inventa(self) -> None:
-        achados = comportamentos(EXAMPLES["gcc-att"]["code"])
-        self.assertEqual([b.category for b in achados], [])
+    def test_gcc_att_raises_nothing_and_invents_nothing(self) -> None:
+        found = behaviors_of(EXAMPLES["gcc-att"]["code"])
+        self.assertEqual([b.category for b in found], [])
 
-    def test_bubble_e_algoritmo_e_bloco_de_bytes(self) -> None:
-        achadas = categorias(EXAMPLES["bubble"]["code"])
-        self.assertIn("data-processing", achadas)
-        self.assertIn("string-handling", achadas)
+    def test_bubble_is_algorithm_and_byte_block(self) -> None:
+        found = categories_of(EXAMPLES["bubble"]["code"])
+        self.assertIn("data-processing", found)
+        self.assertIn("string-handling", found)
 
-    def test_quebrado_tem_pelo_menos_duas_categorias(self) -> None:
-        achadas = categorias(EXAMPLES["quebrado"]["code"])
-        self.assertGreaterEqual(len(achadas), 2)
-        self.assertIn("anti-analysis", achadas)
+    def test_broken_has_at_least_two_categories(self) -> None:
+        found = categories_of(EXAMPLES["broken"]["code"])
+        self.assertGreaterEqual(len(found), 2)
+        self.assertIn("anti-analysis", found)
 
-    def test_escala_e_processamento_de_dados(self) -> None:
-        achadas = categorias(EXAMPLES["escala"]["code"])
-        self.assertIn("data-processing", achadas)
-        self.assertNotIn("network", achadas)
+    def test_overflow_is_data_processing(self) -> None:
+        found = categories_of(EXAMPLES["overflow"]["code"])
+        self.assertIn("data-processing", found)
+        self.assertNotIn("network", found)
 
-    def test_suspeito_tem_rede_arquivo_e_cripto(self) -> None:
-        achados = {b.category: b for b in comportamentos(EXAMPLES["suspeito"]["code"])}
-        self.assertEqual(achados["network"].severity, "alto")
-        self.assertEqual(achados["crypto"].severity, "medio")
-        self.assertEqual(achados["filesystem"].severity, "medio")
-        self.assertIn("console-io", achados)
-        self.assertIn("environment", achados)
+    def test_suspicious_has_network_file_and_crypto(self) -> None:
+        found = {b.category: b for b in behaviors_of(EXAMPLES["suspicious"]["code"])}
+        self.assertEqual(found["network"].severity, "high")
+        self.assertEqual(found["crypto"].severity, "medium")
+        self.assertEqual(found["filesystem"].severity, "medium")
+        self.assertIn("console-io", found)
+        self.assertIn("environment", found)
 
-    def test_suspeito_nao_inventa_processo(self) -> None:
-        self.assertNotIn("process", categorias(EXAMPLES["suspeito"]["code"]))
+    def test_suspicious_does_not_invent_process(self) -> None:
+        self.assertNotIn("process", categories_of(EXAMPLES["suspicious"]["code"]))
 
-    def test_todo_exemplo_tem_evidencia_com_linha(self) -> None:
-        for nome in EXEMPLOS_CONFERIDOS:
-            with self.subTest(exemplo=nome):
-                for achado in comportamentos(EXAMPLES[nome]["code"]):
-                    self.assertTrue(achado.evidence)
-                    for evidencia in achado.evidence:
-                        self.assertRegex(evidencia, r"^linha \d+: \S")
+    def test_every_example_has_evidence_with_line(self) -> None:
+        for name in CHECKED_EXAMPLES:
+            with self.subTest(example=name):
+                for found in behaviors_of(EXAMPLES[name]["code"]):
+                    self.assertTrue(found.evidence)
+                    for evidence in found.evidence:
+                        self.assertRegex(evidence, r"^line \d+: \S")
 
-    def test_todo_exemplo_devolve_lista(self) -> None:
-        for nome in EXEMPLOS_CONFERIDOS:
-            with self.subTest(exemplo=nome):
-                self.assertIsInstance(comportamentos(EXAMPLES[nome]["code"]), list)
+    def test_every_example_returns_a_list(self) -> None:
+        for name in CHECKED_EXAMPLES:
+            with self.subTest(example=name):
+                self.assertIsInstance(behaviors_of(EXAMPLES[name]["code"]), list)
 
 
-class TestRegras(unittest.TestCase):
-    """Confiança, ordenação e formato das evidências."""
+class TestRules(unittest.TestCase):
+    """Confidence, ordering and evidence format."""
 
-    def test_confianca_60_com_poucas_evidencias(self) -> None:
-        uma = achar(fonte_syscalls("write"), "console-io")
-        duas = achar(fonte_syscalls("write", "read"), "console-io")
-        assert uma is not None and duas is not None
-        self.assertEqual(uma.confidence, 60)
-        self.assertEqual(duas.confidence, 60)
+    def test_confidence_60_with_few_evidence_items(self) -> None:
+        one = find_behavior(syscall_source("write"), "console-io")
+        two = find_behavior(syscall_source("write", "read"), "console-io")
+        assert one is not None and two is not None
+        self.assertEqual(one.confidence, 60)
+        self.assertEqual(two.confidence, 60)
 
-    def test_confianca_80_com_tres_a_cinco_evidencias(self) -> None:
-        achado = achar(fonte_syscalls("socket", "connect", "bind"), "network")
-        assert achado is not None
-        self.assertEqual(len(achado.evidence), 3)
-        self.assertEqual(achado.confidence, 80)
+    def test_confidence_80_with_three_to_five_evidence_items(self) -> None:
+        found = find_behavior(syscall_source("socket", "connect", "bind"), "network")
+        assert found is not None
+        self.assertEqual(len(found.evidence), 3)
+        self.assertEqual(found.confidence, 80)
 
-    def test_confianca_95_com_seis_evidencias(self) -> None:
-        codigo = fonte_syscalls("socket", "connect", "bind", "listen", "accept", "sendto")
-        achado = achar(codigo, "network")
-        assert achado is not None
-        self.assertEqual(len(achado.evidence), 6)
-        self.assertEqual(achado.confidence, 95)
+    def test_confidence_95_with_six_evidence_items(self) -> None:
+        code = syscall_source("socket", "connect", "bind", "listen", "accept", "sendto")
+        found = find_behavior(code, "network")
+        assert found is not None
+        self.assertEqual(len(found.evidence), 6)
+        self.assertEqual(found.confidence, 95)
 
-    def test_confianca_sempre_entre_zero_e_cem(self) -> None:
-        for nome in EXEMPLOS_CONFERIDOS:
-            for achado in comportamentos(EXAMPLES[nome]["code"]):
-                self.assertGreaterEqual(achado.confidence, 0)
-                self.assertLessEqual(achado.confidence, 100)
+    def test_confidence_always_between_zero_and_one_hundred(self) -> None:
+        for name in CHECKED_EXAMPLES:
+            for found in behaviors_of(EXAMPLES[name]["code"]):
+                self.assertGreaterEqual(found.confidence, 0)
+                self.assertLessEqual(found.confidence, 100)
 
-    def test_ordenacao_por_gravidade(self) -> None:
-        achados = comportamentos(fonte_syscalls("socket", "write"))
-        ranks = [severity_rank(b.severity) for b in achados]
+    def test_ordering_by_severity(self) -> None:
+        found = behaviors_of(syscall_source("socket", "write"))
+        ranks = [severity_rank(b.severity) for b in found]
         self.assertEqual(ranks, sorted(ranks))
-        self.assertEqual(achados[0].category, "network")
+        self.assertEqual(found[0].category, "network")
 
-    def test_linhas_ordenadas_e_sem_repeticao(self) -> None:
-        for nome in EXEMPLOS_CONFERIDOS:
-            for achado in comportamentos(EXAMPLES[nome]["code"]):
-                self.assertEqual(list(achado.lines), sorted(set(achado.lines)))
+    def test_lines_sorted_and_without_repetition(self) -> None:
+        for name in CHECKED_EXAMPLES:
+            for found in behaviors_of(EXAMPLES[name]["code"]):
+                self.assertEqual(list(found.lines), sorted(set(found.lines)))
 
-    def test_evidencia_cita_linha_e_sinal(self) -> None:
-        achado = achar(fonte_syscalls("socket", "connect"), "network")
-        assert achado is not None
-        for evidencia in achado.evidence:
-            self.assertRegex(evidencia, r"^linha \d+: ")
-        self.assertTrue(any("syscall socket" in e for e in achado.evidence))
-        self.assertTrue(any("syscall connect" in e for e in achado.evidence))
+    def test_evidence_cites_line_and_signal(self) -> None:
+        found = find_behavior(syscall_source("socket", "connect"), "network")
+        assert found is not None
+        for evidence in found.evidence:
+            self.assertRegex(evidence, r"^line \d+: ")
+        self.assertTrue(any("syscall socket" in e for e in found.evidence))
+        self.assertTrue(any("syscall connect" in e for e in found.evidence))
 
-    def test_categoria_sem_sinal_nao_aparece(self) -> None:
-        codigo = "section .text\nmain:\n    mov rax, 1\n    add rax, 2\n    ret\n"
-        self.assertEqual(categorias(codigo), set())
+    def test_category_without_signal_does_not_appear(self) -> None:
+        code = "section .text\nmain:\n    mov rax, 1\n    add rax, 2\n    ret\n"
+        self.assertEqual(categories_of(code), set())
 
-    def test_numero_de_syscall_desconhecido_nao_inventa_categoria(self) -> None:
-        codigo = "section .text\n_start:\n    mov rax, 999\n    syscall\n    ret\n"
-        self.assertEqual(categorias(codigo), set())
+    def test_unknown_syscall_number_invents_no_category(self) -> None:
+        code = "section .text\n_start:\n    mov rax, 999\n    syscall\n    ret\n"
+        self.assertEqual(categories_of(code), set())
 
-    def test_gravidade_do_comportamento_vem_do_catalogo(self) -> None:
-        for nome in EXEMPLOS_CONFERIDOS:
-            for achado in comportamentos(EXAMPLES[nome]["code"]):
-                self.assertEqual(achado.severity, BEHAVIOR_CATEGORIES[achado.category]["severity"])
+    def test_behavior_severity_comes_from_the_catalog(self) -> None:
+        for name in CHECKED_EXAMPLES:
+            for found in behaviors_of(EXAMPLES[name]["code"]):
+                self.assertEqual(found.severity, BEHAVIOR_CATEGORIES[found.category]["severity"])
 
 
-class TestSerializacao(unittest.TestCase):
-    """``to_dicts``, ``techniques``, ``by_tactic``, ``summary`` e a ordenação."""
+class TestSerialization(unittest.TestCase):
+    """``to_dicts``, ``techniques``, ``by_tactic``, ``summary`` and the ordering."""
 
-    def test_to_dicts_devolve_dicionarios(self) -> None:
-        achados = comportamentos(EXAMPLES["suspeito"]["code"])
-        dicionarios = to_dicts(achados)
-        self.assertEqual(len(dicionarios), len(achados))
-        for dicionario in dicionarios:
+    def test_to_dicts_returns_dictionaries(self) -> None:
+        found = behaviors_of(EXAMPLES["suspicious"]["code"])
+        dictionaries = to_dicts(found)
+        self.assertEqual(len(dictionaries), len(found))
+        for dictionary in dictionaries:
             self.assertEqual(
-                set(dicionario),
+                set(dictionary),
                 {
                     "category",
                     "label",
@@ -830,124 +832,124 @@ class TestSerializacao(unittest.TestCase):
                 },
             )
 
-    def test_to_dicts_usa_listas(self) -> None:
-        dicionario = to_dicts([fabrica(["T1095"])])[0]
-        self.assertEqual(dicionario["lines"], [1])
-        self.assertEqual(dicionario["evidence"], ["linha 1: syscall socket (cria socket)"])
-        self.assertEqual(dicionario["mitre"], ["T1095"])
+    def test_to_dicts_uses_lists(self) -> None:
+        dictionary = to_dicts([make_behavior(["T1095"])])[0]
+        self.assertEqual(dictionary["lines"], [1])
+        self.assertEqual(dictionary["evidence"], ["line 1: syscall socket (creates a socket)"])
+        self.assertEqual(dictionary["mitre"], ["T1095"])
 
-    def test_to_dicts_de_lista_vazia(self) -> None:
+    def test_to_dicts_of_an_empty_list(self) -> None:
         self.assertEqual(to_dicts([]), [])
 
-    def test_comportamento_e_imutavel(self) -> None:
-        achado = fabrica()
+    def test_behavior_is_immutable(self) -> None:
+        found = make_behavior()
         with self.assertRaises(FrozenInstanceError):
-            setattr(achado, "category", "outra")
+            setattr(found, "category", "other")
 
-    def test_techniques_agrupa_por_tecnica(self) -> None:
-        achados = comportamentos(EXAMPLES["suspeito"]["code"])
-        lista = techniques(achados)
-        ids = [tecnica["id"] for tecnica in lista]
+    def test_techniques_groups_by_technique(self) -> None:
+        found = behaviors_of(EXAMPLES["suspicious"]["code"])
+        items = techniques(found)
+        ids = [technique["id"] for technique in items]
         self.assertEqual(ids, sorted(ids))
         self.assertIn("T1095", ids)
         self.assertIn("T1071", ids)
         self.assertIn("T1486", ids)
-        for tecnica in lista:
-            self.assertTrue(tecnica["behaviors"])
+        for technique in items:
+            self.assertTrue(technique["behaviors"])
             self.assertEqual(
-                tecnica["url"], "https://attack.mitre.org/techniques/%s/" % tecnica["id"]
+                technique["url"], "https://attack.mitre.org/techniques/%s/" % technique["id"]
             )
 
-    def test_techniques_sem_comportamento(self) -> None:
+    def test_techniques_without_behavior(self) -> None:
         self.assertEqual(techniques([]), [])
 
-    def test_techniques_ignora_identificador_desconhecido(self) -> None:
-        self.assertEqual(techniques([fabrica(["T9999"])]), [])
+    def test_techniques_ignores_unknown_identifier(self) -> None:
+        self.assertEqual(techniques([make_behavior(["T9999"])]), [])
 
-    def test_techniques_nao_repete_categoria(self) -> None:
-        lista = techniques([fabrica(["T1095"]), fabrica(["T1095"])])
-        self.assertEqual(lista[0]["behaviors"], ["network"])
+    def test_techniques_does_not_repeat_category(self) -> None:
+        items = techniques([make_behavior(["T1095"]), make_behavior(["T1095"])])
+        self.assertEqual(items[0]["behaviors"], ["network"])
 
-    def test_by_tactic_com_tatica_fora_da_ordem(self) -> None:
-        ficha = {
-            "name": "Técnica de teste",
-            "tactic": "Curiosidade",
+    def test_by_tactic_with_tactic_outside_the_order(self) -> None:
+        entry = {
+            "name": "Test technique",
+            "tactic": "Curiosity",
             "url": "https://attack.mitre.org/techniques/T9999/",
-            "description": "Indício derivado de padrões estáticos.",
+            "description": "A hint derived from static patterns.",
         }
-        with mock.patch.dict(MITRE_TECHNIQUES, {"T9999": ficha}):
-            grupos = by_tactic([fabrica(["T9999"])])
-        self.assertEqual(list(grupos), ["Curiosidade"])
+        with mock.patch.dict(MITRE_TECHNIQUES, {"T9999": entry}):
+            groups = by_tactic([make_behavior(["T9999"])])
+        self.assertEqual(list(groups), ["Curiosity"])
 
-    def test_by_tactic_ordena_as_taticas(self) -> None:
-        achados = comportamentos(EXAMPLES["suspeito"]["code"])
-        grupos = by_tactic(achados)
+    def test_by_tactic_orders_the_tactics(self) -> None:
+        found = behaviors_of(EXAMPLES["suspicious"]["code"])
+        groups = by_tactic(found)
         self.assertEqual(
-            list(grupos),
-            ["Comando e Controle", "Descoberta", "Coleta", "Exfiltração", "Impacto"],
+            list(groups),
+            ["Command and Control", "Discovery", "Collection", "Exfiltration", "Impact"],
         )
-        for tatica, lista in grupos.items():
-            for tecnica in lista:
-                self.assertEqual(tecnica["tactic"], tatica)
+        for tactic, items in groups.items():
+            for technique in items:
+                self.assertEqual(technique["tactic"], tactic)
 
-    def test_by_tactic_sem_comportamento(self) -> None:
+    def test_by_tactic_without_behavior(self) -> None:
         self.assertEqual(by_tactic([]), {})
 
-    def test_summary_vazio(self) -> None:
-        self.assertEqual(summary([]), "0 comportamento(s)")
+    def test_summary_empty(self) -> None:
+        self.assertEqual(summary([]), "0 behavior(s)")
 
-    def test_summary_com_varios(self) -> None:
-        achados = comportamentos(EXAMPLES["suspeito"]["code"])
+    def test_summary_with_several(self) -> None:
+        found = behaviors_of(EXAMPLES["suspicious"]["code"])
         self.assertEqual(
-            summary(achados),
-            "5 comportamento(s): rede (alto), criptografia (medio), arquivos (medio), "
-            "console (baixo), ambiente (baixo)",
+            summary(found),
+            "5 behavior(s): network (high), crypto (medium), files (medium), "
+            "console (low), environment (low)",
         )
 
-    def test_summary_com_um(self) -> None:
+    def test_summary_with_one(self) -> None:
         self.assertEqual(
-            summary(comportamentos(EXAMPLES["linux-hello"]["code"])),
-            "1 comportamento(s): console (baixo)",
+            summary(behaviors_of(EXAMPLES["linux-hello"]["code"])),
+            "1 behavior(s): console (low)",
         )
 
-    def test_severity_rank_ordena(self) -> None:
-        self.assertEqual(severity_rank("alto"), 0)
-        self.assertEqual(severity_rank("medio"), 1)
-        self.assertEqual(severity_rank("baixo"), 2)
+    def test_severity_rank_orders(self) -> None:
+        self.assertEqual(severity_rank("high"), 0)
+        self.assertEqual(severity_rank("medium"), 1)
+        self.assertEqual(severity_rank("low"), 2)
 
-    def test_severity_rank_aceita_acento_e_caixa(self) -> None:
-        self.assertEqual(severity_rank("MÉDIO"), 1)
-        self.assertEqual(severity_rank(" Médio "), 1)
+    def test_severity_rank_accepts_case(self) -> None:
+        self.assertEqual(severity_rank("HIGH"), 0)
+        self.assertEqual(severity_rank(" Medium "), 1)
 
-    def test_severity_rank_desconhecido(self) -> None:
-        self.assertEqual(severity_rank("urgente"), 3)
+    def test_severity_rank_unknown(self) -> None:
+        self.assertEqual(severity_rank("urgent"), 3)
         self.assertEqual(severity_rank(""), 3)
 
 
-class TestBordas(unittest.TestCase):
-    """Programa vazio, só dados, lixo e a costura com o validador."""
+class TestEdges(unittest.TestCase):
+    """Empty program, data only, garbage and the seam with the validator."""
 
-    def test_programa_vazio(self) -> None:
+    def test_empty_program(self) -> None:
         self.assertEqual(classify(analyze("")), [])
 
-    def test_programa_so_espacos(self) -> None:
+    def test_whitespace_only_program(self) -> None:
         self.assertEqual(classify(analyze("\n\n   \n\t\n")), [])
 
-    def test_programa_so_com_dados(self) -> None:
-        codigo = 'section .data\n    msg db "texto simples", 10\n    tam equ $ - msg\n'
-        self.assertEqual(categorias(codigo), set())
+    def test_data_only_program(self) -> None:
+        code = 'section .data\n    msg db "simple text", 10\n    size equ $ - msg\n'
+        self.assertEqual(categories_of(code), set())
 
-    def test_programa_so_com_dados_mas_com_url(self) -> None:
-        codigo = 'section .data\n    u db "http://x.exemplo.com", 0\n'
-        self.assertIn("network", categorias(codigo))
+    def test_data_only_program_with_url(self) -> None:
+        code = 'section .data\n    u db "http://x.example.com", 0\n'
+        self.assertIn("network", categories_of(code))
 
-    def test_programa_windows_masm(self) -> None:
-        codigo = (
+    def test_windows_masm_program(self) -> None:
+        code = (
             ".386\n"
             ".model flat, stdcall\n"
             "includelib kernel32.lib\n"
             ".data\n"
-            '    msg db "ola", 0\n'
+            '    msg db "hi", 0\n'
             ".code\n"
             "main PROC\n"
             "    sub rsp, 40\n"
@@ -956,47 +958,47 @@ class TestBordas(unittest.TestCase):
             "    mov rcx, rax\n"
             "    mov rdx, msg\n"
             "    mov r8, 5\n"
-            "    mov r9, escritos\n"
+            "    mov r9, written\n"
             "    call WriteConsoleA\n"
             "    ret\n"
             "main ENDP\n"
             "end main\n"
         )
-        self.assertEqual(categorias(codigo), {"console-io"})
+        self.assertEqual(categories_of(code), {"console-io"})
 
-    def test_classify_nao_levanta_com_lixo(self) -> None:
-        for codigo in ("\x00\x01 ??? @@\n", "a" * 500, "ПРИВЕТ\n mov ,,\n"):
-            with self.subTest(codigo=codigo[:12]):
-                self.assertIsInstance(classify(analyze(codigo)), list)
+    def test_classify_does_not_raise_on_garbage(self) -> None:
+        for code in ("\x00\x01 ??? @@\n", "a" * 500, "ПРИВЕТ\n mov ,,\n"):
+            with self.subTest(code=code[:12]):
+                self.assertIsInstance(classify(analyze(code)), list)
 
-    def test_classify_aceita_problemas_none(self) -> None:
-        codigo = "section .text\nmain:\n.parado:\n    jmp .parado\n"
-        analise = analyze(codigo)
-        automatico = [b.category for b in classify(analise)]
-        explicito = [b.category for b in classify(analise, validate(analise))]
-        self.assertEqual(automatico, explicito)
+    def test_classify_accepts_none_problems(self) -> None:
+        code = "section .text\nmain:\n.stuck:\n    jmp .stuck\n"
+        analysis = analyze(code)
+        automatic = [b.category for b in classify(analysis)]
+        explicit = [b.category for b in classify(analysis, validate(analysis))]
+        self.assertEqual(automatic, explicit)
 
-    def test_classify_sem_problemas_nao_usa_validador(self) -> None:
-        codigo = "section .text\nmain:\n.parado:\n    jmp .parado\n"
-        self.assertEqual(classify(analyze(codigo), []), [])
+    def test_classify_without_problems_does_not_use_the_validator(self) -> None:
+        code = "section .text\nmain:\n.stuck:\n    jmp .stuck\n"
+        self.assertEqual(classify(analyze(code), []), [])
 
-    def test_classify_com_analise_nula(self) -> None:
+    def test_classify_with_null_analysis(self) -> None:
         self.assertEqual(classify(None), [])  # type: ignore[arg-type]
 
-    def test_classify_com_programa_sem_linhas(self) -> None:
-        vazio = types.SimpleNamespace(program=types.SimpleNamespace(lines=[]))
-        self.assertEqual(classify(vazio), [])  # type: ignore[arg-type]
+    def test_classify_with_program_without_lines(self) -> None:
+        empty = types.SimpleNamespace(program=types.SimpleNamespace(lines=[]))
+        self.assertEqual(classify(empty), [])  # type: ignore[arg-type]
 
-    def test_validador_que_falha_nao_derruba_o_relatorio(self) -> None:
-        codigo = EXAMPLES["linux-hello"]["code"]
-        with mock.patch("asmx.behavior.validate", side_effect=RuntimeError("quebrou")):
-            achados = classify(analyze(codigo))
-        self.assertEqual([b.category for b in achados], ["console-io"])
+    def test_validator_failure_does_not_take_the_report_down(self) -> None:
+        code = EXAMPLES["linux-hello"]["code"]
+        with mock.patch("asmx.behavior.validate", side_effect=RuntimeError("blew up")):
+            found = classify(analyze(code))
+        self.assertEqual([b.category for b in found], ["console-io"])
 
-    def test_falha_interna_devolve_lista(self) -> None:
-        codigo = "section .text\nmain:\n    mov rax, 1\n    syscall\n    ret\n"
-        with mock.patch("asmx.behavior._context", side_effect=RuntimeError("quebrou")):
-            self.assertEqual(classify(analyze(codigo)), [])
+    def test_internal_failure_returns_a_list(self) -> None:
+        code = "section .text\nmain:\n    mov rax, 1\n    syscall\n    ret\n"
+        with mock.patch("asmx.behavior._context", side_effect=RuntimeError("blew up")):
+            self.assertEqual(classify(analyze(code)), [])
 
 
 if __name__ == "__main__":

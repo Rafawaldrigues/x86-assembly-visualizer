@@ -1,4 +1,4 @@
-"""Testes das instruções e dos caminhos menos óbvios da máquina virtual."""
+"""Tests of the instructions and of the less obvious paths of the machine."""
 
 import unittest
 
@@ -17,173 +17,212 @@ from asmx.emulator import (
 from asmx.errors import AnalysisTimeoutError
 
 
-class RelogioFalso:
-    """Relógio que avança um tanto fixo a cada leitura.
+class TestDesviosCondicionais(unittest.TestCase):
+    """Signed comparisons must really compare (jl/jle regression)."""
 
-    Permite testar o timeout sem depender do tempo real: cada consulta soma
-    ``passo`` segundos, então o limite estoura sempre no mesmo instante.
+    def roda(self, fonte: str) -> object:
+        """Runs a source and returns the machine."""
+        maquina = Machine(analyze(fonte))
+        maquina.run(limit=200)
+        return maquina
+
+    def test_jl_desvia_quando_menor(self) -> None:
+        fonte = (
+            "mov rax, 5\nmov rbx, 9\ncmp rax, rbx\njl smaller\n"
+            "mov rdi, 1\njmp done\nsmaller:\nmov rdi, 2\ndone:\nmov rax, 60\nsyscall"
+        )
+        self.assertEqual(self.roda(fonte).regs["rdi"], 2)
+
+    def test_jl_nao_desvia_quando_maior(self) -> None:
+        fonte = (
+            "mov rax, 9\nmov rbx, 5\ncmp rax, rbx\njl smaller\n"
+            "mov rdi, 1\njmp done\nsmaller:\nmov rdi, 2\ndone:\nmov rax, 60\nsyscall"
+        )
+        self.assertEqual(self.roda(fonte).regs["rdi"], 1)
+
+    def test_jle_desvia_na_igualdade(self) -> None:
+        fonte = (
+            "mov rax, 7\nmov rbx, 7\ncmp rax, rbx\njle smaller\n"
+            "mov rdi, 1\njmp done\nsmaller:\nmov rdi, 2\ndone:\nmov rax, 60\nsyscall"
+        )
+        self.assertEqual(self.roda(fonte).regs["rdi"], 2)
+
+    def test_jg_e_jge_continuam_certos(self) -> None:
+        fonte = (
+            "mov rax, 9\nmov rbx, 5\ncmp rax, rbx\njg bigger\n"
+            "mov rdi, 1\njmp done\nbigger:\nmov rdi, 2\ndone:\nmov rax, 60\nsyscall"
+        )
+        self.assertEqual(self.roda(fonte).regs["rdi"], 2)
+
+
+class FakeClock:
+    """Clock that advances a fixed amount on every read.
+
+    It allows testing the timeout without depending on real time: every query
+    adds ``step`` seconds, so the limit always runs out at the same instant.
     """
 
-    def __init__(self, passo: float = 10.0) -> None:
-        self.passo = passo
-        self.valor = 0.0
+    def __init__(self, step: float = 10.0) -> None:
+        self.step = step
+        self.value = 0.0
 
     def __call__(self) -> float:
-        self.valor += self.passo
-        return self.valor
+        self.value += self.step
+        return self.value
 
 
 def fake_clock() -> float:
-    """Relógio parado, usado pelos testes que não se importam com o tempo."""
+    """Stopped clock, used by the tests that do not care about time."""
     return 0.0
 
 
 def run(code: str, stdin: str = "", limit: int = 100000, **kwargs: object) -> Machine:
-    maquina = Machine(
+    """Runs a source with a stopped clock and returns the machine."""
+    machine = Machine(
         analyze(code), stdin=stdin, clock=fake_clock, **kwargs  # type: ignore[arg-type]
     )
-    maquina.run(limit=limit)
-    return maquina
+    machine.run(limit=limit)
+    return machine
 
 
-class TestInstrucoes(unittest.TestCase):
-    """Instruções que ainda não tinham teste."""
+class TestInstructions(unittest.TestCase):
+    """Instructions that still had no test."""
 
     def test_xchg(self) -> None:
-        maquina = run("mov rax, 1\nmov rbx, 2\nxchg rax, rbx")
-        self.assertEqual(maquina.regs["rax"], 2)
-        self.assertEqual(maquina.regs["rbx"], 1)
+        machine = run("mov rax, 1\nmov rbx, 2\nxchg rax, rbx")
+        self.assertEqual(machine.regs["rax"], 2)
+        self.assertEqual(machine.regs["rbx"], 1)
 
-    def test_movzx_e_movsx(self) -> None:
-        maquina = run("mov rax, 0\nmov al, 0xFF\nmovzx rbx, al\nmovsx rcx, al")
-        self.assertEqual(maquina.regs["rbx"], 255)
-        self.assertEqual(to_signed(maquina.regs["rcx"], 8), -1)
+    def test_movzx_and_movsx(self) -> None:
+        machine = run("mov rax, 0\nmov al, 0xFF\nmovzx rbx, al\nmovsx rcx, al")
+        self.assertEqual(machine.regs["rbx"], 255)
+        self.assertEqual(to_signed(machine.regs["rcx"], 8), -1)
 
     def test_movsxd(self) -> None:
-        maquina = run("mov eax, -1\nmovsxd rbx, eax")
-        self.assertEqual(to_signed(maquina.regs["rbx"], 8), -1)
+        machine = run("mov eax, -1\nmovsxd rbx, eax")
+        self.assertEqual(to_signed(machine.regs["rbx"], 8), -1)
 
     def test_setcc(self) -> None:
-        maquina = run("mov rax, 5\ncmp rax, 5\nsete bl\nsetne cl")
-        self.assertEqual(maquina.regs["rbx"], 1)
-        self.assertEqual(maquina.regs["rcx"], 0)
+        machine = run("mov rax, 5\ncmp rax, 5\nsete bl\nsetne cl")
+        self.assertEqual(machine.regs["rbx"], 1)
+        self.assertEqual(machine.regs["rcx"], 0)
 
     def test_cmov(self) -> None:
-        maquina = run("mov rax, 5\nmov rbx, 9\ncmp rax, 5\ncmove rbx, rax")
-        self.assertEqual(maquina.regs["rbx"], 5)
+        machine = run("mov rax, 5\nmov rbx, 9\ncmp rax, 5\ncmove rbx, rax")
+        self.assertEqual(machine.regs["rbx"], 5)
 
-    def test_cmov_nao_copia_quando_falso(self) -> None:
-        maquina = run("mov rax, 5\nmov rbx, 9\ncmp rax, 4\ncmove rbx, rax")
-        self.assertEqual(maquina.regs["rbx"], 9)
+    def test_cmov_does_not_copy_when_false(self) -> None:
+        machine = run("mov rax, 5\nmov rbx, 9\ncmp rax, 4\ncmove rbx, rax")
+        self.assertEqual(machine.regs["rbx"], 9)
 
-    def test_not_e_neg(self) -> None:
-        maquina = run("mov rax, 0\nnot rax")
-        self.assertEqual(maquina.regs["rax"], MASK64)
+    def test_not_and_neg(self) -> None:
+        machine = run("mov rax, 0\nnot rax")
+        self.assertEqual(machine.regs["rax"], MASK64)
 
-    def test_mul_imul_e_div(self) -> None:
-        maquina = run("mov rax, 6\nmov rbx, 7\nmul rbx")
-        self.assertEqual(maquina.regs["rax"], 42)
-        self.assertEqual(maquina.regs["rdx"], 0)
+    def test_mul_imul_and_div(self) -> None:
+        machine = run("mov rax, 6\nmov rbx, 7\nmul rbx")
+        self.assertEqual(machine.regs["rax"], 42)
+        self.assertEqual(machine.regs["rdx"], 0)
 
-    def test_imul_tres_operandos(self) -> None:
-        maquina = run("mov rax, 3\nmov rbx, 4\nimul rcx, rax, rbx")
-        self.assertEqual(maquina.regs["rcx"], 12)
+    def test_imul_three_operands(self) -> None:
+        machine = run("mov rax, 3\nmov rbx, 4\nimul rcx, rax, rbx")
+        self.assertEqual(machine.regs["rcx"], 12)
 
-    def test_imul_dois_operandos(self) -> None:
-        maquina = run("mov rax, -3\nmov rbx, 4\nimul rax, rbx")
-        self.assertEqual(to_signed(maquina.regs["rax"], 8), -12)
+    def test_imul_two_operands(self) -> None:
+        machine = run("mov rax, -3\nmov rbx, 4\nimul rax, rbx")
+        self.assertEqual(to_signed(machine.regs["rax"], 8), -12)
 
-    def test_cdq_e_cqo(self) -> None:
-        maquina = run("mov eax, -1\ncdq")
-        self.assertEqual(maquina.regs["rdx"], 0xFFFFFFFF)
-        maquina = run("mov rax, -1\ncqo")
-        self.assertEqual(maquina.regs["rdx"], MASK64)
+    def test_cdq_and_cqo(self) -> None:
+        machine = run("mov eax, -1\ncdq")
+        self.assertEqual(machine.regs["rdx"], 0xFFFFFFFF)
+        machine = run("mov rax, -1\ncqo")
+        self.assertEqual(machine.regs["rdx"], MASK64)
 
-    def test_divisao_estoura_avisa(self) -> None:
-        maquina = run("mov rdx, -1\nmov rax, 100\nmov rbx, 7\ndiv rbx")
-        self.assertTrue(any("quociente não cabe" in i for i in maquina.issues))
+    def test_division_overflow_warns(self) -> None:
+        machine = run("mov rdx, -1\nmov rax, 100\nmov rbx, 7\ndiv rbx")
+        self.assertTrue(any("quotient does not fit" in issue for issue in machine.issues))
 
-    def test_deslocamentos(self) -> None:
-        maquina = run("mov rax, 8\nshr rax, 1\nshl rax, 2")
-        self.assertEqual(maquina.regs["rax"], 16)
+    def test_shifts(self) -> None:
+        machine = run("mov rax, 8\nshr rax, 1\nshl rax, 2")
+        self.assertEqual(machine.regs["rax"], 16)
 
-    def test_sal_e_sar(self) -> None:
-        maquina = run("mov rax, -16\nsar rax, 2\nsal rax, 1")
-        self.assertEqual(to_signed(maquina.regs["rax"], 8), -8)
+    def test_sal_and_sar(self) -> None:
+        machine = run("mov rax, -16\nsar rax, 2\nsal rax, 1")
+        self.assertEqual(to_signed(machine.regs["rax"], 8), -8)
 
-    def test_loop_com_rcx_zero(self) -> None:
-        maquina = run("mov rcx, 1\ncorpo:\nmov rax, 7\nloop corpo")
-        self.assertEqual(maquina.regs["rax"], 7)
-        self.assertEqual(maquina.regs["rcx"], 0)
+    def test_loop_with_rcx_zero(self) -> None:
+        machine = run("mov rcx, 1\nbody:\nmov rax, 7\nloop body")
+        self.assertEqual(machine.regs["rax"], 7)
+        self.assertEqual(machine.regs["rcx"], 0)
 
-    def test_desvio_rcxz(self) -> None:
-        maquina = run("mov rcx, 0\njrcxz fim\nmov rax, 1\nfim:\nmov rbx, 2")
-        self.assertEqual(maquina.regs["rax"], 0)
-        self.assertEqual(maquina.regs["rbx"], 2)
+    def test_jrcxz_jump(self) -> None:
+        machine = run("mov rcx, 0\njrcxz end\nmov rax, 1\nend:\nmov rbx, 2")
+        self.assertEqual(machine.regs["rax"], 0)
+        self.assertEqual(machine.regs["rbx"], 2)
 
-    def test_leave_desmonta_o_quadro(self) -> None:
-        codigo = (
+    def test_leave_tears_down_the_frame(self) -> None:
+        code = (
             "f:\n push rbp\n mov rbp, rsp\n sub rsp, 16\n mov rax, 1\n"
             " leave\n ret\n_start:\n call f\n mov rax, 60\n syscall"
         )
-        maquina = run(codigo)
-        self.assertTrue(maquina.halted)
+        machine = run(code)
+        self.assertTrue(machine.halted)
 
-    def test_hlt_para_a_execucao(self) -> None:
-        maquina = run("mov rax, 1\nhlt\nmov rbx, 2")
-        self.assertTrue(maquina.halted)
-        self.assertEqual(maquina.regs["rbx"], 0)
+    def test_hlt_stops_execution(self) -> None:
+        machine = run("mov rax, 1\nhlt\nmov rbx, 2")
+        self.assertTrue(machine.halted)
+        self.assertEqual(machine.regs["rbx"], 0)
 
-    def test_instrucao_nao_emulada_avisa(self) -> None:
-        maquina = Machine(analyze("movdqa xmm0, xmm1\nmov rax, 1"))
-        maquina.step()
-        self.assertTrue(any("não é emulada" in i for i in maquina.issues))
+    def test_unemulated_instruction_warns(self) -> None:
+        machine = Machine(analyze("movdqa xmm0, xmm1\nmov rax, 1"))
+        machine.step()
+        self.assertTrue(any("not emulated" in issue for issue in machine.issues))
 
-    def test_cld_e_std_mexem_em_df(self) -> None:
-        maquina = run("std")
-        self.assertEqual(maquina.flags["DF"], 1)
-        maquina = run("std\ncld")
-        self.assertEqual(maquina.flags["DF"], 0)
+    def test_cld_and_std_change_df(self) -> None:
+        machine = run("std")
+        self.assertEqual(machine.flags["DF"], 1)
+        machine = run("std\ncld")
+        self.assertEqual(machine.flags["DF"], 0)
 
 
-class TestCadeiaDeCaracteres(unittest.TestCase):
-    """REP MOVSB/STOSB/LODSB/SCASB e o flag de direção."""
+class TestStringInstructions(unittest.TestCase):
+    """REP MOVSB/STOSB/LODSB/SCASB and the direction flag."""
 
-    def test_rep_movsb_copia(self) -> None:
-        codigo = (
-            "section .data\norigem db 1, 2, 3\ndestino db 0, 0, 0\nsection .text\n"
-            "global _start\n_start:\n lea rsi, [origem]\n lea rdi, [destino]\n"
+    def test_rep_movsb_copies(self) -> None:
+        code = (
+            "section .data\nsource db 1, 2, 3\ntarget db 0, 0, 0\nsection .text\n"
+            "global _start\n_start:\n lea rsi, [source]\n lea rdi, [target]\n"
             " mov rcx, 3\n rep movsb\n mov rax, 1\n mov rdi, 1\n"
-            " lea rsi, [destino]\n mov rdx, 3\n syscall\n"
+            " lea rsi, [target]\n mov rdx, 3\n syscall\n"
             " mov rax, 60\n xor rdi, rdi\n syscall"
         )
-        maquina = run(codigo)
-        self.assertEqual([ord(c) for c in maquina.output], [1, 2, 3])
+        machine = run(code)
+        self.assertEqual([ord(c) for c in machine.output], [1, 2, 3])
 
-    def test_rep_stosb_preenche(self) -> None:
-        codigo = (
+    def test_rep_stosb_fills(self) -> None:
+        code = (
             "section .bss\nbuf resb 4\nsection .text\nglobal _start\n_start:\n"
             " lea rdi, [buf]\n mov al, 65\n mov rcx, 4\n rep stosb\n"
             " mov rax, 1\n mov rdi, 1\n lea rsi, [buf]\n mov rdx, 4\n syscall\n"
             " mov rax, 60\n xor rdi, rdi\n syscall"
         )
-        self.assertEqual(run(codigo).output, "AAAA")
+        self.assertEqual(run(code).output, "AAAA")
 
-    def test_lodsb_avanca_rsi(self) -> None:
-        maquina = run("section .data\nx db 7\nsection .text\n lea rsi, [x]\n lodsb")
-        self.assertEqual(maquina.get_reg("al"), 7)
+    def test_lodsb_advances_rsi(self) -> None:
+        machine = run("section .data\nx db 7\nsection .text\n lea rsi, [x]\n lodsb")
+        self.assertEqual(machine.get_reg("al"), 7)
 
-    def test_rep_com_contador_absurdo_avisa(self) -> None:
-        maquina = run("mov rcx, 0xFFFFFF\nrep stosb", limit=10)
-        self.assertTrue(any("REP com RCX" in i for i in maquina.issues))
+    def test_rep_with_absurd_counter_warns(self) -> None:
+        machine = run("mov rcx, 0xFFFFFF\nrep stosb", limit=10)
+        self.assertTrue(any("REP with RCX" in issue for issue in machine.issues))
 
-    def test_scasb_compara(self) -> None:
-        codigo = "section .data\nx db 65\nsection .text\n lea rdi, [x]\n mov al, 65\n" " scasb"
-        self.assertEqual(run(codigo).flags["ZF"], 1)
+    def test_scasb_compares(self) -> None:
+        code = "section .data\nx db 65\nsection .text\n lea rdi, [x]\n mov al, 65\n" " scasb"
+        self.assertEqual(run(code).flags["ZF"], 1)
 
 
-class TestSyscallsEmuladas(unittest.TestCase):
-    """Cada syscall tratada pela máquina."""
+class TestEmulatedSyscalls(unittest.TestCase):
+    """Every syscall the machine handles."""
 
     def test_getpid(self) -> None:
         self.assertEqual(run("mov rax, 39\nsyscall").regs["rax"], 4242)
@@ -191,300 +230,302 @@ class TestSyscallsEmuladas(unittest.TestCase):
     def test_time(self) -> None:
         self.assertGreater(run("mov rax, 201\nsyscall").regs["rax"], 0)
 
-    def test_nanosleep_e_ignorada(self) -> None:
-        maquina = run("mov rax, 35\nsyscall")
-        self.assertFalse(any("35" in i for i in maquina.issues))
-        maquina = Machine(analyze("mov rax, 35\nsyscall"))
-        maquina.step()
-        self.assertIn("nanosleep", maquina.step().note)
+    def test_nanosleep_is_ignored(self) -> None:
+        machine = run("mov rax, 35\nsyscall")
+        self.assertFalse(any("35" in issue for issue in machine.issues))
+        machine = Machine(analyze("mov rax, 35\nsyscall"))
+        machine.step()
+        self.assertIn("nanosleep", machine.step().note)
 
-    def test_brk_devolve_heap_simulado(self) -> None:
+    def test_brk_returns_a_simulated_heap(self) -> None:
         self.assertEqual(run("mov rax, 12\nsyscall").regs["rax"], BSS_BASE + 0x10000)
 
-    def test_getrandom_preenche(self) -> None:
-        codigo = (
+    def test_getrandom_fills_the_buffer(self) -> None:
+        code = (
             "section .bss\nbuf resb 8\nsection .text\nglobal _start\n_start:\n"
             " mov rax, 318\n lea rdi, [buf]\n mov rsi, 8\n syscall\n"
             " mov rbx, rax\n mov rax, 60\n xor rdi, rdi\n syscall"
         )
-        maquina = run(codigo)
-        self.assertEqual(maquina.regs["rbx"], 8)
-        self.assertTrue(any(maquina.rd8(maquina.symbols["buf"].addr + i) for i in range(8)))
+        machine = run(code)
+        self.assertEqual(machine.regs["rbx"], 8)
+        self.assertTrue(any(machine.rd8(machine.symbols["buf"].addr + i) for i in range(8)))
 
-    def test_syscall_desconhecida_avisa(self) -> None:
-        maquina = run("mov rax, 999\nsyscall")
-        self.assertTrue(any("não é emulada" in i for i in maquina.issues))
+    def test_unknown_syscall_warns(self) -> None:
+        machine = run("mov rax, 999\nsyscall")
+        self.assertTrue(any("not emulated" in issue for issue in machine.issues))
 
-    def test_write_com_tamanho_absurdo(self) -> None:
-        maquina = run("mov rax, 1\nmov rdi, 1\nmov rsi, 0x1000\n" "mov rdx, 0xFFFFFF\nsyscall")
-        self.assertTrue(any("tamanho absurdo" in i for i in maquina.issues))
+    def test_write_with_absurd_size(self) -> None:
+        machine = run("mov rax, 1\nmov rdi, 1\nmov rsi, 0x1000\n" "mov rdx, 0xFFFFFF\nsyscall")
+        self.assertTrue(any("absurd size" in issue for issue in machine.issues))
 
     def test_exit_group(self) -> None:
-        maquina = run("mov rax, 231\nmov rdi, 3\nsyscall")
-        self.assertEqual(maquina.exit_code, 3)
+        machine = run("mov rax, 231\nmov rdi, 3\nsyscall")
+        self.assertEqual(machine.exit_code, 3)
 
-    def test_int_0x80_troca_os_registradores(self) -> None:
-        codigo = (
+    def test_int_0x80_swaps_the_registers(self) -> None:
+        code = (
             'section .data\nmsg db "ok"\nsection .text\nglobal _start\n_start:\n'
             " mov eax, 4\n mov ebx, 1\n lea ecx, [msg]\n mov edx, 2\n int 0x80\n"
             " mov eax, 1\n xor ebx, ebx\n int 0x80"
         )
-        self.assertEqual(run(codigo).output, "ok")
+        self.assertEqual(run(code).output, "ok")
 
-    def test_int_0x80_sem_equivalente_avisa(self) -> None:
-        maquina = Machine(analyze("mov eax, 11\nint 0x80"))
-        maquina.step()
-        maquina.step()
-        self.assertTrue(any("32 bits" in i for i in maquina.issues))
+    def test_int_0x80_without_equivalent_warns(self) -> None:
+        machine = Machine(analyze("mov eax, 11\nint 0x80"))
+        machine.step()
+        machine.step()
+        self.assertTrue(any("32-bit" in issue for issue in machine.issues))
 
-    def test_int_3_e_breakpoint(self) -> None:
-        maquina = Machine(analyze("int 3\nmov rax, 1"))
-        passo = maquina.step()
-        self.assertIn("breakpoint", passo.note)
+    def test_int_3_is_a_breakpoint(self) -> None:
+        machine = Machine(analyze("int 3\nmov rax, 1"))
+        step = machine.step()
+        self.assertIn("breakpoint", step.note)
 
-    def test_interrupcao_desconhecida(self) -> None:
-        maquina = Machine(analyze("int 0x21\nmov rax, 1"))
-        self.assertIn("não emulada", maquina.step().note)
+    def test_unknown_interrupt(self) -> None:
+        machine = Machine(analyze("int 0x21\nmov rax, 1"))
+        self.assertIn("unemulated interrupt", machine.step().note)
 
 
-class TestApiDoWindows(unittest.TestCase):
-    """Stubs das funções do kernel32/user32."""
+class TestWindowsApi(unittest.TestCase):
+    """Stubs of the kernel32/user32 functions."""
 
-    def programa(self, chamada: str) -> Machine:
-        codigo = (
-            'extern %s\nsection .data\nmsg db "oi", 0\nsection .text\n'
+    def program(self, call: str) -> Machine:
+        code = (
+            'extern %s\nsection .data\nmsg db "hi", 0\nsection .text\n'
             "global main\nmain:\n sub rsp, 40\n%s\n xor rcx, rcx\n"
-            " call ExitProcess" % (chamada.split()[0], chamada)
+            " call ExitProcess" % (call.split()[0], call)
         )
-        return run(codigo)
+        return run(code)
 
     def test_getstdhandle(self) -> None:
-        maquina = self.programa("call GetStdHandle")
-        self.assertEqual(maquina.regs["rax"], 0x13)
+        machine = self.program("call GetStdHandle")
+        self.assertEqual(machine.regs["rax"], 0x13)
 
     def test_writeconsole(self) -> None:
-        codigo = (
+        code = (
             "extern GetStdHandle\nextern WriteConsoleA\nextern ExitProcess\n"
-            'section .data\nmsg db "Ola", 0\nsection .text\nglobal main\nmain:\n'
+            'section .data\nmsg db "Hello", 0\nsection .text\nglobal main\nmain:\n'
             " sub rsp, 40\n mov rcx, -11\n call GetStdHandle\n mov rbx, rax\n"
-            " mov rcx, rbx\n lea rdx, [msg]\n mov r8, 3\n mov r9, 0\n"
+            " mov rcx, rbx\n lea rdx, [msg]\n mov r8, 5\n mov r9, 0\n"
             " call WriteConsoleA\n xor rcx, rcx\n call ExitProcess"
         )
-        self.assertEqual(run(codigo).output, "Ola")
+        self.assertEqual(run(code).output, "Hello")
 
     def test_messagebox(self) -> None:
-        codigo = (
+        code = (
             "extern MessageBoxA\nextern ExitProcess\nsection .data\n"
-            'titulo db "Aviso", 0\ntexto db "Cuidado", 0\nsection .text\n'
-            "global main\nmain:\n sub rsp, 40\n xor rcx, rcx\n lea rdx, [texto]\n"
-            " lea r8, [titulo]\n mov r9, 0\n call MessageBoxA\n xor rcx, rcx\n"
+            'title db "Warning", 0\ntext db "Careful", 0\nsection .text\n'
+            "global main\nmain:\n sub rsp, 40\n xor rcx, rcx\n lea rdx, [text]\n"
+            " lea r8, [title]\n mov r9, 0\n call MessageBoxA\n xor rcx, rcx\n"
             " call ExitProcess"
         )
-        self.assertIn("Cuidado", run(codigo).output)
+        self.assertIn("Careful", run(code).output)
 
-    def test_sleep_e_ignorado(self) -> None:
-        self.assertFalse(self.programa("call Sleep").issues)
+    def test_sleep_is_ignored(self) -> None:
+        self.assertFalse(self.program("call Sleep").issues)
 
     def test_getlasterror(self) -> None:
-        self.assertEqual(self.programa("call GetLastError").regs["rax"], 0)
+        self.assertEqual(self.program("call GetLastError").regs["rax"], 0)
 
-    def test_funcao_externa_desconhecida(self) -> None:
-        maquina = self.programa("call NadaDisso")
-        self.assertTrue(any("não é emulada" in i for i in maquina.issues))
-
-
-class TestMemoriaERegistradores(unittest.TestCase):
-    """Leitura, escrita e endereçamento."""
-
-    def test_escrita_e_leitura_de_8_bytes(self) -> None:
-        maquina = Machine(analyze("mov rax, 1"))
-        maquina.write_mem(0x1000, 8, 0x1122334455667788)
-        self.assertEqual(maquina.read_mem(0x1000, 8), 0x1122334455667788)
-        self.assertEqual(maquina.rd8(0x1000), 0x88)
-
-    def test_string_terminada_em_zero(self) -> None:
-        maquina = Machine(analyze("mov rax, 1"))
-        for i, letra in enumerate("abc\0"):
-            maquina.wr8(0x2000 + i, ord(letra))
-        self.assertEqual(maquina.read_cstring(0x2000), "abc")
-
-    def test_endereco_com_escala(self) -> None:
-        codigo = "section .data\nv db 1, 2, 3, 4\nsection .text\n mov rbx, 2\n" "mov al, [v + rbx]"
-        maquina = run(codigo)
-        self.assertEqual(maquina.get_reg("al"), 3)
-
-    def test_endereco_negativo(self) -> None:
-        codigo = "f:\n push rbp\n mov rbp, rsp\n sub rsp, 16\n mov al, [rbp - 4]\n leave\n ret"
-        self.assertFalse(run(codigo).halted is None)
-
-    def test_leitura_de_ponteiro_nunca_escrito(self) -> None:
-        maquina = run("mov rax, [rbx]")
-        self.assertTrue(any("nunca escrita" in i for i in maquina.issues))
-
-    def test_tamanho_padrao_do_operando(self) -> None:
-        maquina = Machine(analyze("mov rax, 1"))
-        self.assertEqual(maquina.op_size(analyze("mov rax, 1").instrs[0].operands[0]), 8)
-
-    def test_pilha_vazia_avisa(self) -> None:
-        maquina = Machine(analyze("pop rax"))
-        maquina.step()
-        self.assertTrue(any("estouro de pilha" in i for i in maquina.issues))
-
-    def test_push_e_pop_com_memoria(self) -> None:
-        codigo = "section .data\nx dq 42\nsection .text\n push qword [x]\n pop rbx"
-        self.assertEqual(run(codigo).regs["rbx"], 42)
+    def test_unknown_external_function(self) -> None:
+        machine = self.program("call NothingLikeThis")
+        self.assertTrue(any("not emulated" in issue for issue in machine.issues))
 
 
-class TestDadosESimbolos(unittest.TestCase):
-    """Carregamento de dados, BSS e constantes."""
+class TestMemoryAndRegisters(unittest.TestCase):
+    """Reads, writes and addressing."""
 
-    def test_enderecos_de_dados_e_bss(self) -> None:
-        codigo = (
+    def test_write_and_read_8_bytes(self) -> None:
+        machine = Machine(analyze("mov rax, 1"))
+        machine.write_mem(0x1000, 8, 0x1122334455667788)
+        self.assertEqual(machine.read_mem(0x1000, 8), 0x1122334455667788)
+        self.assertEqual(machine.rd8(0x1000), 0x88)
+
+    def test_zero_terminated_string(self) -> None:
+        machine = Machine(analyze("mov rax, 1"))
+        for i, letter in enumerate("abc\0"):
+            machine.wr8(0x2000 + i, ord(letter))
+        self.assertEqual(machine.read_cstring(0x2000), "abc")
+
+    def test_address_with_scale(self) -> None:
+        code = "section .data\nv db 1, 2, 3, 4\nsection .text\n mov rbx, 2\n" "mov al, [v + rbx]"
+        machine = run(code)
+        self.assertEqual(machine.get_reg("al"), 3)
+
+    def test_negative_address(self) -> None:
+        code = "f:\n push rbp\n mov rbp, rsp\n sub rsp, 16\n mov al, [rbp - 4]\n leave\n ret"
+        self.assertIsNotNone(run(code).halted)
+
+    def test_read_of_a_pointer_never_written(self) -> None:
+        machine = run("mov rax, [rbx]")
+        self.assertTrue(any("never written" in issue for issue in machine.issues))
+
+    def test_default_operand_size(self) -> None:
+        machine = Machine(analyze("mov rax, 1"))
+        self.assertEqual(machine.op_size(analyze("mov rax, 1").instrs[0].operands[0]), 8)
+
+    def test_empty_stack_warns(self) -> None:
+        machine = Machine(analyze("pop rax"))
+        machine.step()
+        self.assertTrue(any("stack underflow" in issue for issue in machine.issues))
+
+    def test_push_and_pop_with_memory(self) -> None:
+        code = "section .data\nx dq 42\nsection .text\n push qword [x]\n pop rbx"
+        self.assertEqual(run(code).regs["rbx"], 42)
+
+
+class TestDataAndSymbols(unittest.TestCase):
+    """Data loading, BSS and constants."""
+
+    def test_data_and_bss_addresses(self) -> None:
+        code = (
             "section .data\na db 1\nsection .bss\nb resb 16\nsection .text\n"
             "global _start\n_start:\n mov rax, 60\n syscall"
         )
-        maquina = run(codigo)
-        self.assertEqual(maquina.symbols["a"].addr, DATA_BASE)
-        self.assertEqual(maquina.symbols["b"].addr, BSS_BASE)
-        self.assertTrue(maquina.symbols["b"].bss)
+        machine = run(code)
+        self.assertEqual(machine.symbols["a"].addr, DATA_BASE)
+        self.assertEqual(machine.symbols["b"].addr, BSS_BASE)
+        self.assertTrue(machine.symbols["b"].bss)
 
-    def test_times_gera_zeros(self) -> None:
-        codigo = (
+    def test_times_generates_zeros(self) -> None:
+        code = (
             "section .data\nzeros times 4 db 0\nsection .text\n"
             "global _start\n_start:\n mov rax, 60\n syscall"
         )
-        maquina = run(codigo)
-        self.assertEqual(maquina.symbols["zeros"].size, 4)
+        machine = run(code)
+        self.assertEqual(machine.symbols["zeros"].size, 4)
 
-    def test_times_com_valor_repete(self) -> None:
-        codigo = (
+    def test_times_with_a_value_repeats_it(self) -> None:
+        code = (
             "section .data\nv times 3 db 7\nsection .text\nglobal _start\n_start:\n"
             " mov rax, 1\n mov rdi, 1\n lea rsi, [v]\n mov rdx, 3\n syscall\n"
             " mov rax, 60\n syscall"
         )
-        self.assertEqual(run(codigo).output, "\x07\x07\x07")
+        self.assertEqual(run(code).output, "\x07\x07\x07")
 
-    def test_equ_com_valor(self) -> None:
-        codigo = (
+    def test_equ_with_a_value(self) -> None:
+        code = (
             "section .data\nn equ 42\nsection .text\nglobal _start\n_start:\n"
             " mov rax, n\n mov rax, 60\n syscall"
         )
-        maquina = run(codigo)
-        self.assertEqual(maquina.symbols["n"].equ, 42)
+        machine = run(code)
+        self.assertEqual(machine.symbols["n"].equ, 42)
 
-    def test_equ_com_dolar_menos_rotulo(self) -> None:
-        codigo = (
-            'section .data\nmsg db "abc"\ntam equ $ - msg\nsection .text\n'
-            "global _start\n_start:\n mov rdx, tam\n mov rax, 60\n syscall"
+    def test_equ_with_dollar_minus_label(self) -> None:
+        code = (
+            'section .data\nmsg db "abc"\nsize equ $ - msg\nsection .text\n'
+            "global _start\n_start:\n mov rdx, size\n mov rax, 60\n syscall"
         )
-        maquina = run(codigo)
-        self.assertEqual(maquina.symbols["tam"].equ, 3)
+        machine = run(code)
+        self.assertEqual(machine.symbols["size"].equ, 3)
 
-    def test_rotulo_de_codigo_vira_endereco_magico(self) -> None:
-        codigo = "f:\n mov rax, 1\n ret\n_start:\n lea rbx, [f]"
-        maquina = run(codigo)
-        self.assertGreaterEqual(maquina.regs["rbx"], RET_MAGIC)
+    def test_code_label_becomes_a_magic_address(self) -> None:
+        code = "f:\n mov rax, 1\n ret\n_start:\n lea rbx, [f]"
+        machine = run(code)
+        self.assertGreaterEqual(machine.regs["rbx"], RET_MAGIC)
 
 
-class TestExecucao(unittest.TestCase):
-    """Controle da execução, do relógio e do histórico."""
+class TestExecution(unittest.TestCase):
+    """Control of the execution, of the clock and of the history."""
 
-    def test_timeout_marca_e_para(self) -> None:
-        maquina = Machine(analyze("inicio:\njmp inicio"), clock=RelogioFalso())
-        maquina.run(limit=100000, timeout=1.0)
-        self.assertTrue(maquina.timed_out)
-        self.assertTrue(maquina.halted)
-        self.assertTrue(any("timeout" in i for i in maquina.issues))
+    def test_timeout_marks_and_stops(self) -> None:
+        machine = Machine(analyze("start:\njmp start"), clock=FakeClock())
+        machine.run(limit=100000, timeout=1.0)
+        self.assertTrue(machine.timed_out)
+        self.assertTrue(machine.halted)
+        self.assertTrue(any("timeout" in issue for issue in machine.issues))
 
-    def test_timeout_estrito_levanta(self) -> None:
-        maquina = Machine(analyze("inicio:\njmp inicio"), clock=RelogioFalso())
+    def test_strict_timeout_raises(self) -> None:
+        machine = Machine(analyze("start:\njmp start"), clock=FakeClock())
         with self.assertRaises(AnalysisTimeoutError):
-            maquina.run(limit=100000, timeout=1.0, raise_on_timeout=True)
+            machine.run(limit=100000, timeout=1.0, raise_on_timeout=True)
 
-    def test_run_until_para_no_indice(self) -> None:
-        maquina = Machine(analyze("mov rax, 1\nmov rbx, 2\nmov rcx, 3"))
-        maquina.run_until({2})
-        self.assertEqual(maquina.ip, 2)
-        self.assertEqual(maquina.regs["rcx"], 0)
+    def test_run_until_stops_at_the_index(self) -> None:
+        machine = Machine(analyze("mov rax, 1\nmov rbx, 2\nmov rcx, 3"))
+        machine.run_until({2})
+        self.assertEqual(machine.ip, 2)
+        self.assertEqual(machine.regs["rcx"], 0)
 
     def test_snapshot(self) -> None:
-        maquina = run("mov rax, 5")
-        retrato = maquina.snapshot()
-        self.assertEqual(retrato["regs"]["rax"], 5)
-        self.assertIn("rsp", retrato["regs"])
-        self.assertFalse(retrato["halted"] is None)
+        machine = run("mov rax, 5")
+        snapshot = machine.snapshot()
+        self.assertEqual(snapshot["regs"]["rax"], 5)
+        self.assertIn("rsp", snapshot["regs"])
+        self.assertIsNotNone(snapshot["halted"])
 
-    def test_historico_limitado(self) -> None:
-        maquina = Machine(analyze("inicio:\nmov rax, 1\ninc rax\njmp inicio"))
-        maquina.run(limit=3000)
-        self.assertLessEqual(len(maquina.trace), 2000)
+    def test_limited_history(self) -> None:
+        machine = Machine(analyze("start:\nmov rax, 1\ninc rax\njmp start"))
+        machine.run(limit=3000)
+        self.assertLessEqual(len(machine.trace), 2000)
 
-    def test_ret_sem_endereco_valido(self) -> None:
-        maquina = run("f:\n pop rax\n ret\n_start:\n call f")
+    def test_ret_without_a_valid_address(self) -> None:
+        machine = run("f:\n pop rax\n ret\n_start:\n call f")
         self.assertTrue(
-            any("não é um endereço" in i or "desbalanceada" in i for i in maquina.issues)
+            any("not a valid" in issue or "unbalanced" in issue for issue in machine.issues)
         )
 
-    def test_desvio_para_rotulo_inexistente_para(self) -> None:
-        maquina = run("jmp lugar_nenhum")
-        self.assertTrue(maquina.halted)
-        self.assertTrue(any("rótulo desconhecido" in i for i in maquina.issues))
+    def test_jump_to_a_nonexistent_label_stops(self) -> None:
+        machine = run("jmp nowhere")
+        self.assertTrue(machine.halted)
+        self.assertTrue(any("unknown label" in issue for issue in machine.issues))
 
-    def test_step_depois_de_parar(self) -> None:
-        maquina = run("mov rax, 1")
-        maquina.halted = True
-        self.assertIn("já terminou", maquina.step().note)
+    def test_step_after_halting(self) -> None:
+        machine = run("mov rax, 1")
+        machine.halted = True
+        self.assertIn("already finished", machine.step().note)
 
-    def test_erro_na_simulacao_vira_aviso(self) -> None:
-        maquina = Machine(analyze("mov rax, 1"))
-        maquina.instrs[0].operands[0].reg = "registrador_que_nao_existe"
-        maquina.step()
-        self.assertTrue(maquina.issues)
+    def test_simulation_error_becomes_an_issue(self) -> None:
+        machine = Machine(analyze("mov rax, 1"))
+        machine.instrs[0].operands[0].reg = "register_that_does_not_exist"
+        machine.step()
+        self.assertTrue(machine.issues)
 
-    def test_condicoes_desconhecidas_sao_falsas(self) -> None:
-        maquina = Machine(analyze("mov rax, 1"))
-        self.assertFalse(maquina.cond("zz"))
+    def test_unknown_conditions_are_false(self) -> None:
+        machine = Machine(analyze("mov rax, 1"))
+        self.assertFalse(machine.cond("zz"))
 
-    def test_flags_de_paridade_e_sinal(self) -> None:
-        maquina = Machine(analyze("mov rax, 1"))
-        maquina.set_logic_flags(0, 8)
-        self.assertEqual(maquina.flags["ZF"], 1)
-        self.assertEqual(maquina.flags["PF"], 1)
-        maquina.set_logic_flags(0x80, 1)
-        self.assertEqual(maquina.flags["SF"], 1)
+    def test_parity_and_sign_flags(self) -> None:
+        machine = Machine(analyze("mov rax, 1"))
+        machine.set_logic_flags(0, 8)
+        self.assertEqual(machine.flags["ZF"], 1)
+        self.assertEqual(machine.flags["PF"], 1)
+        machine.set_logic_flags(0x80, 1)
+        self.assertEqual(machine.flags["SF"], 1)
 
-    def test_overflow_na_soma_sinalizada(self) -> None:
-        maquina = Machine(analyze("mov rax, 1"))
-        maquina.set_arith_flags(0x7FFFFFFFFFFFFFFF, 1, 0x8000000000000000, 8, False)
-        self.assertEqual(maquina.flags["OF"], 1)
-        maquina.set_arith_flags(0, 1, -1, 8, True)
-        self.assertEqual(maquina.flags["CF"], 1)
+    def test_signed_sum_overflow(self) -> None:
+        machine = Machine(analyze("mov rax, 1"))
+        machine.set_arith_flags(0x7FFFFFFFFFFFFFFF, 1, 0x8000000000000000, 8, False)
+        self.assertEqual(machine.flags["OF"], 1)
+        machine.set_arith_flags(0, 1, -1, 8, True)
+        self.assertEqual(machine.flags["CF"], 1)
 
-    def test_hexs_e_to_signed(self) -> None:
+    def test_hexs_and_to_signed(self) -> None:
         self.assertEqual(hexs(MASK64), "0xffffffffffffffff")
         self.assertEqual(to_signed(MASK64, 8), -1)
         self.assertEqual(to_signed(0xFF, 1), -1)
 
     def test_symbol_dataclass(self) -> None:
-        simbolo = Symbol(addr=0x1000, size=8, line=3)
-        self.assertEqual(simbolo.addr, 0x1000)
-        self.assertFalse(simbolo.bss)
+        symbol = Symbol(addr=0x1000, size=8, line=3)
+        self.assertEqual(symbol.addr, 0x1000)
+        self.assertFalse(symbol.bss)
 
-    def test_entrada_curta_e_suficiente(self) -> None:
-        codigo = (
+    def test_short_input_is_enough(self) -> None:
+        code = (
             "section .bss\nbuf resb 4\nsection .text\nglobal _start\n_start:\n"
             " mov rax, 0\n mov rdi, 0\n lea rsi, [buf]\n mov rdx, 4\n syscall\n"
             " mov rbx, rax\n mov rax, 60\n syscall"
         )
-        maquina = run(codigo, stdin="ab")
-        self.assertEqual(maquina.regs["rbx"], 2)
+        machine = run(code, stdin="ab")
+        self.assertEqual(machine.regs["rbx"], 2)
 
-    def test_pilha_comeca_no_topo(self) -> None:
-        maquina = Machine(analyze("mov rax, 1"))
-        self.assertEqual(maquina.regs["rsp"], STACK_TOP)
+    def test_stack_starts_at_the_top(self) -> None:
+        machine = Machine(analyze("mov rax, 1"))
+        self.assertEqual(machine.regs["rsp"], STACK_TOP)
 
-    def test_sem_saida_explicita_avisa(self) -> None:
-        self.assertTrue(any("sem uma chamada de saída" in i for i in run("mov rax, 1").issues))
+    def test_missing_explicit_exit_warns(self) -> None:
+        self.assertTrue(
+            any("without an explicit exit" in issue for issue in run("mov rax, 1").issues)
+        )
 
 
 if __name__ == "__main__":

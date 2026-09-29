@@ -62,6 +62,7 @@ jobs:
         run: |
           python tools/quality_gates.py
           python tools/export_examples.py --check
+          python tools/build_reference.py --check
 
       - name: Run tests with coverage under a virtual display
         run: |

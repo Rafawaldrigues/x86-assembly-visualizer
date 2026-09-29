@@ -1,20 +1,20 @@
-; Olá mundo em NASM para Linux x86-64
-; montar:  nasm -f elf64 hello.asm && ld hello.o -o hello
+; Hello world in NASM for Linux x86-64
+; build:  nasm -f elf64 hello.asm && ld hello.o -o hello
 
 section .data
-    msg     db  "Ola, mundo!", 10      ; 10 = '\n'
-    msg_len equ $ - msg                ; tamanho calculado pelo montador
+    msg     db  "Hello, world!", 10     ; 10 = '\n'
+    msg_len equ $ - msg                ; size computed by the assembler
 
 section .text
     global _start
 
 _start:
     mov rax, 1              ; syscall write
-    mov rdi, 1              ; descritor 1 = stdout
-    mov rsi, msg            ; endereco da string
-    mov rdx, msg_len        ; quantos bytes
-    syscall                 ; entrega ao kernel
+    mov rdi, 1              ; descriptor 1 = stdout
+    mov rsi, msg            ; address of the string
+    mov rdx, msg_len        ; how many bytes
+    syscall                 ; hands it to the kernel
 
     mov rax, 60             ; syscall exit
-    xor rdi, rdi            ; codigo de saida 0
+    xor rdi, rdi            ; exit code 0
     syscall

@@ -1,0 +1,50 @@
+{
+  "schema": "asmx-rules/1",
+  "description": "Network and command-and-control indicators in assembly source.",
+  "rules": [
+    {
+      "id": "NET001",
+      "name": "Socket opened or connected",
+      "severity": "high",
+      "description": "The program creates a network socket or connects it to a remote address. In a sample you did not write, this is the first thing to explain: which address, which port, and what is sent.",
+      "tags": ["network", "c2"],
+      "mitre": ["T1095", "T1071"],
+      "match": {"syscalls": ["socket", "connect"], "require_all": false}
+    },
+    {
+      "id": "NET002",
+      "name": "Hardcoded host or URL",
+      "severity": "high",
+      "description": "An address is embedded in the data section. Even without a single network syscall, a literal host name says where the sample wants to talk.",
+      "tags": ["network", "ioc"],
+      "mitre": ["T1071", "T1105"],
+      "match": {"strings": ["https?://[a-z0-9.-]+", "[a-z0-9-]+\\.(com|net|org|io|ru|cn|br|xyz|top|onion)\\b"], "strings_min": 1}
+    },
+    {
+      "id": "NET003",
+      "name": "Raw IPv4 literal",
+      "severity": "medium",
+      "description": "A dotted-quad address appears in the source. Useful as an indicator, noisy as a verdict: version numbers and masks look the same.",
+      "tags": ["network", "ioc"],
+      "match": {"strings": ["\\b(?:25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})(?:\\.(?:25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})){3}\\b"]}
+    },
+    {
+      "id": "NET004",
+      "name": "HTTP client markers",
+      "severity": "medium",
+      "description": "A User-Agent, an HTTP verb or a WinINet/WinHTTP entry point is present: the sample speaks HTTP rather than a custom protocol.",
+      "tags": ["network", "http"],
+      "mitre": ["T1071.001"],
+      "match": {"strings": ["User-Agent", "GET /", "POST /", "WinHttpOpen", "InternetOpen"], "strings_min": 1}
+    },
+    {
+      "id": "NET005",
+      "name": "DNS resolution",
+      "severity": "low",
+      "description": "The sample resolves a name at runtime (getaddrinfo/gethostbyname or a DNS-oriented API), which often means the address comes from a configuration or a domain-generation scheme.",
+      "tags": ["network", "dns"],
+      "mitre": ["T1071"],
+      "match": {"strings": ["getaddrinfo", "gethostbyname", "DnsQuery", "res_query"], "strings_min": 1}
+    }
+  ]
+}

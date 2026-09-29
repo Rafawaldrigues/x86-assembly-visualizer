@@ -1,28 +1,29 @@
-"""Relatório: transforma a análise em algo que se pode olhar, salvar e publicar.
+"""Report: turns the analysis into something one can look at, save and publish.
 
-Este módulo junta tudo o que as outras camadas produzem — metadados do arquivo,
-plataforma, instruções explicadas, validação, comportamentos com MITRE ATT&CK,
-indicadores, grafos de fluxo e de chamadas, e a execução na máquina virtual —
-num único objeto (:class:`ReportData`) e sabe desenhar esse objeto em quatro
-formatos:
+This module brings together everything the other layers produce — file metadata,
+platform, explained instructions, validation, behaviors with MITRE ATT&CK,
+indicators, control-flow and call graphs, and the execution on the virtual
+machine — into a single object (:class:`ReportData`) and knows how to draw that
+object in four formats:
 
-* **HTML** — um arquivo só, sem rede: CSS, JavaScript e os grafos em SVG vão
-  embutidos, então o relatório abre offline, no navegador, sem CDN e sem
-  servidor. É o formato para olhar e compartilhar;
-* **Markdown** — texto para colar em issue, pull request ou blog, com o grafo em
-  Mermaid que o GitHub desenha sozinho;
-* **JSON** — os dados crus, com o esquema ``asmx-report/1``, para automação;
-* **DOT/Mermaid/SVG** — os grafos isolados, para quem quer editar no Graphviz.
+* **HTML** — a single file, no network: CSS, JavaScript and the graphs as SVG are
+  embedded, so the report opens offline in the browser, with no CDN and no
+  server. It is the format to look at and share;
+* **Markdown** — text to paste into an issue, pull request or blog, with the
+  graph as Mermaid that GitHub draws by itself;
+* **JSON** — the raw data, with the ``asmx-report/1`` schema, for automation;
+* **DOT/Mermaid/SVG** — the graphs alone, for whoever wants to edit them in
+  Graphviz.
 
-Nada aqui depende de biblioteca externa, e nenhum formato faz requisição de
-rede: o relatório é do usuário, não de um serviço.
+Nothing here depends on an external library, and no format makes a network
+request: the report belongs to the user, not to a service.
 
 Example:
     >>> from asmx.report import collect, render_markdown
-    >>> dados = collect("global _start\\nsection .text\\n_start:\\n mov rax, 60\\n syscall")
-    >>> dados.risk["level"] in ("baixo", "medio", "alto", "critico")
+    >>> data = collect("global _start\\nsection .text\\n_start:\\n mov rax, 60\\n syscall")
+    >>> data.risk["level"] in ("low", "medium", "high", "critical")
     True
-    >>> "ASM X" in render_markdown(dados)
+    >>> "ASM X" in render_markdown(data)
     True
 """
 
@@ -45,7 +46,7 @@ from .iocs import extract as extract_iocs
 from .iocs import from_memory as iocs_from_memory
 from .iocs import to_dicts as iocs_to_dicts
 from .isa import LINUX_SYSCALLS
-from .linter import ERRO, INFO, ALERTA, Problem, summary as problem_summary, validate
+from .linter import ERROR, INFO, WARNING, Problem, summary as problem_summary, validate
 from .logging_setup import get_logger, log_event
 from .source import SourceFile, fingerprint
 
@@ -68,77 +69,77 @@ __all__ = [
     "guess_format",
 ]
 
-#: Esquema do relatório em JSON, para quem for consumir os dados.
+#: JSON report schema, for whoever consumes the data.
 REPORT_SCHEMA = "asmx-report/1"
 
-#: Formatos aceitos por :func:`write_report`.
+#: Formats accepted by :func:`write_report`.
 FORMATS: Tuple[str, ...] = ("html", "md", "json", "dot", "svg", "mermaid")
 
-#: Quantos passos da execução entram na linha do tempo do relatório.
+#: How many execution steps go into the report timeline.
 TIMELINE_LIMIT = 400
 
-#: Pesos usados no cálculo de risco.
-PROBLEM_WEIGHTS = {ERRO: 25, ALERTA: 8, INFO: 2}
-BEHAVIOR_WEIGHTS = {"alto": 18, "medio": 9, "baixo": 3}
+#: Weights used in the risk calculation.
+PROBLEM_WEIGHTS = {ERROR: 25, WARNING: 8, INFO: 2}
+BEHAVIOR_WEIGHTS = {"high": 18, "medium": 9, "low": 3}
 
-#: Cor e emoji de cada nível de risco.
+#: Color and emoji of each risk level.
 RISK_STYLE = {
-    "baixo": ("#5FD4A8", "🟢", "Nada aqui indica comportamento perigoso."),
-    "medio": ("#E3A44B", "🟡", "Há sinais que merecem leitura atenta antes de rodar."),
-    "alto": ("#F08A5D", "🟠", "O conjunto dos sinais pede cuidado: revise antes de montar."),
-    "critico": ("#EF7D9D", "🔴", "Muitos sinais fortes ao mesmo tempo: trate como hostil."),
+    "low": ("#5FD4A8", "🟢", "Nothing here points to dangerous behavior."),
+    "medium": ("#E3A44B", "🟡", "There are signs that deserve a careful read before running."),
+    "high": ("#F08A5D", "🟠", "The signals together call for caution: review before assembling."),
+    "critical": ("#EF7D9D", "🔴", "Many strong signals at once: treat it as hostile."),
 }
 
 
 def _now() -> str:
-    """Devolve o instante da geração em ISO-8601 local.
+    """Return the generation instant in local ISO-8601.
 
     Returns:
-        Texto como ``2026-09-21T19:40:12``.
+        Text such as ``2026-09-21T19:40:12``.
     """
     return datetime.datetime.now().replace(microsecond=0).isoformat()
 
 
 def guess_format(path: str) -> str:
-    """Descobre o formato do relatório pela extensão do arquivo.
+    """Find the report format from the file extension.
 
     Args:
-        path: Caminho de saída.
+        path: Output path.
 
     Returns:
-        Um nome de :data:`FORMATS`; ``"html"`` quando a extensão é desconhecida.
+        A name from :data:`FORMATS`; ``"html"`` when the extension is unknown.
     """
-    extensao = os.path.splitext(path)[1].lstrip(".").lower()
-    return extensao if extensao in FORMATS else "html"
+    extension = os.path.splitext(path)[1].lstrip(".").lower()
+    return extension if extension in FORMATS else "html"
 
 
 @dataclass
 class ReportData:
-    """Tudo o que o relatório mostra, já em tipos simples.
+    """Everything the report shows, already in simple types.
 
     Attributes:
-        schema: Identificador do esquema (``asmx-report/1``).
-        generated_at: Instante da geração.
-        version: Versão do ASM X que gerou o relatório.
-        command: Linha de comando usada, quando houver.
-        source: Metadados do arquivo (nome, hashes, tamanho, codificação).
-        platform: Sistema, bits, confiança da detecção, ABI e evidências.
-        dialect: Dialeto detectado pelo parser (``intel``, ``masm``, ``att``).
-        stats: Contagens do analisador (instruções, blocos, syscalls...).
-        risk: Nível de risco, cor, emoji e descrição.
-        summary: Texto do resumo executivo.
-        problems: Problemas de validação, já como dicionários.
-        behaviors: Comportamentos detectados.
-        techniques: Técnicas MITRE ATT&CK agregadas.
-        iocs: Indicadores agrupados por tipo.
-        instructions: Instruções com a explicação de cada uma.
-        blocks: Blocos básicos com "vem de" e "vai para".
-        cfg: Grafo de fluxo de controle (grafo, SVG, DOT e Mermaid).
-        calls: Grafo de chamadas (mesma estrutura).
-        syscalls: Syscalls encontradas, agregadas por nome.
-        apis: APIs externas chamadas.
-        execution: Resultado da execução na máquina virtual, quando pedido.
-        timeline: Passos da execução, na ordem.
+        schema: Schema identifier (``asmx-report/1``).
+        generated_at: Generation instant.
+        version: Version of ASM X that generated the report.
+        command: Command line used, when there is one.
+        source: File metadata (name, hashes, size, encoding).
+        platform: System, bits, detection confidence, ABI and evidence.
+        dialect: Dialect detected by the parser (``intel``, ``masm``, ``att``).
+        stats: Analyzer counts (instructions, blocks, syscalls...).
+        risk: Risk level, color, emoji and description.
+        summary: Text of the executive summary.
+        problems: Validation problems, already as dictionaries.
+        behaviors: Behavior detected.
+        techniques: Aggregated MITRE ATT&CK techniques.
+        iocs: Indicators grouped by kind.
+        instructions: Instructions with the explanation of each one.
+        blocks: Basic blocks with "comes from" and "goes to".
+        cfg: Control-flow graph (graph, SVG, DOT and Mermaid).
+        calls: Call graph (same structure).
+        syscalls: Syscalls found, aggregated by name.
+        apis: External APIs called.
+        execution: Result of the execution on the virtual machine, when asked.
+        timeline: Execution steps, in order.
     """
 
     schema: str = REPORT_SCHEMA
@@ -165,16 +166,16 @@ class ReportData:
     timeline: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self, *, include_svg: bool = False) -> Dict[str, Any]:
-        """Converte o relatório em dicionário pronto para JSON.
+        """Convert the report into a dictionary ready for JSON.
 
         Args:
-            include_svg: Quando ``True``, mantém o SVG dos grafos (útil para
-                gerar um HTML a partir do JSON; deixa o arquivo bem maior).
+            include_svg: When ``True``, keeps the graph SVG (useful to generate
+                an HTML from the JSON; makes the file much larger).
 
         Returns:
-            Dicionário com o esquema, os metadados e todas as seções.
+            Dictionary with the schema, the metadata and every section.
         """
-        dados: Dict[str, Any] = {
+        data: Dict[str, Any] = {
             "schema": self.schema,
             "generated_at": self.generated_at,
             "version": self.version,
@@ -198,17 +199,17 @@ class ReportData:
             "execution": self.execution,
             "timeline": self.timeline,
         }
-        return dados
+        return data
 
     @property
     def counts(self) -> Dict[str, int]:
-        """Contagens usadas nos cartões do topo do relatório.
+        """Counts used in the cards at the top of the report.
 
         Returns:
-            Dicionário com instruções, blocos, chamadas, syscalls, problemas,
-            comportamentos, indicadores e strings.
+            Dictionary with instructions, blocks, calls, syscalls, problems,
+            behaviors, indicators and strings.
         """
-        total_iocs = sum(len(lista) for lista in self.iocs.values())
+        total_iocs = sum(len(values) for values in self.iocs.values())
         return {
             "instructions": int(self.stats.get("instructions", 0)),
             "blocks": int(self.stats.get("blocks", 0)),
@@ -221,96 +222,96 @@ class ReportData:
         }
 
 
-# --------------------------------------------------------------- coleta ----
+# ----------------------------------------------------------- collection ----
 def risk_assessment(
     problems: Sequence[Problem],
     behaviors: Sequence[Behavior],
     stats: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Calcula o nível de risco a partir dos problemas e dos comportamentos.
+    """Compute the risk level from the problems and the behaviors.
 
-    A conta é simples e explicável de propósito: cada erro de validação pesa 25,
-    cada alerta 8 e cada informação 2; cada comportamento de severidade alta
-    pesa 18, média 9 e baixa 3. O total é limitado a 100.
+    The arithmetic is simple and explainable on purpose: each validation error
+    weighs 25, each warning 8 and each information 2; each behavior of high
+    severity weighs 18, medium 9 and low 3. The total is capped at 100.
 
     Args:
-        problems: Problemas devolvidos pelo validador.
-        behaviors: Comportamentos classificados.
-        stats: Estatísticas do analisador (usadas só para citar o tamanho).
+        problems: Problems returned by the validator.
+        behaviors: Classified behaviors.
+        stats: Analyzer statistics (used only to cite the size).
 
     Returns:
-        Dicionário com ``score``, ``level``, ``color``, ``emoji``,
-        ``description`` e ``reasons`` (o que mais pesou).
+        Dictionary with ``score``, ``level``, ``color``, ``emoji``,
+        ``description`` and ``reasons`` (what weighed the most).
 
     Example:
         >>> risk_assessment([], [])["level"]
-        'baixo'
+        'low'
     """
     score = 0
-    razoes: List[str] = []
-    for problema in problems:
-        score += PROBLEM_WEIGHTS.get(problema.severity, 0)
+    reasons: List[str] = []
+    for problem in problems:
+        score += PROBLEM_WEIGHTS.get(problem.severity, 0)
     if problems:
-        erros = sum(1 for p in problems if p.severity == ERRO)
-        alertas = sum(1 for p in problems if p.severity == ALERTA)
-        if erros:
-            razoes.append("%d erro(s) de validação" % erros)
-        if alertas:
-            razoes.append("%d alerta(s) de validação" % alertas)
-    for comportamento in behaviors:
-        score += BEHAVIOR_WEIGHTS.get(comportamento.severity, 0)
-    for severidade in ("alto", "medio", "baixo"):
-        nomes = [b.label for b in behaviors if b.severity == severidade]
-        if nomes:
-            razoes.append("%s: %s" % (severidade, ", ".join(sorted(nomes))))
+        errors = sum(1 for p in problems if p.severity == ERROR)
+        warnings = sum(1 for p in problems if p.severity == WARNING)
+        if errors:
+            reasons.append("%d validation error(s)" % errors)
+        if warnings:
+            reasons.append("%d validation warning(s)" % warnings)
+    for behavior in behaviors:
+        score += BEHAVIOR_WEIGHTS.get(behavior.severity, 0)
+    for severity in ("high", "medium", "low"):
+        labels = [b.label for b in behaviors if b.severity == severity]
+        if labels:
+            reasons.append("%s: %s" % (severity, ", ".join(sorted(labels))))
     score = max(0, min(100, score))
     if score >= 70:
-        nivel = "critico"
+        level = "critical"
     elif score >= 40:
-        nivel = "alto"
+        level = "high"
     elif score >= 15:
-        nivel = "medio"
+        level = "medium"
     else:
-        nivel = "baixo"
-    cor, emoji, descricao = RISK_STYLE[nivel]
+        level = "low"
+    color, emoji, description = RISK_STYLE[level]
     return {
         "score": score,
-        "level": nivel,
-        "color": cor,
+        "level": level,
+        "color": color,
         "emoji": emoji,
-        "description": descricao,
-        "reasons": razoes,
+        "description": description,
+        "reasons": reasons,
         "instructions": int((stats or {}).get("instructions", 0)),
     }
 
 
 def executive_summary(data: ReportData) -> str:
-    """Escreve o parágrafo de resumo executivo do relatório.
+    """Write the executive summary paragraph of the report.
 
     Args:
-        data: Relatório já preenchido (menos o próprio resumo).
+        data: Report already filled in (except the summary itself).
 
     Returns:
-        Duas ou três frases em português dizendo o que o programa é, o que faz
-        e o que merece atenção.
+        Two or three sentences saying what the program is, what it does and what
+        deserves attention.
     """
-    fonte = data.source.get("name", "programa")
-    plataforma = data.platform.get("os", "indefinido")
+    name = data.source.get("name", "program")
+    platform = data.platform.get("os", "undefined")
     bits = data.platform.get("bits", 64)
-    abi = data.platform.get("abi") or "ABI indefinida"
-    contagens = data.counts
-    partes = [
-        "%s tem %d instruções em %d bloco(s), escrito para %s de %d bits (%s)."
-        % (fonte, contagens["instructions"], contagens["blocks"], plataforma, bits, abi)
+    abi = data.platform.get("abi") or "undefined ABI"
+    counts = data.counts
+    parts = [
+        "%s has %d instruction(s) in %d block(s), written for %s %d bits (%s)."
+        % (name, counts["instructions"], counts["blocks"], platform, bits, abi)
     ]
-    if contagens["behaviors"]:
-        nomes = ", ".join(b["label"] for b in data.behaviors[:4])
-        partes.append("Comportamentos observados: %s." % nomes)
+    if counts["behaviors"]:
+        labels = ", ".join(b["label"] for b in data.behaviors[:4])
+        parts.append("Behaviors observed: %s." % labels)
     else:
-        partes.append("Nenhum comportamento relevante foi identificado.")
-    if contagens["problems"]:
-        partes.append(
-            "A validação apontou %s."
+        parts.append("No relevant behavior was identified.")
+    if counts["problems"]:
+        parts.append(
+            "Validation reported %s."
             % problem_summary(
                 [
                     Problem(p["line"], p["severity"], p["code"], p["message"], p.get("hint", ""))
@@ -319,114 +320,116 @@ def executive_summary(data: ReportData) -> str:
             )
         )
     else:
-        partes.append("A validação não encontrou problema nenhum.")
-    if contagens["iocs"]:
-        partes.append("Há %d indicador(es) no texto do programa." % contagens["iocs"])
+        parts.append("Validation found no problem.")
+    if counts["iocs"]:
+        parts.append("There are %d indicator(s) in the program text." % counts["iocs"])
     if data.execution is not None:
-        saida = (data.execution.get("output") or "").strip()
-        resumo_exec = "A execução simulada terminou com código %s" % data.execution.get("exit_code")
-        if saida:
-            resumo_exec += " e produziu %d byte(s) de saída" % len(
+        output = (data.execution.get("output") or "").strip()
+        run_summary = "The simulated execution finished with exit code %s" % data.execution.get(
+            "exit_code"
+        )
+        if output:
+            run_summary += " and produced %d byte(s) of output" % len(
                 data.execution.get("output") or ""
             )
-        partes.append(resumo_exec + ".")
-    return " ".join(partes)
+        parts.append(run_summary + ".")
+    return " ".join(parts)
 
 
 def _syscall_table(instrs: Sequence[Any]) -> List[Dict[str, Any]]:
-    """Agrega as syscalls do programa por nome.
+    """Aggregate the syscalls of the program by name.
 
     Args:
-        instrs: Instruções analisadas.
+        instrs: Analyzed instructions.
 
     Returns:
-        Lista de dicionários com ``name``, ``number``, ``count`` e ``lines``.
+        List of dictionaries with ``name``, ``number``, ``count`` and ``lines``.
     """
-    agregado: Dict[str, Dict[str, Any]] = {}
+    aggregated: Dict[str, Dict[str, Any]] = {}
     for ins in instrs:
         if ins.mnemonic not in ("syscall", "int"):
             continue
-        nome = ins.sem.syscall_name if ins.sem and ins.sem.syscall_name else None
-        if not nome:
-            nome = "syscall desconhecida"
-        registro = agregado.setdefault(
-            nome, {"name": nome, "number": None, "count": 0, "lines": []}
+        name = ins.sem.syscall_name if ins.sem and ins.sem.syscall_name else None
+        if not name:
+            name = "unknown syscall"
+        record = aggregated.setdefault(
+            name, {"name": name, "number": None, "count": 0, "lines": []}
         )
-        registro["count"] += 1
-        registro["lines"].append(ins.n)
-        if registro["number"] is None and ins.sem and ins.sem.detail:
-            for numero, ficha in LINUX_SYSCALLS.items():
-                if ficha[0] == nome:
-                    registro["number"] = numero
+        record["count"] += 1
+        record["lines"].append(ins.n)
+        if record["number"] is None and ins.sem and ins.sem.detail:
+            for number, entry in LINUX_SYSCALLS.items():
+                if entry[0] == name:
+                    record["number"] = number
                     break
-    return sorted(agregado.values(), key=lambda r: (-r["count"], r["name"]))
+    return sorted(aggregated.values(), key=lambda r: (-r["count"], r["name"]))
 
 
 def _external_apis(instrs: Sequence[Any], label_at: Dict[str, int]) -> List[str]:
-    """Lista as chamadas que apontam para fora do arquivo (APIs e libc).
+    """List the calls that point outside the file (APIs and libc).
 
     Args:
-        instrs: Instruções analisadas.
-        label_at: Índice dos rótulos definidos no arquivo.
+        instrs: Analyzed instructions.
+        label_at: Index of the labels defined in the file.
 
     Returns:
-        Nomes únicos, em ordem alfabética.
+        Unique names, in alphabetical order.
     """
-    nomes = set()
+    names = set()
     for ins in instrs:
         if ins.mnemonic == "call" and ins.operands:
-            alvo = ins.operands[0].symbol or ins.operands[0].text
-            if alvo and alvo not in label_at:
-                nomes.add(str(alvo))
-    return sorted(nomes)
+            target = ins.operands[0].symbol or ins.operands[0].text
+            if target and target not in label_at:
+                names.add(str(target))
+    return sorted(names)
 
 
 def _blocks_table(analysis: Analysis) -> List[Dict[str, Any]]:
-    """Resume os blocos básicos para o relatório.
+    """Summarize the basic blocks for the report.
 
     Args:
-        analysis: Análise do programa.
+        analysis: Analysis of the program.
 
     Returns:
-        Lista de dicionários com nome, função, linhas, contagens e vizinhos.
+        List of dictionaries with name, function, lines, counts and neighbors.
     """
-    linhas: List[Dict[str, Any]] = []
-    for bloco in analysis.blocks:
-        if not bloco.instrs:
+    rows: List[Dict[str, Any]] = []
+    for block in analysis.blocks:
+        if not block.instrs:
             continue
-        linhas.append(
+        rows.append(
             {
-                "id": bloco.id,
-                "name": bloco.name,
-                "func": bloco.func,
-                "lines": [bloco.instrs[0].n, bloco.instrs[-1].n],
-                "instructions": len(bloco.instrs),
+                "id": block.id,
+                "name": block.name,
+                "func": block.func,
+                "lines": [block.instrs[0].n, block.instrs[-1].n],
+                "instructions": len(block.instrs),
                 "comes_from": [
                     analysis.blocks[e.target].name
-                    for e in bloco.pred
+                    for e in block.pred
                     if e.target < len(analysis.blocks)
                 ],
                 "goes_to": [
                     analysis.blocks[e.target].name
-                    for e in bloco.succ
+                    for e in block.succ
                     if e.target < len(analysis.blocks)
                 ],
-                "calls": list(bloco.calls),
-                "exit": bloco.exit,
+                "calls": list(block.calls),
+                "exit": block.exit,
             }
         )
-    return linhas
+    return rows
 
 
 def _execution_dict(machine: Machine) -> Dict[str, Any]:
-    """Resume o resultado da execução na máquina virtual.
+    """Summarize the result of the execution on the virtual machine.
 
     Args:
-        machine: Máquina já executada.
+        machine: Machine already executed.
 
     Returns:
-        Dicionário com saída, código de saída, passos, flags, registradores e
-        problemas detectados durante a execução.
+        Dictionary with output, exit code, steps, flags, registers and problems
+        detected during the execution.
     """
     return {
         "output": machine.output,
@@ -436,74 +439,74 @@ def _execution_dict(machine: Machine) -> Dict[str, Any]:
         "timed_out": machine.timed_out,
         "issues": list(machine.issues),
         "flags": dict(machine.flags),
-        "registers": {chave: hexs(valor) for chave, valor in machine.regs.items() if valor},
+        "registers": {key: hexs(value) for key, value in machine.regs.items() if value},
         "registers_decimal": {
-            chave: to_signed(valor) for chave, valor in machine.regs.items() if valor
+            key: to_signed(value) for key, value in machine.regs.items() if value
         },
     }
 
 
-#: Nomes que podem aparecer no início de uma anotação de syscall ("write: ...").
-_SYSCALL_WORDS = frozenset(ficha[0] for ficha in LINUX_SYSCALLS.values()) | {"syscall"}
+#: Names that may appear at the start of a syscall annotation ("write: ...").
+_SYSCALL_WORDS = frozenset(entry[0] for entry in LINUX_SYSCALLS.values()) | {"syscall"}
 
 
 def _timeline(machine: Machine, limit: int = TIMELINE_LIMIT) -> List[Dict[str, Any]]:
-    """Monta a linha do tempo da execução a partir do histórico da máquina.
+    """Build the execution timeline from the machine history.
 
     Args:
-        machine: Máquina já executada.
-        limit: Quantidade máxima de passos incluídos.
+        machine: Machine already executed.
+        limit: Maximum number of steps included.
 
     Returns:
-        Lista de dicionários com ``step``, ``line``, ``text``, ``note`` e
-        ``syscall`` (nome da syscall, quando o passo for uma).
+        List of dictionaries with ``step``, ``line``, ``text``, ``note`` and
+        ``syscall`` (name of the syscall, when the step is one).
     """
-    passos = machine.trace[-limit:] if limit else machine.trace
-    linha_do_tempo: List[Dict[str, Any]] = []
-    for indice, passo in enumerate(passos):
+    steps = machine.trace[-limit:] if limit else machine.trace
+    timeline: List[Dict[str, Any]] = []
+    for index, step in enumerate(steps):
         syscall = None
-        if ":" in passo.note:
-            possivel = passo.note.split(":", 1)[0].strip()
-            if possivel in _SYSCALL_WORDS:
-                syscall = possivel
-        linha_do_tempo.append(
+        if ":" in step.note:
+            candidate = step.note.split(":", 1)[0].strip()
+            if candidate in _SYSCALL_WORDS:
+                syscall = candidate
+        timeline.append(
             {
-                "step": indice,
-                "line": passo.line,
-                "text": passo.text,
-                "note": passo.note,
+                "step": index,
+                "line": step.line,
+                "text": step.text,
+                "note": step.note,
                 "syscall": syscall,
-                "issue": passo.issue,
+                "issue": step.issue,
             }
         )
-    return linha_do_tempo
+    return timeline
 
 
 def _merge_iocs(
     base: Dict[str, List[Dict[str, Any]]], extra: Dict[str, List[Dict[str, Any]]]
 ) -> Dict[str, List[Dict[str, Any]]]:
-    """Junta indicadores de duas origens sem repetir valor.
+    """Merge indicators from two origins without repeating a value.
 
-    A memória da máquina virtual revela strings que só existem em tempo de
-    execução (bytes montados por ``times``/``dup``, por exemplo); elas entram
-    junto com as do texto, marcadas com a linha 0.
+    The memory of the virtual machine reveals strings that only exist at
+    execution time (bytes assembled by ``times``/``dup``, for example); they come
+    in together with the ones from the text, marked with line 0.
 
     Args:
-        base: Indicadores extraídos do código fonte.
-        extra: Indicadores extraídos da memória durante a execução.
+        base: Indicators extracted from the source code.
+        extra: Indicators extracted from memory during the execution.
 
     Returns:
-        Novo dicionário ``tipo -> lista`` sem valores repetidos.
+        New dictionary ``kind -> list`` without repeated values.
     """
-    resultado: Dict[str, List[Dict[str, Any]]] = {tipo: list(lista) for tipo, lista in base.items()}
-    for tipo, lista in extra.items():
-        destino = resultado.setdefault(tipo, [])
-        vistos = {item["value"] for item in destino}
-        for item in lista:
-            if item["value"] not in vistos:
-                destino.append(item)
-                vistos.add(item["value"])
-    return resultado
+    result: Dict[str, List[Dict[str, Any]]] = {kind: list(items) for kind, items in base.items()}
+    for kind, items in extra.items():
+        destination = result.setdefault(kind, [])
+        seen = {item["value"] for item in destination}
+        for item in items:
+            if item["value"] not in seen:
+                destination.append(item)
+                seen.add(item["value"])
+    return result
 
 
 def collect(
@@ -516,45 +519,49 @@ def collect(
     stdin: str = "",
     entry: Optional[str] = None,
     command: str = "",
+    analysis: Optional[Analysis] = None,
 ) -> ReportData:
-    """Junta a análise completa de um código num relatório.
+    """Bring the complete analysis of a piece of code into a report.
 
     Args:
-        text: Código fonte em assembly.
-        source: Metadados do arquivo lido (nome, hashes, tamanho). Sem ele, o
-            relatório usa um nome genérico e calcula a impressão digital.
-        emulate: Se deve executar o programa na máquina virtual e incluir a
-            seção de execução com a linha do tempo.
-        limit: Limite de instruções da execução simulada.
-        timeout: Tempo máximo de parede da execução, em segundos.
-        stdin: Entrada simulada entregue à syscall ``read``.
-        entry: Rótulo onde a execução começa (``None`` = ponto de entrada).
-        command: Linha de comando que gerou o relatório, para o rodapé.
+        text: Assembly source code.
+        source: Metadata of the file read (name, hashes, size). Without it, the
+            report uses a generic name and computes the fingerprint.
+        emulate: Whether to run the program on the virtual machine and include
+            the execution section with the timeline.
+        limit: Instruction limit of the simulated execution.
+        timeout: Maximum wall time of the execution, in seconds.
+        stdin: Simulated input delivered to the ``read`` syscall.
+        entry: Label where the execution starts (``None`` = entry point).
+        command: Command line that generated the report, for the footer.
+        analysis: Analysis to reuse instead of analysing the text again; the
+            batch command already has one per file and passing it avoids doing
+            the same work twice.
 
     Returns:
-        O :class:`ReportData` pronto para ser renderizado.
+        The :class:`ReportData` ready to be rendered.
 
     Raises:
-        ProjectError: Se ``entry`` aponta para um rótulo que não existe.
+        ProjectError: If ``entry`` points to a label that does not exist.
 
     Example:
-        >>> dados = collect("nop")
-        >>> dados.counts["instructions"]
+        >>> data = collect("nop")
+        >>> data.counts["instructions"]
         1
     """
-    analysis = analyze(text)
-    problemas = validate(analysis)
-    comportamentos = classify(analysis, problemas)
+    analysis = analyze(text) if analysis is None else analysis
+    problems = validate(analysis)
+    behaviors = classify(analysis, problems)
     iocs = extract_iocs(text, include_comments=False)
 
     if entry and entry not in analysis.label_at:
-        raise ProjectError("rótulo não encontrado para começar a execução: %s" % entry)
+        raise ProjectError("label not found to start the execution: %s" % entry)
 
-    dados_fonte: Dict[str, Any] = (
+    source_data: Dict[str, Any] = (
         source.to_dict()
         if source is not None
         else {
-            "name": "programa.asm",
+            "name": "program.asm",
             "path": "",
             "size": len(text.encode("utf-8")),
             "lines": text.count("\n") + (0 if text.endswith("\n") or not text else 1),
@@ -564,12 +571,12 @@ def collect(
         }
     )
 
-    grafo_cfg = control_flow_graph(analysis)
-    grafo_chamadas = call_graph(analysis)
+    cfg_graph = control_flow_graph(analysis)
+    calls_graph = call_graph(analysis)
 
     data = ReportData(
         command=command,
-        source=dados_fonte,
+        source=source_data,
         platform={
             "os": analysis.platform.os,
             "bits": analysis.platform.bits,
@@ -578,15 +585,13 @@ def collect(
             "abi_notes": analysis.platform.abi.get("notes"),
             "arg_regs": list(analysis.platform.abi.get("args") or []),
             "preserved": list(analysis.platform.abi.get("preserved") or []),
-            "evidence": {
-                chave: list(valores) for chave, valores in analysis.platform.evidence.items()
-            },
+            "evidence": {key: list(values) for key, values in analysis.platform.evidence.items()},
         },
         dialect=analysis.program.flavor,
         stats=dict(analysis.stats),
-        problems=[p.to_dict() for p in problemas],
-        behaviors=behaviors_to_dicts(comportamentos),
-        techniques=techniques(comportamentos),
+        problems=[p.to_dict() for p in problems],
+        behaviors=behaviors_to_dicts(behaviors),
+        techniques=techniques(behaviors),
         iocs=iocs_to_dicts(iocs),
         instructions=[
             {
@@ -604,33 +609,33 @@ def collect(
         ],
         blocks=_blocks_table(analysis),
         cfg={
-            "graph": grafo_cfg.to_dict(),
-            "svg": to_svg(grafo_cfg),
-            "dot": to_dot(grafo_cfg),
-            "mermaid": to_mermaid(grafo_cfg),
+            "graph": cfg_graph.to_dict(),
+            "svg": to_svg(cfg_graph),
+            "dot": to_dot(cfg_graph),
+            "mermaid": to_mermaid(cfg_graph),
         },
         calls={
-            "graph": grafo_chamadas.to_dict(),
-            "svg": to_svg(grafo_chamadas),
-            "dot": to_dot(grafo_chamadas),
-            "mermaid": to_mermaid(grafo_chamadas),
+            "graph": calls_graph.to_dict(),
+            "svg": to_svg(calls_graph),
+            "dot": to_dot(calls_graph),
+            "mermaid": to_mermaid(calls_graph),
         },
         syscalls=_syscall_table(analysis.instrs),
         apis=_external_apis(analysis.instrs, analysis.label_at),
     )
-    data.risk = risk_assessment(problemas, comportamentos, analysis.stats)
+    data.risk = risk_assessment(problems, behaviors, analysis.stats)
 
     if emulate:
-        maquina = Machine(analysis, stdin=stdin, entry=entry)
-        passos = maquina.run(limit=limit, timeout=timeout)
-        data.execution = _execution_dict(maquina)
+        machine = Machine(analysis, stdin=stdin, entry=entry)
+        steps = machine.run(limit=limit, timeout=timeout)
+        data.execution = _execution_dict(machine)
         data.execution["limit"] = limit
-        data.execution["steps_returned"] = passos
-        data.timeline = _timeline(maquina)
-        data.execution["timeline_truncated"] = len(maquina.trace) > len(data.timeline)
-        da_memoria = iocs_from_memory(maquina, min_length=6)
-        if da_memoria:
-            data.iocs = _merge_iocs(data.iocs, iocs_to_dicts(da_memoria))
+        data.execution["steps_returned"] = steps
+        data.timeline = _timeline(machine)
+        data.execution["timeline_truncated"] = len(machine.trace) > len(data.timeline)
+        memory_iocs = iocs_from_memory(machine, min_length=6)
+        if memory_iocs:
+            data.iocs = _merge_iocs(data.iocs, iocs_to_dicts(memory_iocs))
 
     data.summary = executive_summary(data)
     log_event(
@@ -649,15 +654,15 @@ def collect(
 
 # ------------------------------------------------------------------ json ----
 def render_json(data: ReportData, *, indent: int = 2, include_svg: bool = False) -> str:
-    """Serializa o relatório em JSON.
+    """Serialize the report as JSON.
 
     Args:
-        data: Relatório a serializar.
-        indent: Indentação do JSON.
-        include_svg: Se o SVG dos grafos entra no JSON.
+        data: Report to serialize.
+        indent: JSON indentation.
+        include_svg: Whether the graph SVG goes into the JSON.
 
     Returns:
-        Texto JSON terminado em quebra de linha.
+        JSON text ending in a newline.
     """
     return (
         json.dumps(
@@ -669,41 +674,41 @@ def render_json(data: ReportData, *, indent: int = 2, include_svg: bool = False)
 
 # -------------------------------------------------------------- markdown ----
 def _md_table(headers: Sequence[str], rows: Sequence[Sequence[Any]]) -> str:
-    """Monta uma tabela Markdown.
+    """Build a Markdown table.
 
     Args:
-        headers: Cabeçalhos das colunas.
-        rows: Linhas já em texto.
+        headers: Column headers.
+        rows: Rows already as text.
 
     Returns:
-        Bloco de tabela Markdown; string vazia quando não há linhas.
+        Markdown table block; empty string when there are no rows.
     """
     if not rows:
         return ""
-    linhas = ["| " + " | ".join(headers) + " |", "|" + "|".join(["---"] * len(headers)) + "|"]
-    for linha in rows:
-        linhas.append(
-            "| " + " | ".join(str(c).replace("|", "\\|").replace("\n", " ") for c in linha) + " |"
+    lines = ["| " + " | ".join(headers) + " |", "|" + "|".join(["---"] * len(headers)) + "|"]
+    for row in rows:
+        lines.append(
+            "| " + " | ".join(str(c).replace("|", "\\|").replace("\n", " ") for c in row) + " |"
         )
-    return "\n".join(linhas)
+    return "\n".join(lines)
 
 
 def render_markdown(data: ReportData) -> str:
-    """Desenha o relatório em Markdown, pronto para issue, PR ou blog.
+    """Draw the report as Markdown, ready for an issue, a PR or a blog.
 
     Args:
-        data: Relatório a renderizar.
+        data: Report to render.
 
     Returns:
-        Texto Markdown; o grafo entra como bloco Mermaid, que o GitHub desenha.
+        Markdown text; the graph comes in as a Mermaid block, which GitHub draws.
     """
-    fonte = data.source
-    contagens = data.counts
-    partes: List[str] = []
-    partes.append("# ASM X — análise de `%s`\n" % fonte.get("name", "programa"))
-    partes.append("> %s\n" % data.summary)
-    partes.append(
-        "**Risco:** %s %s (%d/100) — %s\n"
+    source = data.source
+    counts = data.counts
+    parts: List[str] = []
+    parts.append("# ASM X — analysis of `%s`\n" % source.get("name", "program"))
+    parts.append("> %s\n" % data.summary)
+    parts.append(
+        "**Risk:** %s %s (%d/100) — %s\n"
         % (
             data.risk.get("emoji", ""),
             str(data.risk.get("level", "")).upper(),
@@ -712,21 +717,21 @@ def render_markdown(data: ReportData) -> str:
         )
     )
 
-    partes.append("## Metadados\n")
-    partes.append(
+    parts.append("## Metadata\n")
+    parts.append(
         _md_table(
-            ["campo", "valor"],
+            ["field", "value"],
             [
-                ["arquivo", fonte.get("name", "")],
-                ["tamanho", "%s bytes" % fonte.get("size", 0)],
-                ["linhas", fonte.get("lines", 0)],
-                ["codificação", fonte.get("encoding", "")],
-                ["sha256", fonte.get("sha256", "") or "(não calculado)"],
-                ["impressão digital", fonte.get("fingerprint", "")],
-                ["dialeto", data.dialect],
+                ["file", source.get("name", "")],
+                ["size", "%s bytes" % source.get("size", 0)],
+                ["lines", source.get("lines", 0)],
+                ["encoding", source.get("encoding", "")],
+                ["sha256", source.get("sha256", "") or "(not computed)"],
+                ["fingerprint", source.get("fingerprint", "")],
+                ["dialect", data.dialect],
                 [
-                    "plataforma",
-                    "%s · %d bits · %d%% de confiança"
+                    "platform",
+                    "%s · %d bits · %d%% confidence"
                     % (
                         data.platform.get("os"),
                         data.platform.get("bits", 64),
@@ -734,34 +739,34 @@ def render_markdown(data: ReportData) -> str:
                     ),
                 ],
                 ["ABI", data.platform.get("abi") or "—"],
-                ["gerado em", data.generated_at],
-                ["gerado por", "ASM X %s" % data.version],
+                ["generated at", data.generated_at],
+                ["generated by", "ASM X %s" % data.version],
             ],
         )
         + "\n"
     )
 
-    partes.append("## Números\n")
-    partes.append(
+    parts.append("## Numbers\n")
+    parts.append(
         _md_table(
             [
-                "instruções",
-                "blocos",
-                "chamadas",
+                "instructions",
+                "blocks",
+                "calls",
                 "syscalls",
-                "comportamentos",
-                "indicadores",
-                "problemas",
+                "behaviors",
+                "indicators",
+                "problems",
             ],
             [
                 [
-                    contagens["instructions"],
-                    contagens["blocks"],
-                    contagens["calls"],
-                    contagens["syscalls"],
-                    contagens["behaviors"],
-                    contagens["iocs"],
-                    contagens["problems"],
+                    counts["instructions"],
+                    counts["blocks"],
+                    counts["calls"],
+                    counts["syscalls"],
+                    counts["behaviors"],
+                    counts["iocs"],
+                    counts["problems"],
                 ]
             ],
         )
@@ -769,10 +774,10 @@ def render_markdown(data: ReportData) -> str:
     )
 
     if data.behaviors:
-        partes.append("## Comportamentos\n")
-        partes.append(
+        parts.append("## Behaviors\n")
+        parts.append(
             _md_table(
-                ["comportamento", "severidade", "confiança", "evidências"],
+                ["behavior", "severity", "confidence", "evidence"],
                 [
                     [
                         b["label"],
@@ -786,10 +791,10 @@ def render_markdown(data: ReportData) -> str:
             + "\n"
         )
     if data.techniques:
-        partes.append("## MITRE ATT&CK (indícios)\n")
-        partes.append(
+        parts.append("## MITRE ATT&CK (indications)\n")
+        parts.append(
             _md_table(
-                ["técnica", "tática", "id", "ligada a"],
+                ["technique", "tactic", "id", "linked to"],
                 [
                     [t["name"], t["tactic"], t["id"], ", ".join(t.get("behaviors", []))]
                     for t in data.techniques
@@ -798,28 +803,28 @@ def render_markdown(data: ReportData) -> str:
             + "\n"
         )
     if data.cfg.get("mermaid"):
-        partes.append("## Fluxo de controle\n")
-        partes.append("```mermaid\n%s\n```\n" % data.cfg["mermaid"])
+        parts.append("## Control flow\n")
+        parts.append("```mermaid\n%s\n```\n" % data.cfg["mermaid"])
     if data.calls.get("mermaid") and not data.calls.get("graph", {}).get("empty", True):
-        partes.append("## Chamadas\n")
-        partes.append("```mermaid\n%s\n```\n" % data.calls["mermaid"])
+        parts.append("## Calls\n")
+        parts.append("```mermaid\n%s\n```\n" % data.calls["mermaid"])
 
     if data.iocs:
-        partes.append("## Indicadores e strings\n")
-        for tipo, lista in sorted(data.iocs.items()):
-            if not lista:
+        parts.append("## Indicators and strings\n")
+        for kind, items in sorted(data.iocs.items()):
+            if not items:
                 continue
-            rotulo = lista[0].get("label", tipo)
-            partes.append("**%s** (%d)\n" % (rotulo, len(lista)))
-            partes.append(
-                _md_table(["valor", "linha"], [[i["value"], i["line"]] for i in lista[:40]]) + "\n"
+            label = items[0].get("label", kind)
+            parts.append("**%s** (%d)\n" % (label, len(items)))
+            parts.append(
+                _md_table(["value", "line"], [[i["value"], i["line"]] for i in items[:40]]) + "\n"
             )
 
     if data.problems:
-        partes.append("## Validação\n")
-        partes.append(
+        parts.append("## Validation\n")
+        parts.append(
             _md_table(
-                ["linha", "severidade", "código", "problema", "dica"],
+                ["line", "severity", "code", "problem", "hint"],
                 [
                     [p["line"], p["severity"], p["code"], p["message"], p.get("hint", "")]
                     for p in data.problems
@@ -828,41 +833,41 @@ def render_markdown(data: ReportData) -> str:
             + "\n"
         )
     else:
-        partes.append("## Validação\n\nNenhum problema encontrado.\n")
+        parts.append("## Validation\n\nNo problem found.\n")
 
     if data.execution is not None:
-        execucao = data.execution
-        partes.append("## Execução simulada\n")
-        partes.append("```text\n%s\n```\n" % (execucao.get("output") or "(sem saída)"))
-        partes.append(
+        execution = data.execution
+        parts.append("## Simulated execution\n")
+        parts.append("```text\n%s\n```\n" % (execution.get("output") or "(no output)"))
+        parts.append(
             _md_table(
-                ["passos", "código de saída", "parou por timeout"],
+                ["steps", "exit code", "timed out"],
                 [
                     [
-                        execucao.get("steps", 0),
-                        execucao.get("exit_code"),
-                        "sim" if execucao.get("timed_out") else "não",
+                        execution.get("steps", 0),
+                        execution.get("exit_code"),
+                        "yes" if execution.get("timed_out") else "no",
                     ]
                 ],
             )
             + "\n"
         )
-        if execucao.get("issues"):
-            partes.append("**Problemas detectados na execução**\n")
-            for problema in execucao["issues"]:
-                partes.append("- %s" % problema)
-            partes.append("")
+        if execution.get("issues"):
+            parts.append("**Problems detected during the execution**\n")
+            for problem in execution["issues"]:
+                parts.append("- %s" % problem)
+            parts.append("")
 
-    partes.append("## Instruções\n")
-    partes.append(
+    parts.append("## Instructions\n")
+    parts.append(
         _md_table(
-            ["linha", "instrução", "etiqueta", "explicação"],
+            ["line", "instruction", "label", "explanation"],
             [[i["line"], "`%s`" % i["text"], i["label"], i["detail"]] for i in data.instructions],
         )
         + "\n"
     )
-    partes.append("---\n\nGerado por ASM X %s · esquema %s\n" % (data.version, data.schema))
-    return "\n".join(partes)
+    parts.append("---\n\nGenerated by ASM X %s · schema %s\n" % (data.version, data.schema))
+    return "\n".join(parts)
 
 
 # ------------------------------------------------------------------- html ----
@@ -915,14 +920,14 @@ pre { background: #0B1220; border: 1px solid var(--line); border-radius: 10px;
   padding: 12px 14px; overflow-x: auto; font-size: 13px; }
 .chip { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 12px;
   border: 1px solid var(--line); color: var(--dim); margin: 0 4px 4px 0; }
-.sev-alto, .sev-erro { color: var(--pink); border-color: var(--pink); }
-.sev-medio, .sev-alerta { color: var(--accent); border-color: var(--accent); }
-.sev-baixo, .sev-info { color: var(--blue); border-color: var(--blue); }
+.sev-high, .sev-error { color: var(--pink); border-color: var(--pink); }
+.sev-medium, .sev-warning { color: var(--accent); border-color: var(--accent); }
+.sev-low, .sev-info { color: var(--blue); border-color: var(--blue); }
 .behavior { background: var(--panel); border: 1px solid var(--line); border-left-width: 4px;
   border-radius: 10px; padding: 14px 16px; margin: 0 0 12px; }
-.behavior.alto { border-left-color: var(--pink); }
-.behavior.medio { border-left-color: var(--accent); }
-.behavior.baixo { border-left-color: var(--green); }
+.behavior.high { border-left-color: var(--pink); }
+.behavior.medium { border-left-color: var(--accent); }
+.behavior.low { border-left-color: var(--green); }
 .behavior h3 { margin: 0 0 4px; }
 .bar { height: 6px; border-radius: 4px; background: var(--panel2); margin: 8px 0 4px;
   overflow: hidden; }
@@ -948,59 +953,59 @@ footer { border-top: 1px solid var(--line); color: var(--dim); font-size: 13px;
 """
 
 _JS = """
-function showTab(id, botao) {
+function showTab(id, button) {
   document.querySelectorAll('section.tab').forEach(function (s) { s.classList.remove('active'); });
   document.querySelectorAll('nav button').forEach(function (b) { b.classList.remove('active'); });
-  var alvo = document.getElementById(id);
-  if (alvo) { alvo.classList.add('active'); }
-  if (botao) { botao.classList.add('active'); }
+  var target = document.getElementById(id);
+  if (target) { target.classList.add('active'); }
+  if (button) { button.classList.add('active'); }
 }
-function filtrar(campoId, tabelaId) {
-  var termo = (document.getElementById(campoId).value || '').toLowerCase();
-  var linhas = document.getElementById(tabelaId).getElementsByTagName('tr');
-  for (var i = 1; i < linhas.length; i++) {
-    var texto = (linhas[i].innerText || '').toLowerCase();
-    linhas[i].style.display = (termo === '' || texto.indexOf(termo) >= 0) ? '' : 'none';
+function filterRows(inputId, tableId) {
+  var term = (document.getElementById(inputId).value || '').toLowerCase();
+  var rows = document.getElementById(tableId).getElementsByTagName('tr');
+  for (var i = 1; i < rows.length; i++) {
+    var text = (rows[i].innerText || '').toLowerCase();
+    rows[i].style.display = (term === '' || text.indexOf(term) >= 0) ? '' : 'none';
   }
 }
-function copiar(id, botao) {
-  var alvo = document.getElementById(id);
-  if (!alvo) { return; }
-  navigator.clipboard.writeText(alvo.innerText).then(function () {
-    var antigo = botao.innerText;
-    botao.innerText = 'copiado';
-    setTimeout(function () { botao.innerText = antigo; }, 1200);
+function copyText(id, button) {
+  var target = document.getElementById(id);
+  if (!target) { return; }
+  navigator.clipboard.writeText(target.innerText).then(function () {
+    var previous = button.innerText;
+    button.innerText = 'copied';
+    setTimeout(function () { button.innerText = previous; }, 1200);
   });
 }
 """
 
 
 class _Raw(str):
-    """Texto que já é HTML e não deve ser escapado de novo."""
+    """Text that already is HTML and must not be escaped again."""
 
 
-def _esc(valor: Any) -> str:
-    """Escapa um texto para HTML.
-
-    Args:
-        valor: Qualquer valor; é convertido em texto antes de escapar.
-
-    Returns:
-        Texto seguro para entrar no HTML.
-    """
-    return html.escape("" if valor is None else str(valor), quote=True)
-
-
-def _md_to_html(texto: str) -> str:
-    """Escapa um texto e preserva as quebras de linha.
+def _esc(value: Any) -> str:
+    """Escape a text for HTML.
 
     Args:
-        texto: Texto puro.
+        value: Any value; it is converted to text before escaping.
 
     Returns:
-        HTML com ``<br>`` nas quebras de linha.
+        Text safe to go into the HTML.
     """
-    return _esc(texto).replace("\n", "<br>")
+    return html.escape("" if value is None else str(value), quote=True)
+
+
+def _md_to_html(text: str) -> str:
+    """Escape a text and preserve the line breaks.
+
+    Args:
+        text: Plain text.
+
+    Returns:
+        HTML with ``<br>`` at the line breaks.
+    """
+    return _esc(text).replace("\n", "<br>")
 
 
 def _table(
@@ -1008,196 +1013,191 @@ def _table(
     rows: Sequence[Sequence[Any]],
     *,
     table_id: str = "",
-    empty: str = "nada por aqui",
+    empty: str = "nothing here",
 ) -> str:
-    """Monta uma tabela HTML.
+    """Build an HTML table.
 
     Args:
-        headers: Cabeçalhos das colunas.
-        rows: Linhas, já no formato final (o texto é escapado aqui).
-        table_id: Identificador usado pelo filtro JavaScript.
-        empty: Texto mostrado quando não há linhas.
+        headers: Column headers.
+        rows: Rows, already in the final format (the text is escaped here).
+        table_id: Identifier used by the JavaScript filter.
+        empty: Text shown when there are no rows.
 
     Returns:
-        Bloco HTML da tabela.
+        HTML block of the table.
     """
     if not rows:
         return '<p class="empty">%s</p>' % _esc(empty)
     ident = ' id="%s"' % _esc(table_id) if table_id else ""
-    partes = ["<table%s>" % ident, "<thead><tr>"]
-    partes.extend("<th>%s</th>" % _esc(h) for h in headers)
-    partes.append("</tr></thead><tbody>")
-    for linha in rows:
-        partes.append("<tr>")
-        for celula in linha:
-            partes.append("<td>%s</td>" % (celula if isinstance(celula, _Raw) else _esc(celula)))
-        partes.append("</tr>")
-    partes.append("</tbody></table>")
-    return "".join(partes)
+    parts = ["<table%s>" % ident, "<thead><tr>"]
+    parts.extend("<th>%s</th>" % _esc(h) for h in headers)
+    parts.append("</tr></thead><tbody>")
+    for row in rows:
+        parts.append("<tr>")
+        for cell in row:
+            parts.append("<td>%s</td>" % (cell if isinstance(cell, _Raw) else _esc(cell)))
+        parts.append("</tr>")
+    parts.append("</tbody></table>")
+    return "".join(parts)
 
 
-def _cards(contagens: Dict[str, int]) -> str:
-    """Monta os cartões de números do topo.
+def _cards(counts: Dict[str, int]) -> str:
+    """Build the number cards at the top.
 
     Args:
-        contagens: Contagens devolvidas por :attr:`ReportData.counts`.
+        counts: Counts returned by :attr:`ReportData.counts`.
 
     Returns:
-        HTML da grade de cartões.
+        HTML of the card grid.
     """
-    rotulos = [
-        ("instructions", "instruções"),
-        ("blocks", "blocos"),
-        ("calls", "chamadas"),
+    labels = [
+        ("instructions", "instructions"),
+        ("blocks", "blocks"),
+        ("calls", "calls"),
         ("syscalls", "syscalls"),
-        ("behaviors", "comportamentos"),
-        ("iocs", "indicadores"),
+        ("behaviors", "behaviors"),
+        ("iocs", "indicators"),
         ("strings", "strings"),
-        ("problems", "problemas"),
+        ("problems", "problems"),
     ]
-    itens = ["<div class='cards'>"]
-    for chave, rotulo in rotulos:
-        itens.append(
-            "<div class='card'><b>%d</b><span>%s</span></div>"
-            % (contagens.get(chave, 0), _esc(rotulo))
+    items = ["<div class='cards'>"]
+    for key, label in labels:
+        items.append(
+            "<div class='card'><b>%d</b><span>%s</span></div>" % (counts.get(key, 0), _esc(label))
         )
-    itens.append("</div>")
-    return "".join(itens)
+    items.append("</div>")
+    return "".join(items)
 
 
 def _risk_banner(data: ReportData) -> str:
-    """Desenha a faixa de risco do relatório.
+    """Draw the risk banner of the report.
 
     Args:
-        data: Relatório preenchido.
+        data: Filled report.
 
     Returns:
-        HTML da faixa, com o motivo que mais pesou.
+        HTML of the banner, with the reason that weighed the most.
     """
-    risco = data.risk
-    cor = _esc(risco.get("color", "#8AA0B8"))
-    razoes = risco.get("reasons") or []
-    detalhe = " · ".join(razoes[:3]) if razoes else "sem sinal relevante"
+    risk = data.risk
+    color = _esc(risk.get("color", "#8AA0B8"))
+    reasons = risk.get("reasons") or []
+    detail = " · ".join(reasons[:3]) if reasons else "no relevant signal"
     return (
         "<div class='risk' style='border-color:%s'>"
         "<div class='score' style='color:%s'>%d<small>/100</small></div>"
-        "<div><div class='level' style='color:%s'>%s risco %s</div>"
+        "<div><div class='level' style='color:%s'>%s risk %s</div>"
         "<div class='sub'>%s</div><div class='sub'>%s</div></div></div>"
         % (
-            cor,
-            cor,
-            int(risco.get("score", 0)),
-            cor,
-            _esc(risco.get("emoji", "")),
-            _esc(str(risco.get("level", "")).upper()),
-            _esc(risco.get("description", "")),
-            _esc(detalhe),
+            color,
+            color,
+            int(risk.get("score", 0)),
+            color,
+            _esc(risk.get("emoji", "")),
+            _esc(str(risk.get("level", "")).upper()),
+            _esc(risk.get("description", "")),
+            _esc(detail),
         )
     )
 
 
 def _meta_section(data: ReportData) -> str:
-    """Monta a seção de metadados do arquivo e da plataforma.
+    """Build the section with the file and platform metadata.
 
     Args:
-        data: Relatório preenchido.
+        data: Filled report.
 
     Returns:
-        HTML da seção de resumo.
+        HTML of the summary section.
     """
-    fonte = data.source
-    plataforma = data.platform
-    pistas = []
-    for origem, lista in (plataforma.get("evidence") or {}).items():
-        for pista in lista:
-            pistas.append("<span class='chip'>%s: %s</span>" % (_esc(origem), _esc(pista)))
-    linhas = [
-        ["arquivo", _esc(fonte.get("name", ""))],
-        ["caminho", _Raw('<span class="mono">%s</span>' % _esc(fonte.get("path", "") or "—"))],
-        ["tamanho", "%s bytes" % _esc(fonte.get("size", 0))],
-        ["linhas", _esc(fonte.get("lines", 0))],
-        ["codificação", _esc(fonte.get("encoding", ""))],
-        ["sha256", _Raw('<span class="mono">%s</span>' % _esc(fonte.get("sha256", "") or "—"))],
+    source = data.source
+    platform = data.platform
+    hints = []
+    for origin, items in (platform.get("evidence") or {}).items():
+        for hint in items:
+            hints.append("<span class='chip'>%s: %s</span>" % (_esc(origin), _esc(hint)))
+    rows = [
+        ["file", _esc(source.get("name", ""))],
+        ["path", _Raw('<span class="mono">%s</span>' % _esc(source.get("path", "") or "—"))],
+        ["size", "%s bytes" % _esc(source.get("size", 0))],
+        ["lines", _esc(source.get("lines", 0))],
+        ["encoding", _esc(source.get("encoding", ""))],
+        ["sha256", _Raw('<span class="mono">%s</span>' % _esc(source.get("sha256", "") or "—"))],
         [
-            "impressão digital",
-            _Raw('<span class="mono">%s</span>' % _esc(fonte.get("fingerprint", ""))),
+            "fingerprint",
+            _Raw('<span class="mono">%s</span>' % _esc(source.get("fingerprint", ""))),
         ],
-        ["dialeto", _esc(data.dialect)],
+        ["dialect", _esc(data.dialect)],
         [
-            "plataforma",
-            "%s · %d bits · %d%% de confiança"
+            "platform",
+            "%s · %d bits · %d%% confidence"
             % (
-                _esc(plataforma.get("os")),
-                plataforma.get("bits", 64),
-                plataforma.get("confidence", 0),
+                _esc(platform.get("os")),
+                platform.get("bits", 64),
+                platform.get("confidence", 0),
             ),
         ],
-        ["ABI", _esc(plataforma.get("abi") or "—")],
-        ["gerado em", _esc(data.generated_at)],
-        ["gerado por", "ASM X %s (esquema %s)" % (_esc(data.version), _esc(data.schema))],
+        ["ABI", _esc(platform.get("abi") or "—")],
+        ["generated at", _esc(data.generated_at)],
+        ["generated by", "ASM X %s (schema %s)" % (_esc(data.version), _esc(data.schema))],
     ]
-    corpo = [_table(["campo", "valor"], linhas)]
-    if plataforma.get("abi_notes"):
-        corpo.append("<p class='sub'>%s</p>" % _esc(plataforma["abi_notes"]))
-    if plataforma.get("arg_regs"):
-        corpo.append(
-            "<p><b>Argumentos em</b> %s</p>"
-            % " ".join(
-                "<span class='chip mono'>%s</span>" % _esc(r) for r in plataforma["arg_regs"]
-            )
+    body = [_table(["field", "value"], rows)]
+    if platform.get("abi_notes"):
+        body.append("<p class='sub'>%s</p>" % _esc(platform["abi_notes"]))
+    if platform.get("arg_regs"):
+        body.append(
+            "<p><b>Arguments in</b> %s</p>"
+            % " ".join("<span class='chip mono'>%s</span>" % _esc(r) for r in platform["arg_regs"])
         )
-    if plataforma.get("preserved"):
-        corpo.append(
-            "<p><b>Preservados</b> %s</p>"
-            % " ".join(
-                "<span class='chip mono'>%s</span>" % _esc(r) for r in plataforma["preserved"]
-            )
+    if platform.get("preserved"):
+        body.append(
+            "<p><b>Preserved</b> %s</p>"
+            % " ".join("<span class='chip mono'>%s</span>" % _esc(r) for r in platform["preserved"])
         )
-    if pistas:
-        corpo.append("<h3>Pistas que levaram à conclusão</h3><p>%s</p>" % "".join(pistas))
-    corpo.append("<h2>Resumo executivo</h2><p>%s</p>" % _esc(data.summary))
-    return "".join(corpo)
+    if hints:
+        body.append("<h3>Evidence behind the conclusion</h3><p>%s</p>" % "".join(hints))
+    body.append("<h2>Executive summary</h2><p>%s</p>" % _esc(data.summary))
+    return "".join(body)
 
 
 def _behaviors_section(data: ReportData) -> str:
-    """Monta a seção de comportamentos e MITRE ATT&CK.
+    """Build the behaviors and MITRE ATT&CK section.
 
     Args:
-        data: Relatório preenchido.
+        data: Filled report.
 
     Returns:
-        HTML da seção.
+        HTML of the section.
     """
     if not data.behaviors:
-        return "<p class='empty'>Nenhum comportamento relevante foi identificado.</p>"
-    partes = []
-    for comportamento in sorted(data.behaviors, key=lambda b: severity_rank(b["severity"])):
-        evidencias = "".join("<li>%s</li>" % _esc(e) for e in comportamento["evidence"])
+        return "<p class='empty'>No relevant behavior was identified.</p>"
+    parts = []
+    for behavior in sorted(data.behaviors, key=lambda b: severity_rank(b["severity"])):
+        evidence = "".join("<li>%s</li>" % _esc(e) for e in behavior["evidence"])
         chips = "".join(
-            "<span class='chip mono'>%s</span>" % _esc(t) for t in comportamento.get("mitre", [])
+            "<span class='chip mono'>%s</span>" % _esc(t) for t in behavior.get("mitre", [])
         )
-        partes.append(
+        parts.append(
             "<div class='behavior %s'>"
             "<h3>%s <span class='chip sev-%s'>%s</span></h3>"
             "<p>%s</p>"
             "<div class='bar'><i style='width:%d%%'></i></div>"
-            "<p class='sub'>confiança %d%% · linhas %s</p>"
+            "<p class='sub'>confidence %d%% · lines %s</p>"
             "<ul>%s</ul>%s</div>"
             % (
-                _esc(comportamento["severity"]),
-                _esc(comportamento["label"]),
-                _esc(comportamento["severity"]),
-                _esc(comportamento["severity"]),
-                _esc(comportamento["description"]),
-                int(comportamento["confidence"]),
-                int(comportamento["confidence"]),
-                _esc(", ".join(str(n) for n in comportamento["lines"])),
-                evidencias,
+                _esc(behavior["severity"]),
+                _esc(behavior["label"]),
+                _esc(behavior["severity"]),
+                _esc(behavior["severity"]),
+                _esc(behavior["description"]),
+                int(behavior["confidence"]),
+                int(behavior["confidence"]),
+                _esc(", ".join(str(n) for n in behavior["lines"])),
+                evidence,
                 "<p>%s</p>" % chips if chips else "",
             )
         )
     if data.techniques:
-        linhas = [
+        rows = [
             [
                 _Raw(
                     '<a href="%s" target="_blank" rel="noopener">%s</a>'
@@ -1214,61 +1214,61 @@ def _behaviors_section(data: ReportData) -> str:
             ]
             for t in data.techniques
         ]
-        partes.append("<h2>MITRE ATT&CK — indícios</h2>")
-        partes.append(
-            "<p class='sub'>Mapeamento derivado de padrões estáticos: indício, "
-            "não prova de comportamento malicioso.</p>"
+        parts.append("<h2>MITRE ATT&CK — indications</h2>")
+        parts.append(
+            "<p class='sub'>Mapping derived from static patterns: an indication, "
+            "not proof of malicious behavior.</p>"
         )
-        partes.append(_table(["id", "técnica", "tática", "comportamentos", "o que é"], linhas))
-    return "".join(partes)
+        parts.append(_table(["id", "technique", "tactic", "behaviors", "what it is"], rows))
+    return "".join(parts)
 
 
 def _iocs_section(data: ReportData) -> str:
-    """Monta a seção de indicadores e strings.
+    """Build the indicators and strings section.
 
     Args:
-        data: Relatório preenchido.
+        data: Filled report.
 
     Returns:
-        HTML da seção.
+        HTML of the section.
     """
     if not data.iocs:
-        return "<p class='empty'>Nenhuma string ou indicador encontrado.</p>"
-    partes = []
-    for tipo, lista in sorted(data.iocs.items(), key=lambda kv: (-len(kv[1]), kv[0])):
-        if not lista:
+        return "<p class='empty'>No string or indicator found.</p>"
+    parts = []
+    for kind, items in sorted(data.iocs.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+        if not items:
             continue
-        rotulo = lista[0].get("label", tipo)
-        linhas = [
+        label = items[0].get("label", kind)
+        rows = [
             [
                 _Raw('<span class="mono">%s</span>' % _esc(i["value"])),
                 _esc(i["line"]),
                 _Raw('<span class="sub">%s</span>' % _esc(i.get("context", ""))),
             ]
-            for i in lista
+            for i in items
         ]
-        partes.append("<h3>%s <span class='chip'>%d</span></h3>" % (_esc(rotulo), len(lista)))
-        partes.append(_table(["valor", "linha", "contexto"], linhas, empty="nada deste tipo"))
-    return "".join(partes)
+        parts.append("<h3>%s <span class='chip'>%d</span></h3>" % (_esc(label), len(items)))
+        parts.append(_table(["value", "line", "context"], rows, empty="nothing of this kind"))
+    return "".join(parts)
 
 
 def _instructions_section(data: ReportData) -> str:
-    """Monta a tabela filtrável de instruções.
+    """Build the filterable instruction table.
 
     Args:
-        data: Relatório preenchido.
+        data: Filled report.
 
     Returns:
-        HTML da seção.
+        HTML of the section.
     """
     if not data.instructions:
-        return "<p class='empty'>O arquivo não tem instruções.</p>"
-    corpo = [
-        '<input class="filter" id="filtro-instrucoes" placeholder="filtrar por '
-        'linha, instrução, etiqueta ou explicação…" '
-        "oninput=\"filtrar('filtro-instrucoes', 'tabela-instrucoes')\">"
+        return "<p class='empty'>The file has no instructions.</p>"
+    body = [
+        '<input class="filter" id="instructions-filter" placeholder="filter by '
+        'line, instruction, label or explanation…" '
+        "oninput=\"filterRows('instructions-filter', 'instructions-table')\">"
     ]
-    linhas = [
+    rows = [
         [
             i["line"],
             _Raw('<span class="mono">%s</span>' % _esc(i["text"])),
@@ -1277,113 +1277,113 @@ def _instructions_section(data: ReportData) -> str:
         ]
         for i in data.instructions
     ]
-    corpo.append(
+    body.append(
         _table(
-            ["linha", "instrução", "etiqueta", "o que faz"], linhas, table_id="tabela-instrucoes"
+            ["line", "instruction", "label", "what it does"], rows, table_id="instructions-table"
         )
     )
-    return "".join(corpo)
+    return "".join(body)
 
 
 def _problems_section(data: ReportData) -> str:
-    """Monta a seção de validação.
+    """Build the validation section.
 
     Args:
-        data: Relatório preenchido.
+        data: Filled report.
 
     Returns:
-        HTML da seção.
+        HTML of the section.
     """
     if not data.problems:
-        return "<p class='empty'>Nenhum problema encontrado pelo validador.</p>"
-    partes = []
-    for severidade in (ERRO, ALERTA, INFO):
-        do_tipo = [p for p in data.problems if p["severity"] == severidade]
-        if not do_tipo:
+        return "<p class='empty'>No problem found by the validator.</p>"
+    parts = []
+    for severity in (ERROR, WARNING, INFO):
+        of_kind = [p for p in data.problems if p["severity"] == severity]
+        if not of_kind:
             continue
-        linhas = [
+        rows = [
             [
                 p["line"],
                 _Raw('<span class="chip mono">%s</span>' % _esc(p["code"])),
                 _esc(p["message"]),
                 _Raw('<span class="sub">%s</span>' % _esc(p.get("hint", ""))),
             ]
-            for p in do_tipo
+            for p in of_kind
         ]
-        partes.append(
+        parts.append(
             "<h3>%s <span class='chip sev-%s'>%d</span></h3>"
-            % (_esc(severidade.capitalize()), _esc(severidade), len(do_tipo))
+            % (_esc(severity.capitalize()), _esc(severity), len(of_kind))
         )
-        partes.append(_table(["linha", "código", "problema", "como corrigir"], linhas))
-    return "".join(partes)
+        parts.append(_table(["line", "code", "problem", "how to fix"], rows))
+    return "".join(parts)
 
 
 def _execution_section(data: ReportData) -> str:
-    """Monta a seção de execução simulada.
+    """Build the simulated execution section.
 
     Args:
-        data: Relatório preenchido.
+        data: Filled report.
 
     Returns:
-        HTML da seção.
+        HTML of the section.
     """
     if data.execution is None:
         return (
-            "<p class='empty'>A execução não foi simulada neste relatório. "
-            "Gere de novo sem <code>--no-emulate</code> para preencher esta aba.</p>"
+            "<p class='empty'>The execution was not simulated in this report. "
+            "Generate it again without <code>--no-emulate</code> to fill this tab.</p>"
         )
-    execucao = data.execution
-    partes = [
-        "<h2>Saída do programa</h2>",
-        "<pre>%s</pre>" % _esc(execucao.get("output") or "(nenhuma saída)"),
+    execution = data.execution
+    parts = [
+        "<h2>Program output</h2>",
+        "<pre>%s</pre>" % _esc(execution.get("output") or "(no output)"),
     ]
-    partes.append(
+    parts.append(
         _table(
-            ["passos", "código de saída", "terminou", "timeout"],
+            ["steps", "exit code", "halted", "timeout"],
             [
                 [
-                    execucao.get("steps", 0),
-                    _esc(execucao.get("exit_code")),
-                    "sim" if execucao.get("halted") else "não",
-                    "sim" if execucao.get("timed_out") else "não",
+                    execution.get("steps", 0),
+                    _esc(execution.get("exit_code")),
+                    "yes" if execution.get("halted") else "no",
+                    "yes" if execution.get("timed_out") else "no",
                 ]
             ],
         )
     )
-    problemas = execucao.get("issues") or []
-    if problemas:
-        partes.append("<h3>Problemas detectados durante a execução</h3><ul>")
-        partes.extend("<li>%s</li>" % _esc(p) for p in problemas)
-        partes.append("</ul>")
-    registradores = execucao.get("registers") or {}
-    if registradores:
-        linhas = [
+    issues = execution.get("issues") or []
+    if issues:
+        parts.append("<h3>Problems detected during the execution</h3><ul>")
+        parts.extend("<li>%s</li>" % _esc(problem) for problem in issues)
+        parts.append("</ul>")
+    registers = execution.get("registers") or {}
+    if registers:
+        rows = [
             [
                 _Raw('<span class="mono">%s</span>' % _esc(r)),
                 _Raw('<span class="mono">%s</span>' % _esc(v)),
-                (execucao.get("registers_decimal") or {}).get(r, ""),
+                (execution.get("registers_decimal") or {}).get(r, ""),
             ]
-            for r, v in sorted(registradores.items())
+            for r, v in sorted(registers.items())
         ]
-        partes.append("<h3>Registradores ao final</h3>")
-        partes.append(_table(["registrador", "hexadecimal", "decimal"], linhas))
-    bandeiras = execucao.get("flags") or {}
-    if bandeiras:
-        partes.append(
+        parts.append("<h3>Registers at the end</h3>")
+        parts.append(_table(["register", "hexadecimal", "decimal"], rows))
+    flags = execution.get("flags") or {}
+    if flags:
+        parts.append(
             "<h3>Flags</h3><p>%s</p>"
             % "".join(
                 "<span class='chip mono'>%s=%s</span>" % (_esc(f), _esc(v))
-                for f, v in bandeiras.items()
+                for f, v in flags.items()
             )
         )
     if data.timeline:
-        aviso = (
-            " (mostrando os últimos %d passos)" % len(data.timeline)
-            if execucao.get("timeline_truncated")
+        note = (
+            " (showing the last %d steps)" % len(data.timeline)
+            if execution.get("timeline_truncated")
             else ""
         )
-        partes.append("<h3>Linha do tempo%s</h3>" % _esc(aviso))
-        linhas = [
+        parts.append("<h3>Timeline%s</h3>" % _esc(note))
+        rows = [
             [
                 p["step"],
                 p["line"],
@@ -1392,37 +1392,37 @@ def _execution_section(data: ReportData) -> str:
             ]
             for p in data.timeline
         ]
-        partes.append(
-            _table(["passo", "linha", "instrução", "efeito"], linhas, table_id="tabela-timeline")
+        parts.append(
+            _table(["step", "line", "instruction", "effect"], rows, table_id="timeline-table")
         )
-    return "".join(partes)
+    return "".join(parts)
 
 
 def _flow_section(data: ReportData) -> str:
-    """Monta a seção de fluxo: grafo de controle, chamadas e exportações.
+    """Build the flow section: control graph, calls and exports.
 
     Args:
-        data: Relatório preenchido.
+        data: Filled report.
 
     Returns:
-        HTML da seção.
+        HTML of the section.
     """
-    partes = [
-        "<h2>Grafo de fluxo de controle</h2>",
-        "<p class='sub'>Cada caixa é um bloco básico; as setas são os desvios, "
-        "com o motivo. Blocos cinza-escuros são inalcançáveis.</p>",
+    parts = [
+        "<h2>Control-flow graph</h2>",
+        "<p class='sub'>Each box is a basic block; the arrows are the branches, "
+        "with the reason. Dark gray blocks are unreachable.</p>",
     ]
     if data.cfg.get("graph", {}).get("empty", True):
-        partes.append("<p class='empty'>Sem código para desenhar.</p>")
+        parts.append("<p class='empty'>No code to draw.</p>")
     else:
-        partes.append("<div class='svgbox'>%s</div>" % data.cfg.get("svg", ""))
-    partes.append("<h2>Grafo de chamadas</h2>")
+        parts.append("<div class='svgbox'>%s</div>" % data.cfg.get("svg", ""))
+    parts.append("<h2>Call graph</h2>")
     if data.calls.get("graph", {}).get("empty", True):
-        partes.append("<p class='empty'>Este programa não chama ninguém.</p>")
+        parts.append("<p class='empty'>This program does not call anyone.</p>")
     else:
-        partes.append("<div class='svgbox'>%s</div>" % data.calls.get("svg", ""))
-    partes.append("<h2>Blocos básicos</h2>")
-    linhas = [
+        parts.append("<div class='svgbox'>%s</div>" % data.calls.get("svg", ""))
+    parts.append("<h2>Basic blocks</h2>")
+    rows = [
         [
             b["name"],
             _esc(b["func"] or "—"),
@@ -1433,93 +1433,93 @@ def _flow_section(data: ReportData) -> str:
         ]
         for b in data.blocks
     ]
-    partes.append(_table(["bloco", "função", "linhas", "instr.", "vem de", "vai para"], linhas))
-    partes.append("<h2>Exportar o grafo</h2>")
-    for chave, rotulo in (("cfg", "fluxo de controle"), ("calls", "chamadas")):
-        grafo = data.cfg if chave == "cfg" else data.calls
-        if grafo.get("graph", {}).get("empty", True):
+    parts.append(_table(["block", "function", "lines", "instr.", "comes from", "goes to"], rows))
+    parts.append("<h2>Export the graph</h2>")
+    for key, label in (("cfg", "control flow"), ("calls", "calls")):
+        graph = data.cfg if key == "cfg" else data.calls
+        if graph.get("graph", {}).get("empty", True):
             continue
-        ident = "dot-%s" % chave
-        partes.append("<h3>%s — DOT (Graphviz)</h3>" % _esc(rotulo.capitalize()))
-        partes.append("<pre id='%s'>%s</pre>" % (ident, _esc(grafo.get("dot", ""))))
-        partes.append("<button onclick=\"copiar('%s', this)\">copiar DOT</button>" % ident)
-    return "".join(partes)
+        ident = "dot-%s" % key
+        parts.append("<h3>%s — DOT (Graphviz)</h3>" % _esc(label.capitalize()))
+        parts.append("<pre id='%s'>%s</pre>" % (ident, _esc(graph.get("dot", ""))))
+        parts.append("<button onclick=\"copyText('%s', this)\">copy DOT</button>" % ident)
+    return "".join(parts)
 
 
 def _data_section(data: ReportData) -> str:
-    """Monta a aba de dados crus (JSON) e a nota de offline.
+    """Build the raw data (JSON) tab and the offline note.
 
     Args:
-        data: Relatório preenchido.
+        data: Filled report.
 
     Returns:
-        HTML da seção.
+        HTML of the section.
     """
-    dados = render_json(data, indent=2)
-    ident = "json-cru"
+    raw = render_json(data, indent=2)
+    ident = "raw-json"
     return (
-        "<h2>JSON do relatório</h2>"
-        "<p class='sub'>Mesmo conteúdo desta página, no esquema <code>%s</code>. "
-        "Para salvar sem copiar da tela: <code>asmx report arquivo.asm --format json</code>.</p>"
+        "<h2>Report JSON</h2>"
+        "<p class='sub'>Same content as this page, in the <code>%s</code> schema. "
+        "To save it without copying from the screen: "
+        "<code>asmx report file.asm --format json</code>.</p>"
         "<pre id='%s'>%s</pre>"
-        "<button onclick=\"copiar('%s', this)\">copiar JSON</button>"
-        % (_esc(data.schema), ident, _esc(dados), ident)
+        "<button onclick=\"copyText('%s', this)\">copy JSON</button>"
+        % (_esc(data.schema), ident, _esc(raw), ident)
     )
 
 
 def render_html(data: ReportData) -> str:
-    """Desenha o relatório como uma página HTML autocontida.
+    """Draw the report as a self-contained HTML page.
 
-    O arquivo gerado não faz nenhuma requisição de rede: CSS, JavaScript e os
-    grafos em SVG vão embutidos, então ele abre offline no navegador (e pode ser
-    anexado a um e-mail ou commit sem quebrar).
+    The generated file makes no network request: CSS, JavaScript and the graphs
+    as SVG are embedded, so it opens offline in the browser (and can be attached
+    to an e-mail or a commit without breaking).
 
     Args:
-        data: Relatório a renderizar.
+        data: Report to render.
 
     Returns:
-        Documento HTML completo, pronto para gravar em disco.
+        Complete HTML document, ready to be written to disk.
     """
-    titulo = "ASM X — análise de %s" % data.source.get("name", "programa")
-    abas = [
-        ("resumo", "Resumo"),
-        ("fluxo", "Fluxo"),
-        ("comportamentos", "Comportamentos"),
-        ("iocs", "Indicadores"),
-        ("instrucoes", "Instruções"),
-        ("validacao", "Validação"),
-        ("execucao", "Execução"),
-        ("dados", "Dados"),
+    title = "ASM X — analysis of %s" % data.source.get("name", "program")
+    tabs = [
+        ("summary", "Summary"),
+        ("flow", "Flow"),
+        ("behaviors", "Behaviors"),
+        ("iocs", "Indicators"),
+        ("instructions", "Instructions"),
+        ("validation", "Validation"),
+        ("execution", "Execution"),
+        ("data", "Data"),
     ]
-    botoes = "".join(
+    buttons = "".join(
         "<button class='%s' onclick=\"showTab('%s', this)\">%s</button>"
-        % ("active" if indice == 0 else "", chave, _esc(rotulo))
-        for indice, (chave, rotulo) in enumerate(abas)
+        % ("active" if index == 0 else "", key, _esc(label))
+        for index, (key, label) in enumerate(tabs)
     )
-    secoes = "".join(
-        "<section class='tab %s' id='%s'>%s</section>"
-        % ("active" if indice == 0 else "", chave, corpo)
-        for indice, (chave, corpo) in enumerate(
+    sections = "".join(
+        "<section class='tab %s' id='%s'>%s</section>" % ("active" if index == 0 else "", key, body)
+        for index, (key, body) in enumerate(
             [
-                ("resumo", _meta_section(data)),
-                ("fluxo", _flow_section(data)),
-                ("comportamentos", _behaviors_section(data)),
+                ("summary", _meta_section(data)),
+                ("flow", _flow_section(data)),
+                ("behaviors", _behaviors_section(data)),
                 ("iocs", _iocs_section(data)),
-                ("instrucoes", _instructions_section(data)),
-                ("validacao", _problems_section(data)),
-                ("execucao", _execution_section(data)),
-                ("dados", _data_section(data)),
+                ("instructions", _instructions_section(data)),
+                ("validation", _problems_section(data)),
+                ("execution", _execution_section(data)),
+                ("data", _data_section(data)),
             ]
         )
     )
-    rodape = (
-        "Gerado por ASM X %s em %s · esquema %s · página autocontida, "
-        "sem requisição de rede" % (_esc(data.version), _esc(data.generated_at), _esc(data.schema))
+    footer = (
+        "Generated by ASM X %s on %s · schema %s · self-contained page, "
+        "no network requests" % (_esc(data.version), _esc(data.generated_at), _esc(data.schema))
     )
     if data.command:
-        rodape += " · <span class='mono'>%s</span>" % _esc(data.command)
+        footer += " · <span class='mono'>%s</span>" % _esc(data.command)
     return (
-        "<!DOCTYPE html>\n<html lang='pt-BR'>\n<head>\n"
+        "<!DOCTYPE html>\n<html lang='en'>\n<head>\n"
         "<meta charset='utf-8'>\n"
         "<meta name='viewport' content='width=device-width, initial-scale=1'>\n"
         "<title>%s</title>\n<style>%s</style>\n</head>\n<body>\n"
@@ -1529,51 +1529,50 @@ def render_html(data: ReportData) -> str:
         "<div class='wrap'>%s<nav>%s</nav>%s</div>\n"
         "<footer>%s</footer>\n<script>%s</script>\n</body>\n</html>\n"
         % (
-            _esc(titulo),
+            _esc(title),
             _CSS,
-            _esc(titulo),
+            _esc(title),
             _esc(
-                "%d instruções · %s · gerado em %s"
+                "%d instructions · %s · generated at %s"
                 % (data.counts["instructions"], data.platform.get("os", "?"), data.generated_at)
             ),
             _risk_banner(data),
             _cards(data.counts),
-            botoes,
-            secoes,
-            rodape,
+            buttons,
+            sections,
+            footer,
             _JS,
         )
     )
 
 
 def render_index(
-    reports: Sequence[ReportData], *, title: str = "ASM X — índice de análises", command: str = ""
+    reports: Sequence[ReportData], *, title: str = "ASM X — analysis index", command: str = ""
 ) -> str:
-    """Desenha um índice HTML comparando vários relatórios.
+    """Draw an HTML index comparing several reports.
 
-    Serve para a análise em lote: uma linha por arquivo, com risco, tamanho,
-    plataforma, comportamentos e problemas, além do link para o relatório
-    individual de cada um.
+    It serves the batch analysis: one row per file, with risk, size, platform,
+    behaviors and problems, plus the link to the individual report of each one.
 
     Args:
-        reports: Relatórios coletados, na ordem em que aparecem.
-        title: Título da página.
-        command: Linha de comando usada, mostrada no rodapé.
+        reports: Collected reports, in the order they appear.
+        title: Page title.
+        command: Command line used, shown in the footer.
 
     Returns:
-        Documento HTML completo.
+        Complete HTML document.
     """
-    linhas: List[List[Any]] = []
+    rows: List[List[Any]] = []
     for data in reports:
-        nome = data.source.get("name", "programa")
-        arquivo = data.source.get("report_file") or ("%s.html" % nome)
-        linhas.append(
+        name = data.source.get("name", "program")
+        target = data.source.get("report_file") or ("%s.html" % name)
+        rows.append(
             [
-                _Raw('<a href="%s">%s</a>' % (_esc(arquivo), _esc(nome))),
+                _Raw('<a href="%s">%s</a>' % (_esc(target), _esc(name))),
                 _Raw(
                     '<span class="chip sev-%s">%s</span>'
                     % (
-                        _esc(data.risk.get("level", "baixo")),
+                        _esc(data.risk.get("level", "low")),
                         _esc(str(data.risk.get("level", "")).upper()),
                     )
                 ),
@@ -1587,107 +1586,106 @@ def render_index(
             ]
         )
     total = len(reports)
-    criticos = sum(1 for r in reports if r.risk.get("level") in ("alto", "critico"))
-    resumo = (
-        "%d arquivo(s) analisado(s) · %d com risco alto ou crítico · %d "
-        "comportamento(s) no total" % (total, criticos, sum(r.counts["behaviors"] for r in reports))
+    critical = sum(1 for r in reports if r.risk.get("level") in ("high", "critical"))
+    summary = "%d file(s) analyzed · %d with high or critical risk · %d " "behavior(s) in total" % (
+        total,
+        critical,
+        sum(r.counts["behaviors"] for r in reports),
     )
-    corpo = _table(
+    body = _table(
         [
-            "arquivo",
-            "risco",
+            "file",
+            "risk",
             "score",
-            "plataforma",
+            "platform",
             "instr.",
-            "comport.",
+            "behav.",
             "IOCs",
-            "problemas",
-            "destaques",
+            "problems",
+            "highlights",
         ],
-        linhas,
-        table_id="tabela-indice",
+        rows,
+        table_id="index-table",
     )
-    rodape = "Gerado por ASM X %s · esquema %s" % (_esc(__version__), _esc(REPORT_SCHEMA))
+    footer = "Generated by ASM X %s · schema %s" % (_esc(__version__), _esc(REPORT_SCHEMA))
     if command:
-        rodape += " · <span class='mono'>%s</span>" % _esc(command)
+        footer += " · <span class='mono'>%s</span>" % _esc(command)
     return (
-        "<!DOCTYPE html>\n<html lang='pt-BR'>\n<head>\n<meta charset='utf-8'>\n"
+        "<!DOCTYPE html>\n<html lang='en'>\n<head>\n<meta charset='utf-8'>\n"
         "<meta name='viewport' content='width=device-width, initial-scale=1'>\n"
         "<title>%s</title>\n<style>%s</style>\n</head>\n<body>\n"
         "<header><div class='wrap' style='padding-bottom:0'><h1>%s</h1>"
         "<p class='sub'>%s</p></div></header>\n"
         "<div class='wrap'>%s</div>\n<footer>%s</footer>\n</body>\n</html>\n"
-        % (_esc(title), _CSS, _esc(title), _esc(resumo), corpo, rodape)
+        % (_esc(title), _CSS, _esc(title), _esc(summary), body, footer)
     )
 
 
-# ---------------------------------------------------------------- arquivos --
+# ------------------------------------------------------------------- files --
 def render_dot(data: ReportData) -> str:
-    """Devolve o grafo de fluxo em DOT (Graphviz).
+    """Return the control-flow graph as DOT (Graphviz).
 
     Args:
-        data: Relatório preenchido.
+        data: Filled report.
 
     Returns:
-        Texto DOT terminado em quebra de linha.
+        DOT text ending in a newline.
     """
-    return data.cfg.get("dot", "") or 'digraph cfg { label="sem código"; }\n'
+    return data.cfg.get("dot", "") or 'digraph cfg { label="no code"; }\n'
 
 
 def render_svg(data: ReportData) -> str:
-    """Devolve o grafo de fluxo em SVG.
+    """Return the control-flow graph as SVG.
 
     Args:
-        data: Relatório preenchido.
+        data: Filled report.
 
     Returns:
-        Documento SVG autocontido.
+        Self-contained SVG document.
     """
     return data.cfg.get("svg", "")
 
 
 def write_report(data: ReportData, path: str, *, fmt: Optional[str] = None) -> str:
-    """Grava o relatório no formato pedido.
+    """Write the report in the requested format.
 
     Args:
-        data: Relatório a gravar.
-        path: Caminho de destino (``-`` grava em ``stdout``). O diretório é
-            criado quando ainda não existe.
-        fmt: Formato explícito; sem ele, a extensão do arquivo decide.
+        data: Report to write.
+        path: Destination path (``-`` writes to ``stdout``). The directory is
+            created when it does not exist yet.
+        fmt: Explicit format; without it, the file extension decides.
 
     Returns:
-        O caminho gravado (``"-"`` quando foi para a saída padrão).
+        The path written (``"-"`` when it went to standard output).
 
     Raises:
-        ProjectError: Se o formato não existe.
-        SourceWriteError: Se a gravação falhou.
+        ProjectError: If the format does not exist.
+        SourceWriteError: If the write failed.
     """
-    formato = (fmt or guess_format(path)).lower()
-    if formato not in FORMATS:
-        raise ProjectError(
-            "formato de relatório desconhecido: %s (use %s)" % (formato, ", ".join(FORMATS))
-        )
-    if formato == "mermaid":
-        conteudo = data.cfg.get("mermaid", "flowchart TD\n") + "\n"
-    elif formato == "html":
-        conteudo = render_html(data)
-    elif formato == "md":
-        conteudo = render_markdown(data)
-    elif formato == "json":
-        conteudo = render_json(data, include_svg=False)
-    elif formato == "dot":
-        conteudo = render_dot(data)
+    format_name = (fmt or guess_format(path)).lower()
+    if format_name not in FORMATS:
+        raise ProjectError("unknown report format: %s (use %s)" % (format_name, ", ".join(FORMATS)))
+    if format_name == "mermaid":
+        content = data.cfg.get("mermaid", "flowchart TD\n") + "\n"
+    elif format_name == "html":
+        content = render_html(data)
+    elif format_name == "md":
+        content = render_markdown(data)
+    elif format_name == "json":
+        content = render_json(data, include_svg=False)
+    elif format_name == "dot":
+        content = render_dot(data)
     else:
-        conteudo = render_svg(data)
+        content = render_svg(data)
     if path == "-":
-        print(conteudo, end="")
+        print(content, end="")
         return "-"
-    pasta = os.path.dirname(os.path.abspath(path))
+    folder = os.path.dirname(os.path.abspath(path))
     try:
-        os.makedirs(pasta, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as arquivo:
-            arquivo.write(conteudo)
-    except OSError as erro:
-        raise SourceWriteError(path, str(erro)) from erro
-    log_event(logger, "report_written", path=path, format=formato, bytes=len(conteudo))
+        os.makedirs(folder, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(content)
+    except OSError as error:
+        raise SourceWriteError(path, str(error)) from error
+    log_event(logger, "report_written", path=path, format=format_name, bytes=len(content))
     return path

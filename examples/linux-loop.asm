@@ -1,28 +1,28 @@
-; Imprime cinco vezes a mesma linha, usando um contador em R12.
+; Prints the same line five times, using a counter in R12.
 section .data
-    linha   db  "iteracao do laco", 10
-    tam     equ $ - linha
+    line    db  "loop iteration", 10
+    size    equ $ - line
 
 section .text
     global _start
 
 _start:
-    mov r12, 5                  ; contador do laco
+    mov r12, 5                  ; loop counter
 
 .loop:
-    cmp r12, 0                  ; ainda sobra iteracao?
-    je  .fim                    ; se chegou a zero, sai
+    cmp r12, 0                  ; is there an iteration left?
+    je  .done                   ; if it reached zero, leave
 
     mov rax, 1
     mov rdi, 1
-    mov rsi, linha
-    mov rdx, tam
+    mov rsi, line
+    mov rdx, size
     syscall
 
-    dec r12                     ; contador = contador - 1
-    jmp .loop                   ; volta para o topo
+    dec r12                     ; counter = counter - 1
+    jmp .loop                   ; back to the top
 
-.fim:
+.done:
     mov rax, 60
     mov rdi, 0
     syscall

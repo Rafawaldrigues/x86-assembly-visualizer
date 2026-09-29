@@ -1,0 +1,117 @@
+{
+  "schema": "asmx-rules/1",
+  "description": "Execution, injection and staging shapes.",
+  "rules": [
+    {
+      "id": "EXE001",
+      "name": "Spawns another program",
+      "severity": "high",
+      "description": "The sample executes something else: a shell, a downloaded binary, or a Windows process creation API. This is where a dropper hands control over.",
+      "tags": [
+        "execution"
+      ],
+      "mitre": [
+        "T1059",
+        "T1106"
+      ],
+      "match": {
+        "any_of": [
+          {
+            "syscalls": [
+              "execve",
+              "execveat",
+              "fork",
+              "clone"
+            ]
+          },
+          {
+            "apis": [
+              "CreateProcessA",
+              "CreateProcessW",
+              "ShellExecuteA",
+              "WinExec"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "EXE002",
+      "name": "Shell command string",
+      "severity": "medium",
+      "description": "A command line is embedded in the source (cmd, powershell, sh with a pipe or a redirect). Read it as the sample's intention, not as code.",
+      "tags": [
+        "execution",
+        "ioc"
+      ],
+      "mitre": [
+        "T1059"
+      ],
+      "match": {
+        "strings": [
+          "cmd\\.exe",
+          "powershell",
+          "/bin/sh",
+          "/bin/bash",
+          "\\|\\s*(sh|bash)\\b",
+          "wget\\s+http",
+          "curl\\s+http"
+        ],
+        "strings_min": 1
+      }
+    },
+    {
+      "id": "EXE003",
+      "name": "Memory mapping and heap tricks",
+      "severity": "medium",
+      "description": "The program maps memory beyond the stack and the data section. Normal in real programs, worth attention in a short sample.",
+      "tags": [
+        "memory"
+      ],
+      "mitre": [
+        "T1055"
+      ],
+      "match": {
+        "any_of": [
+          {
+            "syscalls": [
+              "mmap",
+              "mprotect",
+              "brk"
+            ]
+          },
+          {
+            "apis": [
+              "VirtualAlloc",
+              "HeapAlloc",
+              "RtlMoveMemory"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "EXE004",
+      "name": "Instruction stream manipulation",
+      "severity": "low",
+      "description": "String or block move instructions appear in a loop: copying a buffer, building a payload, or moving shellcode into place.",
+      "tags": [
+        "memory",
+        "staging"
+      ],
+      "mitre": [
+        "T1027"
+      ],
+      "match": {
+        "behaviors": [
+          "string-handling"
+        ],
+        "mnemonics": [
+          "movsb",
+          "stosb",
+          "lodsb"
+        ]
+      }
+    }
+  ]
+}

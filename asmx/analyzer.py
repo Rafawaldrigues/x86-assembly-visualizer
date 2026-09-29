@@ -1,8 +1,8 @@
-"""Análise: plataforma alvo, leitura semântica de cada instrução e blocos.
+"""Analysis: target platform, semantic reading of each instruction and blocks.
 
-As tabelas :data:`LINUX_HINTS` e :data:`WINDOWS_HINTS` guardam triplas
-``(padrão, explicação, peso)`` consultadas por :func:`detect_platform` para
-pontuar as pistas de cada sistema operacional.
+The :data:`LINUX_HINTS` and :data:`WINDOWS_HINTS` tables hold triples
+``(pattern, explanation, weight)`` consulted by :func:`detect_platform` to
+score the clues of each operating system.
 """
 
 from __future__ import annotations
@@ -28,14 +28,14 @@ from .parser import Line, Program, parse
 
 @dataclass
 class Semantic:
-    """O que uma instrução faz, explicado em português.
+    """What one instruction does, in plain words.
 
     Attributes:
-        cat: Categoria vinda do acervo (``data``, ``branch``, ``sys``...).
-        tag: Rótulo curto usado pelo emulador e pela interface.
-        label: Título curto da ação (``Lê da memória``).
-        detail: Explicação do efeito da instrução.
-        syscall_name: Nome do serviço, quando é uma chamada de sistema.
+        cat: Category from the ISA table (``data``, ``branch``, ``sys``...).
+        tag: Short label used by the emulator and by the interface.
+        label: Short title of the action (``Reads from memory``).
+        detail: Explanation of the instruction effect.
+        syscall_name: Service name, when it is a system call.
     """
 
     cat: str = "misc"
@@ -47,12 +47,12 @@ class Semantic:
 
 @dataclass
 class Edge:
-    """Uma ligação entre dois blocos básicos.
+    """A link between two basic blocks.
 
     Attributes:
-        target: Índice do bloco de destino.
-        kind: ``jmp``, ``taken`` ou ``fallthrough``.
-        why: Explicação do motivo da ligação.
+        target: Index of the target block.
+        kind: ``jmp``, ``taken`` or ``fallthrough``.
+        why: Explanation of why the edge exists.
     """
 
     target: int
@@ -62,19 +62,19 @@ class Edge:
 
 @dataclass
 class Block:
-    """Um bloco básico: trecho de código com uma entrada e uma saída.
+    """A basic block: a stretch of code with one entry and one exit.
 
     Attributes:
-        id: Índice do bloco na lista de blocos.
-        start: Índice da primeira instrução do bloco.
-        end: Índice da última instrução do bloco.
-        name: Rótulo do bloco (ou ``continuação de ...``).
-        func: Função a que o bloco pertence, quando houver.
-        instrs: Instruções do bloco, na ordem.
-        succ: Arestas de saída do bloco.
-        pred: Arestas de entrada do bloco.
-        calls: Alvos das chamadas feitas dentro do bloco.
-        exit: Motivo pelo qual o bloco encerra o fluxo, quando encerra.
+        id: Index of the block in the block list.
+        start: Index of the first instruction of the block.
+        end: Index of the last instruction of the block.
+        name: Block label (or ``continuation of ...``).
+        func: Function the block belongs to, when there is one.
+        instrs: Instructions of the block, in order.
+        succ: Outgoing edges of the block.
+        pred: Incoming edges of the block.
+        calls: Targets of the calls made inside the block.
+        exit: Reason why the block ends the flow, when it does.
     """
 
     id: int
@@ -91,15 +91,15 @@ class Block:
 
 @dataclass
 class Platform:
-    """Sistema operacional detectado e a convenção de chamada correspondente.
+    """Detected operating system and the matching calling convention.
 
     Attributes:
-        os: ``linux``, ``windows``, ``ambíguo`` ou ``indefinido``.
-        confidence: Confiança da detecção, de 0 a 100.
-        bits: Arquitetura detectada (16, 32 ou 64).
-        evidence: Pistas encontradas, por sistema (``linux`` e ``windows``).
-        abi: Nome da ABI, registradores de argumento e de retorno, registradores
-            preservados e observações.
+        os: ``linux``, ``windows``, ``ambiguous`` or ``unknown``.
+        confidence: Confidence of the detection, from 0 to 100.
+        bits: Detected architecture (16, 32 or 64).
+        evidence: Clues found, per system (``linux`` and ``windows``).
+        abi: ABI name, argument and return registers, preserved registers
+            and notes.
     """
 
     os: str
@@ -111,15 +111,15 @@ class Platform:
 
 @dataclass
 class Analysis:
-    """Resultado completo da análise de um fonte.
+    """Complete result of the analysis of a source file.
 
     Attributes:
-        program: Programa devolvido pelo parser.
-        platform: Plataforma detectada.
-        blocks: Blocos básicos, na ordem do código.
-        instrs: Somente as instruções, na ordem.
-        label_at: Rótulo -> índice da instrução em que ele aparece.
-        stats: Contagens gerais (instruções, blocos, syscalls, categorias...).
+        program: Program returned by the parser.
+        platform: Detected platform.
+        blocks: Basic blocks, in code order.
+        instrs: Only the instructions, in order.
+        label_at: Label -> index of the instruction where it appears.
+        stats: General counts (instructions, blocks, syscalls, categories...).
     """
 
     program: Program
@@ -131,32 +131,32 @@ class Analysis:
 
     @property
     def symbols(self) -> Dict[str, Dict[str, Any]]:
-        """Símbolos do programa, por nome.
+        """Program symbols, by name.
 
         Returns:
-            O dicionário ``nome -> dados do símbolo`` vindo do parser.
+            The ``name -> symbol data`` dictionary coming from the parser.
         """
         return self.program.symbols
 
 
-# (padrão, explicação, peso) — pistas fortes valem mais que convenções
-# compartilhadas pelos dois sistemas, como "section .text".
+# (pattern, explanation, weight) — strong clues weigh more than conventions
+# shared by both systems, such as "section .text".
 LINUX_HINTS = [
-    (r"\bsyscall\b", "usa a instrução SYSCALL (interface do kernel Linux em 64 bits)", 3),
-    (r"\bint\s+0x80\b", "usa INT 0x80, a chamada de sistema clássica do Linux", 3),
-    (r"\bglobal\s+_start\b", "declara _start, o ponto de entrada do ld no Linux", 3),
+    (r"\bsyscall\b", "uses the SYSCALL instruction (Linux 64-bit kernel interface)", 3),
+    (r"\bint\s+0x80\b", "uses INT 0x80, the classic Linux system call", 3),
+    (r"\bglobal\s+_start\b", "declares _start, the ld entry point on Linux", 3),
     (
         r"\.globl\b|\.cfi_startproc|\.type\s+\w+,\s*@function",
-        "usa diretivas do assembler GNU (ELF)",
+        "uses GNU assembler directives (ELF)",
         3,
     ),
-    (r"@plt\b|wrt\s*\.\.plt", "referencia a PLT, mecanismo de ligação do ELF", 3),
-    (r"\bmov\s+(r|e)?ax,\s*(60|0x3c)\b", "usa a syscall 60 (exit), específica do Linux x86-64", 2),
-    (r"\b(printf|puts|malloc|free|scanf|strlen)\b", "chama funções da libc padrão", 2),
-    (r"/dev/|/proc/|/tmp/", "referencia caminhos típicos de Unix", 2),
+    (r"@plt\b|wrt\s*\.\.plt", "references the PLT, the ELF linking mechanism", 3),
+    (r"\bmov\s+(r|e)?ax,\s*(60|0x3c)\b", "uses syscall 60 (exit), specific to Linux x86-64", 2),
+    (r"\b(printf|puts|malloc|free|scanf|strlen)\b", "calls standard libc functions", 2),
+    (r"/dev/|/proc/|/tmp/", "references typical Unix paths", 2),
     (
         r"\bsection\s+\.(text|data|bss|rodata)\b",
-        "usa seções no estilo ELF (também aceito no Windows)",
+        "uses ELF-style sections (also accepted on Windows)",
         1,
     ),
 ]
@@ -166,34 +166,34 @@ WINDOWS_HINTS = [
         r"\b(ExitProcess|MessageBoxA|MessageBoxW|GetStdHandle|WriteConsoleA|WriteConsoleW|"
         r"ReadConsoleA|CreateFileA|VirtualAlloc|GetProcAddress|LoadLibraryA|CloseHandle|"
         r"GetLastError|CreateProcessA|GetModuleHandleA)\b",
-        "chama a API do Windows (kernel32/user32)",
+        "calls the Windows API (kernel32/user32)",
         3,
     ),
-    (r"\b(kernel32|user32|msvcrt|ucrt)\b", "referencia DLLs do Windows", 3),
-    (r"\bincludelib\b|\boption\s+casemap\b|\.model\b", "usa diretivas do MASM", 3),
-    (r"(?m)^\s*\w+\s+proc\b", "declara funções com PROC/ENDP, sintaxe MASM", 3),
-    (r"__imp_\w+", "usa símbolos de importação (__imp_) do formato PE", 3),
-    (r"\bWinMain\b|\bDllMain\b", "usa ponto de entrada de aplicação Windows", 3),
+    (r"\b(kernel32|user32|msvcrt|ucrt)\b", "references Windows DLLs", 3),
+    (r"\bincludelib\b|\boption\s+casemap\b|\.model\b", "uses MASM directives", 3),
+    (r"(?m)^\s*\w+\s+proc\b", "declares functions with PROC/ENDP, MASM syntax", 3),
+    (r"__imp_\w+", "uses import symbols (__imp_) from the PE format", 3),
+    (r"\bWinMain\b|\bDllMain\b", "uses a Windows application entry point", 3),
     (
         r"\bsub\s+rsp,\s*(28h|0x28|40|32|20h)\b",
-        "reserva shadow space de 32 bytes exigido pela ABI do Windows",
+        "reserves the 32-byte shadow space required by the Windows ABI",
         2,
     ),
-    (r"[A-Za-z]:\\\\|\\\\\w+\\\\", "referencia caminhos no estilo Windows", 2),
+    (r"[A-Za-z]:\\\\|\\\\\w+\\\\", "references Windows-style paths", 2),
 ]
 
 
 def detect_platform(program: Program) -> Platform:
-    """Descobre o sistema alvo, a arquitetura e a ABI pelo texto do fonte.
+    """Finds the target system, the architecture and the ABI from the source text.
 
-    Pontua as pistas de :data:`LINUX_HINTS` e :data:`WINDOWS_HINTS` e escolhe a
-    arquitetura pelas diretivas ``bits``/``use32``.
+    Scores the clues of :data:`LINUX_HINTS` and :data:`WINDOWS_HINTS` and picks
+    the architecture from the ``bits``/``use32`` directives.
 
     Args:
-        program: Programa já lido pelo parser.
+        program: Program already read by the parser.
 
     Returns:
-        A :class:`Platform` com sistema, confiança, bits, evidências e ABI.
+        The :class:`Platform` with system, confidence, bits, evidence and ABI.
     """
     src = program.source
     evidence: Dict[str, List[str]] = {"linux": [], "windows": []}
@@ -213,9 +213,9 @@ def detect_platform(program: Program) -> Platform:
     elif win > lin:
         os_name, conf = "windows", min(100, 45 + (win - lin) * 12 + win * 3)
     elif lin == 0:
-        os_name, conf = "indefinido", 0
+        os_name, conf = "unknown", 0
     else:
-        os_name, conf = "ambíguo", 35
+        os_name, conf = "ambiguous", 35
 
     if re.search(r"\bbits\s+16\b", src, re.I):
         bits = 16
@@ -232,9 +232,9 @@ def detect_platform(program: Program) -> Platform:
             "args": ARG_REGS_WIN,
             "ret": "RAX",
             "preserved": isa.CALLEE_SAVED_WIN,
-            "notes": "Os 4 primeiros argumentos vão em RCX, RDX, R8, R9. Quem chama "
-            "precisa reservar 32 bytes de shadow space e manter RSP alinhado "
-            "em 16 bytes.",
+            "notes": "The first 4 arguments go in RCX, RDX, R8, R9. The caller "
+            "must reserve 32 bytes of shadow space and keep RSP aligned "
+            "to 16 bytes.",
         }
     else:
         abi = {
@@ -242,44 +242,44 @@ def detect_platform(program: Program) -> Platform:
             "args": ARG_REGS_SYSV,
             "ret": "RAX",
             "preserved": isa.CALLEE_SAVED_SYSV,
-            "notes": "Os 6 primeiros argumentos vão em RDI, RSI, RDX, RCX, R8, R9. Em "
-            "syscalls, RCX é trocado por R10 e o número do serviço vai em RAX.",
+            "notes": "The first 6 arguments go in RDI, RSI, RDX, RCX, R8, R9. In "
+            "syscalls, RCX is replaced by R10 and the service number goes in RAX.",
         }
 
     return Platform(os=os_name, confidence=conf, bits=bits, evidence=evidence, abi=abi)
 
 
 def _mem_name(op: Any) -> str:
-    """Descreve um operando de memória em português.
+    """Describes a memory operand.
 
     Args:
-        op: Operando do tipo ``mem``.
+        op: Operand of type ``mem``.
 
     Returns:
-        Texto como ``variável local em rbp-8`` ou ``endereço apontado por rdi``.
+        Text like ``local variable at rbp-8`` or ``address pointed to by rdi``.
     """
     inner = op.inner or ""
     if re.search(r"rbp\s*-", inner) or re.search(r"rsp\s*\+", inner):
-        return "variável local em " + inner
+        return "local variable at " + inner
     if re.search(r"rbp\s*\+", inner):
-        return "parâmetro em " + inner
+        return "parameter at " + inner
     if op.symbol:
-        return "variável " + op.symbol
+        return "variable " + op.symbol
     if op.regs:
-        return "endereço apontado por " + " + ".join(op.regs)
-    return "memória " + inner
+        return "address pointed to by " + " + ".join(op.regs)
+    return "memory " + inner
 
 
 def semantics_of(ins: Line, ctx: Dict[str, Any]) -> Semantic:
-    """Monta a explicação de uma instrução isolada.
+    """Builds the explanation of a single instruction.
 
     Args:
-        ins: Instrução já classificada pelo parser.
-        ctx: Contexto da análise (``platform``, ``symbols``,
-            ``pending_syscall``, ``last_compare`` e ``syscall_ahead``).
+        ins: Instruction already classified by the parser.
+        ctx: Analysis context (``platform``, ``symbols``,
+            ``pending_syscall``, ``last_compare`` and ``syscall_ahead``).
 
     Returns:
-        O :class:`Semantic` com categoria, rótulo e detalhe da instrução.
+        The :class:`Semantic` with category, label and detail of the instruction.
     """
     m = ins.mnemonic
     ops = ins.operands
@@ -294,131 +294,139 @@ def semantics_of(ins: Line, ctx: Dict[str, Any]) -> Semantic:
 
     if m in ("mov", "movzx", "movsx", "movsxd"):
         if o0 and o0.type == "mem":
-            alvo = o0.symbol or ("local" if re.search(r"rbp|rsp", o0.inner or "") else "*ponteiro")
-            sem.tag, sem.label = "store", "Escreve na memória"
-            sem.detail = "Guarda %s em %s. Em linguagem de alto nível: %s = %s;" % (
+            alvo = o0.symbol or ("local" if re.search(r"rbp|rsp", o0.inner or "") else "*pointer")
+            sem.tag, sem.label = "store", "Writes to memory"
+            sem.detail = "Stores %s in %s. In a high-level language: %s = %s;" % (
                 o1.text if o1 else "?",
                 _mem_name(o0),
                 alvo,
                 o1.text if o1 else "?",
             )
         elif o1 and o1.type == "mem":
-            sem.tag, sem.label = "load", "Lê da memória"
-            sem.detail = "Carrega %s para %s. É a leitura de uma variável." % (
+            sem.tag, sem.label = "load", "Reads from memory"
+            sem.detail = "Loads %s into %s. This is a variable read." % (
                 _mem_name(o1),
                 o0.text,
             )
         elif o1 and o1.type == "imm":
-            sem.tag, sem.label = "set", "Define constante"
-            sem.detail = "%s passa a valer %s." % (o0.text, o1.text)
+            sem.tag, sem.label = "set", "Sets a constant"
+            sem.detail = "%s becomes %s." % (o0.text, o1.text)
             if ctx["platform"].os == "linux" and o0.type == "reg" and o0.reg in ("rax", "eax"):
                 sc = LINUX_SYSCALLS.get(o1.value)
                 if sc and ctx.get("syscall_ahead"):
                     sem.detail += (
-                        " Como vem antes de um SYSCALL, é o número do serviço: %s (%s)."
+                        " Because it comes before a SYSCALL, it is the service number: %s (%s)."
                         % (sc[0], sc[1])
                     )
         elif o1 and o1.type == "sym":
-            sem.tag, sem.label = "set", "Define endereço/símbolo"
+            sem.tag, sem.label = "set", "Sets address/symbol"
             sym = ctx["symbols"].get(o1.symbol, {})
-            extra = " (endereço do dado %s)" % o1.symbol if sym.get("type") == "data" else ""
-            sem.detail = "%s recebe %s%s." % (o0.text, o1.symbol, extra)
+            extra = " (address of the data %s)" % o1.symbol if sym.get("type") == "data" else ""
+            sem.detail = "%s receives %s%s." % (o0.text, o1.symbol, extra)
         else:
-            sem.tag, sem.label = "copy", "Copia registrador"
+            sem.tag, sem.label = "copy", "Copies register"
             if o0 and o1:
-                sem.detail = "%s passa a ter uma cópia de %s." % (o0.text, o1.text)
+                sem.detail = "%s gets a copy of %s." % (o0.text, o1.text)
     elif m == "lea":
-        sem.tag, sem.label = "addr", "Calcula endereço"
+        sem.tag, sem.label = "addr", "Computes address"
         alvo = (o1.symbol or o1.inner or o1.text) if o1 else "?"
-        sem.detail = "%s recebe o ENDEREÇO de %s, sem ler o conteúdo. É como o & de C." % (
-            o0.text,
-            alvo,
+        sem.detail = (
+            "%s receives the ADDRESS of %s, without reading its contents. It is like & in C."
+            % (
+                o0.text,
+                alvo,
+            )
         )
     elif m == "push":
-        sem.tag, sem.label = "push", "Empilha"
-        sem.detail = "Salva %s na pilha (RSP diminui 8)." % (o0.text if o0 else "")
+        sem.tag, sem.label = "push", "Pushes"
+        sem.detail = "Saves %s on the stack (RSP decreases by 8)." % (o0.text if o0 else "")
     elif m == "pop":
-        sem.tag, sem.label = "pop", "Desempilha"
-        sem.detail = "Restaura %s do topo da pilha (RSP aumenta 8)." % (o0.text if o0 else "")
+        sem.tag, sem.label = "pop", "Pops"
+        sem.detail = "Restores %s from the top of the stack (RSP increases by 8)." % (
+            o0.text if o0 else ""
+        )
     elif m == "call":
-        sem.tag, sem.label = "call", "Chama função"
+        sem.tag, sem.label = "call", "Calls a function"
         alvo = (o0.symbol or o0.text) if o0 else "?"
         api = WIN_APIS.get(re.sub(r"^_+|@.*$", "", str(alvo).lower()))
-        sem.detail = "Salva o endereço de retorno e desvia para %s." % alvo
+        sem.detail = "Saves the return address and jumps to %s." % alvo
         if api:
-            sem.detail += " É a API do Windows %s: %s (parâmetros: %s)." % (api[0], api[1], api[2])
+            sem.detail += " This is the Windows API %s: %s (parameters: %s)." % (
+                api[0],
+                api[1],
+                api[2],
+            )
         elif ctx["symbols"].get(alvo, {}).get("type") == "extern":
-            sem.detail += " Função externa, resolvida na ligação."
+            sem.detail += " External function, resolved at link time."
     elif m.startswith("ret"):
-        sem.tag, sem.label = "return", "Retorna"
+        sem.tag, sem.label = "return", "Returns"
         sem.detail = (
-            "Volta para quem chamou usando o endereço no topo da pilha. "
-            "O valor de retorno sai em RAX."
+            "Returns to the caller using the address on top of the stack. "
+            "The return value comes out in RAX."
         )
     elif m == "jmp":
-        sem.tag, sem.label = "jump", "Desvia sempre"
+        sem.tag, sem.label = "jump", "Always jumps"
         sem.detail = (
-            "Segue direto para %s. O que vem logo abaixo só roda se alguém "
-            "desviar para lá." % (o0.text if o0 else "?")
+            "Goes straight to %s. Whatever comes right below only runs if "
+            "someone jumps there." % (o0.text if o0 else "?")
         )
     elif is_cond_jump(m):
         cc = m[1:]
-        human = CONDITIONS.get(cc, [cc, "a condição"])
-        sem.tag, sem.label = "branch", "Desvia se " + human[0]
-        sem.detail = "Vai para %s quando %s. Caso contrário, continua na próxima linha." % (
+        human = CONDITIONS.get(cc, [cc, "the condition"])
+        sem.tag, sem.label = "branch", "Jumps if " + human[0]
+        sem.detail = "Goes to %s when %s. Otherwise, it continues on the next line." % (
             o0.text if o0 else "?",
             human[1],
         )
         if ctx.get("last_compare"):
-            sem.detail += " Condição vinda de: %s." % ctx["last_compare"]
+            sem.detail += " Condition coming from: %s." % ctx["last_compare"]
     elif m in ("cmp", "test"):
-        sem.tag, sem.label = "compare", "Compara"
+        sem.tag, sem.label = "compare", "Compares"
         base = (
-            ("Calcula %s - %s" % (o0.text, o1.text))
+            ("Computes %s - %s" % (o0.text, o1.text))
             if m == "cmp"
-            else ("Faz %s AND %s" % (o0.text, o1.text))
+            else ("Does %s AND %s" % (o0.text, o1.text))
         )
         sem.detail = (
-            base + " só para atualizar as flags. Quem decide algo com isso é o desvio logo abaixo."
+            base + " only to update the flags. What decides anything with it is the branch below."
         )
         if m == "test" and o0 and o1 and o0.text == o1.text:
-            sem.detail += ' Aqui é o idioma "%s é zero?".' % o0.text
+            sem.detail += ' Here it is the "%s is zero?" idiom.' % o0.text
     elif m in ("syscall", "int"):
-        sem.tag, sem.label = "syscall", "Chamada de sistema"
+        sem.tag, sem.label = "syscall", "System call"
         num = ctx.get("pending_syscall")
         sc = LINUX_SYSCALLS.get(num) if num is not None else None
         if sc:
             nargs = len([a for a in sc[2].split(",") if a.strip()]) if sc[2] else 0
             regs = ", ".join(r.upper() for r in ARG_REGS_SYSCALL[:nargs])
-            sem.detail = "Entra no kernel para executar %s — %s.%s O resultado volta em RAX." % (
+            sem.detail = "Enters the kernel to run %s — %s.%s The result comes back in RAX." % (
                 sc[0],
                 sc[1],
-                (" Argumentos em %s (%s)." % (regs, sc[2])) if nargs else "",
+                (" Arguments in %s (%s)." % (regs, sc[2])) if nargs else "",
             )
             sem.syscall_name = sc[0]
         else:
             sem.detail = (
-                "Entrega o controle ao kernel. O número do serviço está em RAX e os "
-                "argumentos em RDI, RSI, RDX, R10, R8, R9."
+                "Hands control to the kernel. The service number is in RAX and the "
+                "arguments are in RDI, RSI, RDX, R10, R8, R9."
             )
     elif m in ("add", "sub", "inc", "dec", "mul", "imul", "div", "idiv", "neg", "adc", "sbb"):
-        sem.tag, sem.label = "arith", "Aritmética"
+        sem.tag, sem.label = "arith", "Arithmetic"
         if m == "sub" and o0 and o0.reg == "rsp":
-            sem.tag, sem.label = "frame", "Reserva espaço na pilha"
-            sem.detail = "Abre %s bytes para variáveis locais." % (o1.text if o1 else "?")
+            sem.tag, sem.label = "frame", "Reserves stack space"
+            sem.detail = "Opens %s bytes for local variables." % (o1.text if o1 else "?")
         elif m == "add" and o0 and o0.reg == "rsp":
-            sem.tag, sem.label = "frame", "Libera espaço da pilha"
-            sem.detail = "Devolve %s bytes reservados antes." % (o1.text if o1 else "?")
+            sem.tag, sem.label = "frame", "Releases stack space"
+            sem.detail = "Gives back %s bytes reserved before." % (o1.text if o1 else "?")
         elif m == "mul" or (m == "imul" and len(ops) == 1):
             sem.detail = (
-                "RAX = RAX × %s. O resultado completo fica em RDX:RAX "
-                "(parte alta em RDX)." % o0.text
+                "RAX = RAX × %s. The full result goes in RDX:RAX " "(high part in RDX)." % o0.text
             )
         elif m in ("div", "idiv"):
             prep = "XOR RDX, RDX" if m == "div" else "CQO"
             sem.detail = (
-                "Divide RDX:RAX por %s: quociente em RAX, resto em RDX. "
-                "RDX precisa estar preparado antes (%s)." % (o0.text, prep)
+                "Divides RDX:RAX by %s: quotient in RAX, remainder in RDX. "
+                "RDX must be prepared beforehand (%s)." % (o0.text, prep)
             )
         else:
             op_sign = {"add": "+", "sub": "-", "imul": "*", "adc": "+", "sbb": "-"}.get(m)
@@ -427,53 +435,53 @@ def semantics_of(ins: Line, ctx: Dict[str, Any]) -> Semantic:
             elif m == "dec":
                 sem.detail = "%s = %s - 1." % (o0.text, o0.text)
             elif m == "neg":
-                sem.detail = "%s = 0 - %s (troca o sinal)." % (o0.text, o0.text)
+                sem.detail = "%s = 0 - %s (flips the sign)." % (o0.text, o0.text)
             else:
                 sem.detail = "%s = %s %s %s." % (o0.text, o0.text, op_sign, o1.text if o1 else "")
     elif m in ("and", "or", "xor", "not", "shl", "sal", "shr", "sar", "rol", "ror"):
-        sem.tag, sem.label = "logic", "Operação em bits"
+        sem.tag, sem.label = "logic", "Bit operation"
         if m == "xor" and o0 and o1 and o0.text == o1.text:
-            sem.label = "Zera registrador"
-            sem.detail = "%s = 0 (jeito mais curto de zerar)." % o0.text
+            sem.label = "Zeroes the register"
+            sem.detail = "%s = 0 (the shortest way to zero it)." % o0.text
         elif m == "shl":
             sem.detail = "%s = %s * 2^%s." % (o0.text, o0.text, o1.text if o1 else "n")
         elif m == "shr":
-            sem.detail = "%s = %s / 2^%s (sem sinal)." % (o0.text, o0.text, o1.text if o1 else "n")
+            sem.detail = "%s = %s / 2^%s (unsigned)." % (o0.text, o0.text, o1.text if o1 else "n")
         elif m == "not":
-            sem.detail = "%s tem todos os bits invertidos." % o0.text
+            sem.detail = "Every bit of %s is flipped." % o0.text
         else:
-            sem.detail = "%s = %s %s %s, bit a bit." % (
+            sem.detail = "%s = %s %s %s, bit by bit." % (
                 o0.text,
                 o0.text,
                 m.upper(),
                 o1.text if o1 else "",
             )
     elif m.startswith("set"):
-        sem.tag, sem.label = "compare", "Booleano da condição"
-        human = CONDITIONS.get(m[3:], ["a condição"])[0]
-        sem.detail = "%s vira 1 se %s, senão 0." % (o0.text, human)
+        sem.tag, sem.label = "compare", "Boolean of the condition"
+        human = CONDITIONS.get(m[3:], ["the condition"])[0]
+        sem.detail = "%s becomes 1 if %s, otherwise 0." % (o0.text, human)
     elif m == "leave":
-        sem.tag, sem.label = "frame", "Desmonta o quadro"
-        sem.detail = "Restaura RSP e RBP antes do RET."
+        sem.tag, sem.label = "frame", "Tears down the frame"
+        sem.detail = "Restores RSP and RBP before RET."
     elif m == "nop":
-        sem.tag, sem.label = "misc", "Nada"
-        sem.detail = "Instrução vazia, usada para alinhamento."
+        sem.tag, sem.label = "misc", "Nothing"
+        sem.detail = "Empty instruction, used for alignment."
     elif info:
         sem.detail = info["desc"].split(".")[0] + "."
     else:
-        sem.tag, sem.label = "unknown", "Não reconhecida"
+        sem.tag, sem.label = "unknown", "Not recognized"
         sem.detail = (
-            'A ferramenta não conhece "%s". Pode ser macro, instrução SIMD '
-            "menos comum ou erro de digitação." % m
+            'The tool does not know "%s". It may be a macro, an uncommon SIMD '
+            "instruction or a typo." % m
         )
     return sem
 
 
 def _mark_frames(instrs: List[Line]) -> None:
-    """Marca o prólogo e o epílogo dos quadros de pilha.
+    """Marks the prologue and the epilogue of the stack frames.
 
     Args:
-        instrs: Instruções do programa, na ordem.
+        instrs: Instructions of the program, in order.
     """
     for i, a in enumerate(instrs):
         b = instrs[i + 1] if i + 1 < len(instrs) else None
@@ -488,12 +496,12 @@ def _mark_frames(instrs: List[Line]) -> None:
             and len(b.operands) > 1
             and b.operands[1].reg == "rsp"
         ):
-            a.sem.tag, a.sem.label = "frame", "Prólogo da função"
-            a.sem.detail = "Salva o quadro de pilha de quem chamou."
-            b.sem.tag, b.sem.label = "frame", "Prólogo da função"
+            a.sem.tag, a.sem.label = "frame", "Function prologue"
+            a.sem.detail = "Saves the stack frame of the caller."
+            b.sem.tag, b.sem.label = "frame", "Function prologue"
             b.sem.detail = (
-                "RBP passa a apontar para a base deste quadro: daqui para frente "
-                "as variáveis locais são [RBP-n]."
+                "RBP now points to the base of this frame: from here on the local "
+                "variables are [RBP-n]."
             )
         if (
             a.mnemonic == "pop"
@@ -502,16 +510,16 @@ def _mark_frames(instrs: List[Line]) -> None:
             and b
             and b.mnemonic.startswith("ret")
         ):
-            a.sem.tag, a.sem.label = "frame", "Epílogo da função"
-            a.sem.detail = "Restaura o quadro de quem chamou, logo antes do retorno."
+            a.sem.tag, a.sem.label = "frame", "Function epilogue"
+            a.sem.detail = "Restores the frame of the caller, right before the return."
 
 
 def _annotate_args(instrs: List[Line], platform: Platform) -> None:
-    """Anota os MOV/LEA que preparam argumentos antes de um CALL.
+    """Annotates the MOV/LEA that set up arguments before a CALL.
 
     Args:
-        instrs: Instruções do programa, na ordem.
-        platform: Plataforma detectada, que define os registradores de argumento.
+        instrs: Instructions of the program, in order.
+        platform: Detected platform, which defines the argument registers.
     """
     arg_regs = ARG_REGS_WIN if platform.os == "windows" else ARG_REGS_SYSV
     pending: List[tuple] = []
@@ -527,10 +535,10 @@ def _annotate_args(instrs: List[Line], platform: Platform) -> None:
             pending = []
             last_func = ins.func
         if ins.mnemonic == "call":
-            alvo = (ins.operands[0].symbol or ins.operands[0].text) if ins.operands else "função"
+            alvo = (ins.operands[0].symbol or ins.operands[0].text) if ins.operands else "function"
             for reg, line in pending:
                 if reg in arg_regs:
-                    line.sem.detail += " Prepara o %dº argumento da chamada a %s." % (
+                    line.sem.detail += " Sets up argument %d of the call to %s." % (
                         arg_regs.index(reg) + 1,
                         alvo,
                     )
@@ -548,13 +556,13 @@ def _annotate_args(instrs: List[Line], platform: Platform) -> None:
 
 
 def build_blocks(program: Program) -> Tuple[List[Block], Dict[str, int]]:
-    """Divide as instruções em blocos básicos e liga os blocos entre si.
+    """Splits the instructions into basic blocks and links the blocks together.
 
     Args:
-        program: Programa já lido pelo parser.
+        program: Program already read by the parser.
 
     Returns:
-        A lista de :class:`Block` e o mapa ``rótulo -> índice da instrução``.
+        The list of :class:`Block` and the map ``label -> instruction index``.
     """
     instrs = program.instructions
     for i, ins in enumerate(instrs):
@@ -594,7 +602,7 @@ def build_blocks(program: Program) -> Tuple[List[Block], Dict[str, int]]:
             name = (
                 ins.labels[0]
                 if ins.labels
-                else ("continuação de " + blocks[-1].name if blocks else "início")
+                else ("continuation of " + blocks[-1].name if blocks else "start")
             )
             cur = Block(id=len(blocks), start=i, end=i, name=name, func=ins.func)
             blocks.append(cur)
@@ -613,12 +621,12 @@ def build_blocks(program: Program) -> Tuple[List[Block], Dict[str, int]]:
         target = (last.operands[0].symbol or last.operands[0].text) if last.operands else None
 
         def link(bid: Optional[int], kind: str, why: str) -> None:
-            """Cria a aresta de ida e a de volta entre dois blocos.
+            """Creates the forward and the backward edge between two blocks.
 
             Args:
-                bid: Índice do bloco de destino, ou ``None`` quando não há.
-                kind: Tipo da aresta (``jmp``, ``taken`` ou ``fallthrough``).
-                why: Explicação do desvio.
+                bid: Index of the target block, or ``None`` when there is none.
+                kind: Edge kind (``jmp``, ``taken`` or ``fallthrough``).
+                why: Explanation of the branch.
             """
             if bid is None or bid >= len(blocks):
                 return
@@ -627,25 +635,25 @@ def build_blocks(program: Program) -> Tuple[List[Block], Dict[str, int]]:
 
         if m == "jmp":
             if target in label_at:
-                link(block_of[label_at[target]], "jmp", "desvio incondicional para " + target)
+                link(block_of[label_at[target]], "jmp", "unconditional jump to " + target)
             else:
-                b.exit = "desvio para %s (fora do código carregado)" % target
+                b.exit = "jump to %s (outside the loaded code)" % target
         elif is_cond_jump(m):
-            human = CONDITIONS.get(m[1:], ["a condição é verdadeira"])[0]
+            human = CONDITIONS.get(m[1:], ["the condition is true"])[0]
             if target in label_at:
-                link(block_of[label_at[target]], "taken", "quando " + human)
+                link(block_of[label_at[target]], "taken", "when " + human)
             if b.id + 1 < len(blocks):
-                link(b.id + 1, "fallthrough", "quando a condição é falsa, cai na linha seguinte")
+                link(b.id + 1, "fallthrough", "when the condition is false, falls to the next line")
         elif m.startswith("ret"):
-            b.exit = "retorna para quem chamou"
+            b.exit = "returns to the caller"
         elif m == "syscall" and last.sem and last.sem.syscall_name in ("exit", "exit_group"):
-            b.exit = "encerra o processo"
+            b.exit = "terminates the process"
         elif m == "call" and re.search(r"exitprocess", str(target), re.I):
-            b.exit = "encerra o processo"
+            b.exit = "terminates the process"
         elif b.id + 1 < len(blocks):
-            link(b.id + 1, "fallthrough", "segue naturalmente para a próxima instrução")
+            link(b.id + 1, "fallthrough", "flows naturally into the next instruction")
         else:
-            b.exit = "fim do código"
+            b.exit = "end of code"
 
         b.calls = [
             (x.operands[0].symbol or x.operands[0].text) if x.operands else "?"
@@ -657,13 +665,13 @@ def build_blocks(program: Program) -> Tuple[List[Block], Dict[str, int]]:
 
 
 def analyze(text: str) -> Analysis:
-    """Analisa o fonte inteiro: plataforma, semântica, blocos e estatísticas.
+    """Analyzes the whole source: platform, semantics, blocks and statistics.
 
     Args:
-        text: Código assembly completo.
+        text: Complete assembly code.
 
     Returns:
-        A :class:`Analysis` pronta para o validador e para a máquina virtual.
+        The :class:`Analysis` ready for the validator and for the virtual machine.
     """
     program = parse(text)
     platform = detect_platform(program)
@@ -728,14 +736,14 @@ def analyze(text: str) -> Analysis:
 
 
 def callers_of(analysis: Analysis, name: str) -> List[str]:
-    """Lista quem chama ou desvia para um nome.
+    """Lists who calls or jumps to a name.
 
     Args:
-        analysis: Análise já pronta.
-        name: Nome do rótulo ou da função procurada.
+        analysis: Analysis already built.
+        name: Name of the label or function being searched for.
 
     Returns:
-        Textos como ``main (linha 12)`` ou ``desvio da linha 30``.
+        Texts like ``main (line 12)`` or ``jump from line 30``.
     """
     out: List[str] = []
     for ins in analysis.instrs:
@@ -745,20 +753,20 @@ def callers_of(analysis: Analysis, name: str) -> List[str]:
         if target != name:
             continue
         if ins.mnemonic == "call":
-            out.append("%s (linha %d)" % (ins.func or "código", ins.n))
+            out.append("%s (line %d)" % (ins.func or "code", ins.n))
         elif ins.mnemonic == "jmp" or is_cond_jump(ins.mnemonic):
-            out.append("desvio da linha %d" % ins.n)
+            out.append("jump from line %d" % ins.n)
     return out
 
 
 def functions(analysis: Analysis) -> List[str]:
-    """Lista as funções encontradas, na ordem em que aparecem.
+    """Lists the functions found, in the order they appear.
 
     Args:
-        analysis: Análise já pronta.
+        analysis: Analysis already built.
 
     Returns:
-        Nomes das funções, sem repetição.
+        Function names, without repetition.
     """
     seen = []
     for b in analysis.blocks:

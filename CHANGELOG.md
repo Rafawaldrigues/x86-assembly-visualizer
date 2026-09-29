@@ -1,181 +1,223 @@
 # Changelog
 
-Todas as mudanças relevantes do ASM X ficam registradas aqui.
+All notable changes to ASM X are recorded here.
 
-O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o
-projeto usa [Versionamento Semântico](https://semver.org/lang/pt-BR/).
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
+the project uses [Semantic Versioning](https://semver.org/).
 
-## [Não publicado]
+## [Unreleased]
 
 ### Added
 
-- Nada por enquanto. Toda contribuição nova entra aqui antes da próxima versão.
+- **Signature rules** (`asmx/rules.py`, `asmx scan`, `asmx rules`): a
+  dependency-free, YARA-like engine for assembly source. 22 rules ship inside
+  the package (`asmx/data/rules/*.json`), in five themed files; a rule declares
+  `id`, `name`, `severity`, `description`, `tags`, `mitre` and a `match` object
+  whose keys are ANDed (`strings` with comments removed, `syscalls`, `apis`,
+  `behaviors`, `sections`, `mnemonics`, `problems`, numeric thresholds) with
+  `any_of` for alternatives and `require_all` for strictness. Every match
+  carries the evidence with the line number. Format documented in
+  `docs/RULES.md`, and a test asserts that no rule fires on the clean examples.
+- **Similarity grouping** (`asmx/similarity.py`, `asmx cluster`, and
+  `analyze --cluster`): each analysis becomes a normalised feature vector
+  (instruction mix, syscalls, behaviours, indicators, shape), compared with
+  cosine similarity and grouped by single or complete linkage over a threshold.
+  It is algorithmic similarity — no trained model — and the group reports the
+  signal it shares.
+- **Local dashboard** (`asmx/dashboard.py`, `asmx dashboard`): a read-only
+  viewer for a folder of reports, built on `http.server`, with search, sorting,
+  links to the full reports and a JSON API (`/api/samples`, `/api/summary`). It
+  binds to the loopback by default, answers only `GET`/`HEAD`, refuses paths
+  outside the served folder, escapes sample names and generates a token by
+  itself when exposed.
+- **Batch manifest and parallel analysis**: `asmx analyze` now always writes
+  `index.json` (`asmx-analyze/1`) next to the reports, and accepts `--jobs N`
+  to analyse files in parallel processes and `--cluster` to add the groups to
+  the index and the manifest.
+- **Preview pictures** (`tools/capture_screenshots.py`): regenerates the
+  interface and report captures used by the README.
+- **Reference generator** (`tools/build_reference.py --check`): the instruction
+  reference is generated from the catalogue and verified in `make quality` and
+  in CI, so documentation cannot drift from the data.
 
 ### Changed
 
-- Nada por enquanto.
+- **The whole project is now in English** (en-US): documentation, catalogue,
+  interface, command line, report, rules, tests and code comments. Severities
+  are `error`/`warning`/`info`, risk levels `low`/`medium`/`high`/`critical`,
+  behaviour severities `high`/`medium`/`low`, and the example keys are
+  `linux-hello`, `linux-loop`, `linux-function`, `windows-hello`, `gcc-att`,
+  `bubble`, `broken`, `overflow` and `suspicious`.
+
+- Nothing yet. Every new contribution lands here before the next release.
+
+### Changed
+
+- Nothing yet.
 
 ### Fixed
 
-- Nada por enquanto.
+- Nothing yet.
 
 ## [1.0.0] - 2026-09-21
 
-Primeira versão estável. O ASM X nasce como ambiente de desktop para estudar,
-validar, testar e depurar assembly x86-64 — Python + Tkinter, biblioteca padrão e
-nenhuma dependência externa.
+First stable release. ASM X starts as a desktop environment to study, validate,
+test and debug x86-64 assembly — Python + Tkinter, the standard library and no
+external dependency.
 
 ### Added
 
-- **Leitura de três sintaxes**: o parser reconhece NASM/Intel (`mov rax, 1`),
-  MASM (diretivas e `PTR`) e GAS/AT&T (`movq $1, %rax`), incluindo rótulos,
-  seções, diretivas de dados e os comentários de cada dialeto. O AT&T é
-  normalizado para a ordem Intel, então todo o resto da ferramenta trabalha com
-  uma única forma.
-- **Explicação semântica por instrução**: cada linha recebe uma etiqueta de
-  efeito ("Escreve na memória", "Desvia se for igual", "Chamada de sistema") e
-  uma frase em português dizendo o que ela faz, incluindo o efeito nas flags e o
-  papel do operando (variável local, parâmetro, ponteiro, constante).
-- **Detecção de plataforma e ABI**: identifica Linux ou Windows pelas pistas do
-  próprio fonte (syscall, `kernel32`, diretivas, convenção de chamada), mostra a
-  confiança da conclusão, as evidências e as regras de chamada de cada sistema.
-- **Mapa de fluxo de controle**: funções e blocos básicos com "vem de" e
-  "vai para", o motivo de cada desvio condicional, o caminho de cada salto e o
-  motivo de cada saída de bloco.
-- **Validação estática**: 15 checagens que produzem 34 códigos de problema em
-  três severidades (erro, alerta, informação), cada um com dica de correção —
-  string com acento, string sem terminador, `div` sem preparar RDX, `push` sem
-  `pop`, imediato que não cabe, tamanho de operando ambíguo, shadow space do
-  Windows, rótulo inexistente, escrita em `.rodata`, registrador lido antes de
-  receber valor, laço infinito, código inalcançável e por aí.
-- **Máquina virtual didática**: executa o assembly direto, sem montar nem ligar
-  nada, com registradores, flags, pilha e memória à vista, breakpoints,
-  histórico de execução e detecção de estouro, divisão por zero, pilha
-  desbalanceada e leitura de memória nunca escrita.
-- **Projeto em arquivo único** (`.asmproj`, JSON) com branches do mesmo programa,
-  diff entre elas, anotações por linha, breakpoints e cenários de teste — tudo
-  versionável junto com o código e fora do `.asm`.
-- **Cenários de teste**: estado inicial (onde começar, quais registradores,
-  entrada simulada) mais a expectativa (saída, código de saída ou "deve acusar
-  problema"), com limite de instruções e de tempo.
-- **Interface Tkinter**: editor com realce e calha de breakpoints, árvore de
-  estrutura do código, painel da máquina, painel de documentação, painel de
-  testes, tema escuro e atalhos de teclado.
-- **Linha de comando completa**: `check`, `run`, `explain`, `info`, `examples` e
-  `version`, com saída em JSON, códigos de saída estáveis (0/1/2/3/4), `--trace`,
-  `--timeout`, `--entry` e `--stdin`.
-- **Referência de 148 mnemônicos** em português, agrupados por finalidade, com
-  sintaxe, descrição, efeito nas flags e exemplo de uso — disponível na interface
-  e no terminal (`asmx explain prog.asm --mnemonic div`).
-- **43 syscalls do Linux** documentadas (número, nome, argumentos e o que fazem)
-  e as principais funções `kernel32`/`user32` do Windows.
-- **8 programas de exemplo** prontos, do "olá mundo" com syscall à ordenação
-  bolha, incluindo um com defeitos de propósito e outro que estoura com valor
-  alto — gravados também em `examples/*.asm`.
-- **Logging estruturado**: eventos com nome e campos próprios, em texto legível
-  ou JSON de uma linha por evento, sem depender de biblioteca externa.
-- **Códigos de erro padronizados** em `asmx.errors`, com código estável,
-  contexto estruturado e compatibilidade com `ValueError`, `KeyError` e
+- **Reading of three syntaxes**: the parser recognizes NASM/Intel (`mov rax, 1`),
+  MASM (directives and `PTR`) and GAS/AT&T (`movq $1, %rax`), including labels,
+  sections, data directives and the comments of each dialect. AT&T is normalized
+  to Intel order, so the rest of the tool works with a single form.
+- **Semantic explanation per instruction**: each line gets an effect tag
+  ("Writes to memory", "Branches if equal", "System call") and one sentence
+  saying what it does, including the effect on the flags and the role of the
+  operand (local variable, parameter, pointer, constant).
+- **Platform and ABI detection**: identifies Linux or Windows from the hints in
+  the source itself (syscall, `kernel32`, directives, calling convention), shows
+  the confidence of the conclusion, the evidence and the calling rules of each
+  system.
+- **Control-flow map**: functions and basic blocks with "comes from" and
+  "goes to", the reason for each conditional branch, the path of each jump and
+  the reason for each block exit.
+- **Static validation**: 15 checks that produce 34 problem codes in three
+  severities (error, warning, information), each one with a fix hint — string
+  with an accent, string without a terminator, `div` without preparing RDX,
+  `push` without `pop`, immediate that does not fit, ambiguous operand size,
+  Windows shadow space, label that does not exist, write to `.rodata`, register
+  read before it receives a value, infinite loop, unreachable code and so on.
+- **Didactic virtual machine**: runs the assembly directly, without assembling
+  or linking anything, with registers, flags, stack and memory in view,
+  breakpoints, execution history and detection of overflow, division by zero,
+  unbalanced stack and read of never-written memory.
+- **Single-file project** (`.asmproj`, JSON) with branches of the same program,
+  diff between them, per-line notes, breakpoints and test scenarios — all
+  versionable together with the code and outside the `.asm`.
+- **Test scenarios**: initial state (where to start, which registers, simulated
+  input) plus the expectation (output, exit code or "must report a problem"),
+  with an instruction limit and a time limit.
+- **Tkinter interface**: editor with highlighting and a breakpoint gutter, code
+  structure tree, machine panel, documentation panel, tests panel, dark theme
+  and keyboard shortcuts.
+- **Complete command line**: `check`, `run`, `explain`, `info`, `examples` and
+  `version`, with JSON output, stable exit codes (0/1/2/3/4), `--trace`,
+  `--timeout`, `--entry` and `--stdin`.
+- **Reference of 148 mnemonics**, grouped by purpose, with syntax, description,
+  effect on the flags and usage example — available in the interface and in the
+  terminal (`asmx explain prog.asm --mnemonic div`).
+- **43 Linux syscalls** documented (number, name, arguments and what they do)
+  and the main `kernel32`/`user32` functions of Windows.
+- **8 ready-made sample programs**, from the "hello world" with syscall to
+  bubble sort, including one with deliberate defects and another that overflows
+  with a high value — also written to `examples/*.asm`.
+- **Structured logging**: named events with their own fields, as readable text
+  or one-line JSON per event, without depending on an external library.
+- **Standardized error codes** in `asmx.errors`, with a stable code, structured
+  context and compatibility with `ValueError`, `KeyError` and
   `FileNotFoundError`.
-- **Configuração por arquivo e ambiente** (`asmx.yaml`, `asmx.json`,
-  `ASMX_TIMEOUT`, `--config`), com validação e mensagens que dizem qual campo
-  está errado.
-- **Anotações de tipo em 100% do código**, docstrings no padrão Google com
-  exemplos executáveis e comentários em português em todos os módulos.
-- **Portões de qualidade automatizados** (`tools/quality_gates.py`): reprovam
-  qualquer função sem anotação, sem docstring ou com parâmetro não documentado.
-- **Suíte de testes** cobrindo parser, analisador, validador, máquina virtual,
-  projeto, configuração, erros, CLI e interface (esta última sob `xvfb`).
-- **Integração contínua** com GitHub Actions em Python 3.9 a 3.13: flake8, mypy,
-  portões de qualidade, testes com cobertura e verificação de que o pacote
-  instala e roda numa `venv` vazia.
-- **Varredura de segurança** com bandit e pip-audit, mais a política de
-  segurança em `.github/SECURITY.md`.
-- **Docker**: imagem enxuta com usuário sem privilégio, `HEALTHCHECK` e alvos
-  `check`, `run`, `test`, `quality` e `gui`.
-- **Documentação**: `README.md`, `docs/GUIA.md` (manual de uso, CLI,
-  relatório, configuração, logging e erros) e `docs/REFERENCIA.md` (acervo
-  completo).
-- **Classificação de comportamento**: doze categorias (rede, arquivos,
-  processo, memória, evasão, criptografia, persistência, ambiente, console,
-  processamento de dados, manipulação de string, autocompilação) com evidência
-  por linha, confiança e mapeamento para 17 técnicas do MITRE ATT&CK — sempre
-  como indício, nunca como veredito.
-- **Indicadores de compromisso**: URLs, IPv4 válidos, domínios, e-mails,
-  caminhos Unix e Windows, chaves de registro, comandos, extensões sensíveis,
-  palavras de interesse e strings embutidas, com filtro de falso positivo.
-- **Grafos**: fluxo de controle e chamadas com layout determinístico, desenhados
-  em SVG por código próprio (sem biblioteca gráfica) e exportáveis em DOT e
-  Mermaid.
-- **Relatório**: HTML autocontido e offline (CSS, JavaScript e SVG embutidos)
-  com oito abas — resumo com risco de 0 a 100, fluxo, comportamentos,
-  indicadores, instruções, validação, execução com linha do tempo e dados crus —
-  mais exportação em Markdown, JSON, DOT, SVG e Mermaid.
-- **Análise em lote**: `asmx analyze` grava um relatório por arquivo e um
-  `index.html` comparando risco, tamanho, plataforma, comportamentos,
-  indicadores e problemas de todos eles.
-- **9º exemplo didático** (`suspeito.asm`): um programa que conversa com o
-  sistema (soquete, arquivo em `/tmp`, bytes aleatórios, informação do ambiente)
-  para o relatório mostrar comportamentos e técnicas de verdade. Não é malware e
-  não executa nada: a máquina virtual só interpreta as instruções em Python.
+- **Configuration by file and environment** (`asmx.yaml`, `asmx.json`,
+  `ASMX_TIMEOUT`, `--config`), with validation and messages that say which field
+  is wrong.
+- **Type hints in 100% of the code**, Google-style docstrings with runnable
+  examples and comments in every module.
+- **Automated quality gates** (`tools/quality_gates.py`): they reject any
+  function without a type hint, without a docstring or with an undocumented
+  parameter.
+- **Test suite** covering parser, analyzer, validator, virtual machine, project,
+  configuration, errors, CLI and interface (the latter under `xvfb`).
+- **Continuous integration** with GitHub Actions on Python 3.9 to 3.13: flake8,
+  mypy, quality gates, tests with coverage and a check that the package installs
+  and runs in an empty `venv`.
+- **Security scanning** with bandit and pip-audit, plus the security policy in
+  `.github/SECURITY.md`.
+- **Docker**: lean image with an unprivileged user, `HEALTHCHECK` and the
+  targets `check`, `run`, `test`, `quality` and `gui`.
+- **Documentation**: `README.md`, `docs/GUIA.md` (user manual, CLI, report,
+  configuration, logging and errors) and `docs/REFERENCIA.md` (the instruction
+  reference).
+- **Behavior classification**: twelve categories (network, files, process,
+  memory, evasion, cryptography, persistence, environment, console, data
+  processing, string manipulation, self-compilation) with per-line evidence,
+  confidence and mapping to 17 MITRE ATT&CK techniques — always as an indicator,
+  never as a verdict.
+- **Indicators of compromise**: URLs, valid IPv4, domains, e-mail addresses,
+  Unix and Windows paths, registry keys, commands, sensitive extensions, words
+  of interest and embedded strings, with a false-positive filter.
+- **Graphs**: control flow and calls with deterministic layout, drawn in SVG by
+  our own code (no graphics library) and exportable as DOT and Mermaid.
+- **Report**: self-contained and offline HTML (embedded CSS, JavaScript and SVG)
+  with eight tabs — summary with risk from 0 to 100, flow, behaviors,
+  indicators, instructions, validation, execution with timeline and raw data —
+  plus export to Markdown, JSON, DOT, SVG and Mermaid.
+- **Batch analysis**: `asmx analyze` writes one report per file and an
+  `index.html` comparing risk, size, platform, behaviors, indicators and
+  problems across all of them.
+- **9th teaching example** (`suspicious.asm`): a program that talks to the system
+  (socket, file in `/tmp`, random bytes, environment information) so the report
+  shows real behaviors and techniques. It is not malware and it executes
+  nothing: the virtual machine only interprets the instructions in Python.
 
 ### Changed
 
-- **Divisão de trabalho entre passo a passo e modo contínuo**: "Passo" mostra o
-  efeito de uma instrução e para; "Rodar" vai até o fim, até um breakpoint ou
-  até um problema detectado.
-- **Detecção de plataforma passou a explicar a conclusão**: além de dizer
-  "Linux" ou "Windows", lista as pistas que levaram a isso.
-- **Anotações saíram do `.asm` para o projeto**, para não sujar o fonte que
-  seria montado de verdade depois.
-- **Erros da biblioteca ganharam código estável** (`ERR_*`) sem deixar de ser
-  `ValueError`, `KeyError` ou `FileNotFoundError` para quem já tratava assim.
-- **A linha de comando virou cidadã de primeira classe**: a interface gráfica é
-  um dos front-ends, não o único.
+- **Split of work between step-by-step and continuous mode**: "Step" shows the
+  effect of one instruction and stops; "Run" goes to the end, to a breakpoint or
+  to a detected problem.
+- **Platform detection now explains the conclusion**: besides saying "Linux" or
+  "Windows", it lists the hints that led there.
+- **Notes moved out of the `.asm` into the project**, so they do not pollute the
+  source that would later be assembled for real.
+- **Library errors gained a stable code** (`ERR_*`) while remaining a
+  `ValueError`, `KeyError` or `FileNotFoundError` for code that already handled
+  them that way.
+- **The command line became a first-class citizen**: the graphical interface is
+  one of the front-ends, not the only one.
 
 ### Fixed
 
-Problemas reais encontrados pelos testes e pela revisão, cada um com caso de
-teste que reproduz:
+Real problems found by the tests and by review, each one with a test case that
+reproduces it:
 
-- **`times` com valor** gravava zeros em vez de repetir o valor: `times 3 db 7`
-  agora produz três bytes `07`.
-- **`INT 0x80` usava a tabela de syscalls de 64 bits**, então o exemplo clássico
-  de 32 bits (`eax=4` para `write`) chamava a syscall errada; agora os números do
-  i386 são traduzidos e o que não tem equivalente é avisado.
-- **Arquivo com BOM UTF-8** deixava o caractere `\ufeff` grudado no primeiro
-  mnemônico; a leitura reconhece e remove o BOM.
-- **Deslocamento negativo em AT&T** (`-8(%rbp)`) era convertido para `[rbp+-8]`;
-  agora sai `[rbp-8]`.
-- **`SourceReadError` não estava importado** em `workspace.py`, o que transformava
-  um erro de leitura de projeto em `NameError`.
-- **Projeto `.asmproj` corrompido** deixou de vazar `JSONDecodeError` cru: agora
-  vira `ProjectFormatError` com o arquivo e a linha do problema.
-- **Divisão por zero e estouro de quociente** não derrubam mais a simulação:
-  viram problema detectado, explicado na linha, com a execução parando em paz.
-- **`movsx`/`movzx`/`cdq`/`cqo`** preenchem os bits superiores como o processador
-  faz, em vez de deixar lixo.
-- **Exemplos e arquivos `examples/*.asm`** não podem divergir: um teste compara os
-  dois e `tools/export_examples.py` regrava a partir da fonte única.
-- **Falso positivo com ponto e vírgula dentro de string**: o validador cortava a
-  linha em `;` na mão e acusava "aspas não fechadas" (STR002) em coisas como
-  `db "Mozilla/5.0 (compatible; ASMX/1.0)"`. Agora usa o pedaço de código que o
-  parser já separou respeitando as aspas.
-- **Relatório com marcação escapada**: células que contêm HTML (chips, links,
-  `span` de caminho/hash) apareciam como texto. Agora saem como elementos.
-- **`--out` em diretório inexistente** falhava com erro de escrita; o diretório
-  de destino passou a ser criado.
+- **`times` with a value** wrote zeros instead of repeating the value:
+  `times 3 db 7` now produces three `07` bytes.
+- **`INT 0x80` used the 64-bit syscall table**, so the classic 32-bit example
+  (`eax=4` for `write`) called the wrong syscall; now the i386 numbers are
+  translated and whatever has no equivalent is reported.
+- **File with a UTF-8 BOM** left the `\ufeff` character stuck to the first
+  mnemonic; reading now recognizes and removes the BOM.
+- **Negative displacement in AT&T** (`-8(%rbp)`) was converted to `[rbp+-8]`;
+  now it comes out as `[rbp-8]`.
+- **`SourceReadError` was not imported** in `workspace.py`, which turned a
+  project read error into a `NameError`.
+- **Corrupted `.asmproj` project** no longer leaks a raw `JSONDecodeError`: it
+  now becomes a `ProjectFormatError` with the file and the line of the problem.
+- **Division by zero and quotient overflow** no longer take the simulation down:
+  they become a detected problem, explained on the line, with the execution
+  stopping quietly.
+- **`movsx`/`movzx`/`cdq`/`cqo`** fill the upper bits the way the processor
+  does, instead of leaving garbage.
+- **Examples and the `examples/*.asm` files** cannot drift apart: a test compares
+  the two and `tools/export_examples.py` rewrites them from the single source.
+- **False positive with a semicolon inside a string**: the validator cut the
+  line at `;` by hand and reported "unterminated quotes" (STR002) on things like
+  `db "Mozilla/5.0 (compatible; ASMX/1.0)"`. It now uses the code slice the
+  parser already split while respecting the quotes.
+- **Report with escaped markup**: cells that contain HTML (chips, links,
+  path/hash `span`) appeared as text. They now come out as elements.
+- **`--out` into a directory that does not exist** failed with a write error;
+  the destination directory is now created.
 
 ### Performance
 
-- **Acervo de instruções carregado uma única vez por processo**, na importação.
-- **Uma leitura de disco por arquivo**, com hash e impressão digital calculados
-  sobre os mesmos bytes.
-- **Parser, análise e validação trabalham sobre a mesma estrutura em memória** —
-  nada é reparseado a cada consulta da interface.
-- **Realce do editor agendado com atraso e cancelamento do trabalho anterior**,
-  em vez de redesenhar a cada tecla digitada.
-- **Log só formata o que o nível pedido exige**; sem handler configurado, uma
-  biblioteca embutida em outro programa não imprime nada.
+- **Instruction catalogue loaded once per process**, at import time.
+- **One disk read per file**, with the hash and the fingerprint computed over
+  the same bytes.
+- **Parser, analysis and validation work over the same in-memory structure** —
+  nothing is re-parsed on every interface query.
+- **Editor highlighting scheduled with a delay and cancellation of the previous
+  job**, instead of redrawing on every keystroke.
+- **The log only formats what the requested level requires**; with no handler
+  configured, a library embedded in another program prints nothing.
 
 [1.0.0]: https://github.com/Rafawaldrigues/x86-assembly-visualizer/releases/tag/v1.0.0
