@@ -45,18 +45,19 @@ jobs:
 
       - name: Install the project and its dev tooling
         run: |
-          # Upgrade the toolchain as well: auditing the setuptools/pip bundled
-          # with the runner would flag their own advisories instead of ours.
           python -m pip install --upgrade pip setuptools wheel
           pip install pip-audit
           pip install .
           pip install -r requirements-dev.txt
 
-      - name: Audit installed dependencies
-        # ASM X itself has no runtime dependencies, so this audits the
-        # development tooling and whatever pip resolved.  It fails the build
-        # honestly when an advisory shows up.
-        run: pip-audit --desc --progress-spinner off
+      - name: Audit the dependencies this project declares
+        # O ASM X não tem dependência de execução: o que se audita aqui é o
+        # ferramental de desenvolvimento (flake8, mypy, coverage, black,
+        # bandit, build...). Auditamos o que o projeto DECLARA, e não o pip ou
+        # o setuptools que vieram na imagem do runner — apontar vulnerabilidade
+        # no toolchain do runner daria um vermelho que não é deste projeto.
+        # Quando aparece advisório numa dependência de verdade, o job falha.
+        run: pip-audit --desc --progress-spinner off --requirement requirements-dev.txt
 
   zero-runtime-dependencies:
     name: Zero runtime dependencies

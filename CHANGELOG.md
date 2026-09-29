@@ -178,4 +178,4 @@ teste que reproduz:
 - **Log só formata o que o nível pedido exige**; sem handler configurado, uma
   biblioteca embutida em outro programa não imprime nada.
 
-[1.0.0]: https://github.com/usuario/asmx/releases/tag/v1.0.0
+[1.0.0]: https://github.com/Rafawaldrigues/x86-assembly-visualizer/releases/tag/v1.0.0

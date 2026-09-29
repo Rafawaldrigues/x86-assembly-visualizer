@@ -76,11 +76,11 @@ asmx = "asmx.cli:main"
 asmx-gui = "asmx.ui:main"
 
 [project.urls]
-Homepage = "https://github.com/rafawaldrigues/asmx"
-Repository = "https://github.com/rafawaldrigues/asmx"
-Issues = "https://github.com/rafawaldrigues/asmx/issues"
-Documentation = "https://github.com/rafawaldrigues/asmx/tree/main/docs"
-Changelog = "https://github.com/rafawaldrigues/asmx/releases"
+Homepage = "https://github.com/Rafawaldrigues/x86-assembly-visualizer"
+Repository = "https://github.com/Rafawaldrigues/x86-assembly-visualizer"
+Issues = "https://github.com/Rafawaldrigues/x86-assembly-visualizer/issues"
+Documentation = "https://github.com/Rafawaldrigues/x86-assembly-visualizer/tree/main/docs"
+Changelog = "https://github.com/Rafawaldrigues/x86-assembly-visualizer/releases"
 
 # ---------------------------------------------------------------------------
 # setuptools

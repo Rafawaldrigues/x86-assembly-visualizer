@@ -65,9 +65,11 @@ RUN python -m pip install --upgrade pip build \
 FROM python:3.11-slim AS runtime
 
 LABEL org.opencontainers.image.title="ASM X" \
-      org.opencontainers.image.description="Desktop environment to study, validate and debug x86-64 assembly" \
+      org.opencontainers.image.description="Ambiente de estudo, validação e depuração de assembly x86-64, sem dependência externa" \
       org.opencontainers.image.licenses="MIT" \
-      org.opencontainers.image.source="https://github.com/rafawaldrigues/asmx"
+      org.opencontainers.image.source="https://github.com/Rafawaldrigues/x86-assembly-visualizer" \
+      org.opencontainers.image.url="https://github.com/Rafawaldrigues/x86-assembly-visualizer" \
+      org.opencontainers.image.documentation="https://github.com/Rafawaldrigues/x86-assembly-visualizer/blob/main/docs/GUIA.md"
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
