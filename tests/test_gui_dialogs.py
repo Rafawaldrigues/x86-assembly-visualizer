@@ -205,26 +205,26 @@ class TestScenarioDialog(unittest.TestCase):
             max_steps=77,
         )
         dlg = self.open_dialog(["_start", "add_pair"], scenario)
-        self.assertEqual(dlg.nome.get(), "c1")
-        self.assertEqual(dlg.entrada.get(), "_start")
-        self.assertEqual(dlg.entrada.cget("values")[0], "")
-        self.assertIn("_start", dlg.entrada.cget("values"))
+        self.assertEqual(dlg.item_name.get(), "c1")
+        self.assertEqual(dlg.input_value.get(), "_start")
+        self.assertEqual(dlg.input_value.cget("values")[0], "")
+        self.assertIn("_start", dlg.input_value.cget("values"))
         self.assertEqual(dlg.regs.get(), "rdi=1000000")
         self.assertEqual(dlg.stdin.get(), "abc")
-        self.assertEqual(dlg.saida.get("1.0", "end-1c"), "Hello\n")
+        self.assertEqual(dlg.output_value.get("1.0", "end-1c"), "Hello\n")
         self.assertEqual(dlg.exit_code.get(), "3")
-        self.assertTrue(dlg.espera_problema.get())
+        self.assertTrue(dlg.expects_problem.get())
         self.assertEqual(dlg.max_steps.get(), "77")
 
     def test_collect_builds_the_typed_scenario(self) -> None:
         dlg = self.open_dialog(["_start"])
-        dlg.nome.insert(0, "  huge value  ")
-        dlg.entrada.set("_start")
+        dlg.item_name.insert(0, "  huge value  ")
+        dlg.input_value.set("_start")
         dlg.regs.insert(0, "rdi=1000000, rsi=0x20, missing=5")
         dlg.stdin.insert(0, "input\n")
-        dlg.saida.insert("1.0", "expected output")
+        dlg.output_value.insert("1.0", "expected output")
         dlg.exit_code.insert(0, "42")
-        dlg.espera_problema.set(True)
+        dlg.expects_problem.set(True)
         dlg.max_steps.delete(0, "end")
         dlg.max_steps.insert(0, "1234")
         scenario = dlg.collect()
@@ -240,13 +240,13 @@ class TestScenarioDialog(unittest.TestCase):
 
     def test_collect_without_name_warns_and_returns_none(self) -> None:
         dlg = self.open_dialog()
-        dlg.nome.delete(0, "end")
+        dlg.item_name.delete(0, "end")
         self.assertIsNone(dlg.collect())
         self.assertIn("name", dlg.error.cget("text"))
 
     def test_collect_with_non_numeric_limit_warns(self) -> None:
         dlg = self.open_dialog()
-        dlg.nome.insert(0, "scenario")
+        dlg.item_name.insert(0, "scenario")
         dlg.max_steps.delete(0, "end")
         dlg.max_steps.insert(0, "many")
         self.assertIsNone(dlg.collect())
@@ -254,14 +254,14 @@ class TestScenarioDialog(unittest.TestCase):
 
     def test_collect_with_non_numeric_exit_code_warns(self) -> None:
         dlg = self.open_dialog()
-        dlg.nome.insert(0, "scenario")
+        dlg.item_name.insert(0, "scenario")
         dlg.exit_code.insert(0, "zero")
         self.assertIsNone(dlg.collect())
         self.assertIn("number", dlg.error.cget("text"))
 
     def test_collect_uses_defaults_when_fields_are_empty(self) -> None:
         dlg = self.open_dialog()
-        dlg.nome.insert(0, "scenario")
+        dlg.item_name.insert(0, "scenario")
         self.assertEqual(dlg.max_steps.get(), "200000")
         dlg.max_steps.delete(0, "end")
         scenario = dlg.collect()
@@ -274,7 +274,7 @@ class TestScenarioDialog(unittest.TestCase):
 
     def test_confirm_closes_and_stores_scenario(self) -> None:
         dlg = self.open_dialog()
-        dlg.nome.insert(0, "scenario")
+        dlg.item_name.insert(0, "scenario")
         dlg.confirm()
         self.assertIsNotNone(dlg.result)
         self.assertEqual(dlg.result.name, "scenario")

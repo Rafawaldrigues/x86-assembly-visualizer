@@ -58,7 +58,7 @@ jobs:
       - name: Type check with mypy
         run: mypy asmx/
 
-      - name: Quality gates (100% type hints and Google docstrings)
+      - name: Annotations, docstrings and generated files
         run: |
           python tools/quality_gates.py
           python tools/export_examples.py --check

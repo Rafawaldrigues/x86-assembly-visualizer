@@ -226,14 +226,14 @@ def rule_files(directory: Optional[str] = None) -> List[str]:
         Paths of the ``.json``, ``.yaml`` and ``.yml`` files found. A missing
         directory is not an error: it simply means "no rules here".
     """
-    pasta = directory or default_rules_dir()
-    if not os.path.isdir(pasta):
+    folder_path = directory or default_rules_dir()
+    if not os.path.isdir(folder_path):
         return []
-    encontrados = []
-    for nome in sorted(os.listdir(pasta)):
-        if os.path.splitext(nome)[1].lower() in (".json", ".yaml", ".yml"):
-            encontrados.append(os.path.join(pasta, nome))
-    return encontrados
+    found_items = []
+    for item_name in sorted(os.listdir(folder_path)):
+        if os.path.splitext(item_name)[1].lower() in (".json", ".yaml", ".yml"):
+            found_items.append(os.path.join(folder_path, item_name))
+    return found_items
 
 
 def _read_document(path: str) -> Dict[str, Any]:
@@ -249,34 +249,38 @@ def _read_document(path: str) -> Dict[str, Any]:
         ConfigError: File missing, unreadable, malformed or of an unknown
             format, always naming the file.
     """
-    extensao = os.path.splitext(path)[1].lower()
+    file_extension = os.path.splitext(path)[1].lower()
     if not os.path.isfile(path):
         raise ConfigError("rule file not found: %s" % path, path=path)
     try:
-        with open(path, encoding="utf-8") as arquivo:
-            if extensao in (".yaml", ".yml"):
+        with open(path, encoding="utf-8") as source_file:
+            if file_extension in (".yaml", ".yml"):
                 try:
                     import yaml  # type: ignore[import-untyped]
-                except ImportError as erro:
+                except ImportError as caught_error:
                     raise ConfigError(
                         "reading %s needs PyYAML (pip install pyyaml); JSON rule "
                         "files work without any dependency" % path,
                         path=path,
-                    ) from erro
-                dados = yaml.safe_load(arquivo)
+                    ) from caught_error
+                values_data = yaml.safe_load(source_file)
             else:
-                dados = json.load(arquivo)
-    except OSError as erro:
-        raise ConfigError("could not read %s: %s" % (path, erro), path=path) from erro
-    except (json.JSONDecodeError, ValueError) as erro:
-        raise ConfigError("invalid rule file %s: %s" % (path, erro), path=path) from erro
-    if dados is None:
+                values_data = json.load(source_file)
+    except OSError as caught_error:
+        raise ConfigError(
+            "could not read %s: %s" % (path, caught_error), path=path
+        ) from caught_error
+    except (json.JSONDecodeError, ValueError) as caught_error:
+        raise ConfigError(
+            "invalid rule file %s: %s" % (path, caught_error), path=path
+        ) from caught_error
+    if values_data is None:
         return {"rules": []}
-    if isinstance(dados, list):
-        return {"rules": dados}
-    if not isinstance(dados, dict):
+    if isinstance(values_data, list):
+        return {"rules": values_data}
+    if not isinstance(values_data, dict):
         raise ConfigError("rule file %s must contain an object or a list" % path, path=path)
-    return dados
+    return values_data
 
 
 def validate_rule(data: Dict[str, Any], *, source: str = "") -> Rule:
@@ -296,84 +300,86 @@ def validate_rule(data: Dict[str, Any], *, source: str = "") -> Rule:
     """
     if not isinstance(data, dict):
         raise ConfigError("each rule must be an object, got %s" % type(data).__name__, path=source)
-    identificador = str(data.get("id") or "").strip()
-    nome = str(data.get("name") or "").strip()
-    if not identificador or not nome:
+    identifier = str(data.get("id") or "").strip()
+    item_name = str(data.get("name") or "").strip()
+    if not identifier or not item_name:
         raise ConfigError(
             "rule without id or name in %s" % (source or "rules"), path=source or None, field="id"
         )
-    severidade = str(data.get("severity") or "medium").strip().lower()
-    if severidade not in SEVERITIES:
+    severity_name = str(data.get("severity") or "medium").strip().lower()
+    if severity_name not in SEVERITIES:
         raise ConfigError(
             "rule %s has unknown severity %r (use %s)"
-            % (identificador, severidade, ", ".join(SEVERITIES)),
+            % (identifier, severity_name, ", ".join(SEVERITIES)),
             path=source or None,
             field="severity",
         )
-    condicao = data.get("match") or {}
-    if not isinstance(condicao, dict):
+    condition_data = data.get("match") or {}
+    if not isinstance(condition_data, dict):
         raise ConfigError(
-            "rule %s: 'match' must be an object" % identificador, path=source or None, field="match"
+            "rule %s: 'match' must be an object" % identifier, path=source or None, field="match"
         )
-    desconhecidas = [chave for chave in condicao if chave not in MATCH_KEYS]
-    if desconhecidas:
+    unknown_keys = [key for key in condition_data if key not in MATCH_KEYS]
+    if unknown_keys:
         raise ConfigError(
             "rule %s: unknown match key %s (accepted: %s)"
-            % (identificador, desconhecidas[0], ", ".join(MATCH_KEYS)),
+            % (identifier, unknown_keys[0], ", ".join(MATCH_KEYS)),
             path=source or None,
-            field=desconhecidas[0],
+            field=unknown_keys[0],
         )
-    if not condicao:
+    if not condition_data:
         raise ConfigError(
-            "rule %s has an empty 'match': it would never fire" % identificador,
+            "rule %s has an empty 'match': it would never fire" % identifier,
             path=source or None,
             field="match",
         )
-    grupos = condicao.get("any_of")
-    if not [chave for chave in condicao if chave not in MATCH_SWITCHES]:
+    group_items = condition_data.get("any_of")
+    if not [key for key in condition_data if key not in MATCH_SWITCHES]:
         raise ConfigError(
-            "rule %s has no usable condition in 'match': it would never fire" % identificador,
+            "rule %s has no usable condition in 'match': it would never fire" % identifier,
             path=source or None,
             field="match",
         )
-    if grupos is not None:
-        if not isinstance(grupos, list) or not grupos:
+    if group_items is not None:
+        if not isinstance(group_items, list) or not group_items:
             raise ConfigError(
-                "rule %s: 'any_of' must be a non-empty list of conditions" % identificador,
+                "rule %s: 'any_of' must be a non-empty list of conditions" % identifier,
                 path=source or None,
                 field="any_of",
             )
-        for grupo in grupos:
-            if not isinstance(grupo, dict) or not [c for c in grupo if c not in MATCH_SWITCHES]:
+        for group_item in group_items:
+            if not isinstance(group_item, dict) or not [
+                c for c in group_item if c not in MATCH_SWITCHES
+            ]:
                 raise ConfigError(
                     "rule %s: every 'any_of' entry must be an object with at least one "
-                    "condition" % identificador,
+                    "condition" % identifier,
                     path=source or None,
                     field="any_of",
                 )
-            for chave in grupo:
-                if chave in MATCH_SWITCHES:
+            for key in group_item:
+                if key in MATCH_SWITCHES:
                     continue
-                if chave not in MATCH_KEYS:
+                if key not in MATCH_KEYS:
                     raise ConfigError(
                         "rule %s: unknown match key %s inside 'any_of' "
                         "(accepted: %s)"
                         % (
-                            identificador,
-                            chave,
+                            identifier,
+                            key,
                             ", ".join(k for k in MATCH_KEYS if k not in MATCH_SWITCHES),
                         ),
                         path=source or None,
-                        field=chave,
+                        field=key,
                     )
     return Rule(
-        id=identificador,
-        name=nome,
-        severity=severidade,
+        id=identifier,
+        name=item_name,
+        severity=severity_name,
         description=str(data.get("description") or "").strip(),
         tags=tuple(str(t) for t in (data.get("tags") or [])),
         mitre=tuple(str(t).upper() for t in (data.get("mitre") or [])),
-        match=dict(condicao),
+        match=dict(condition_data),
         source=source,
     )
 
@@ -390,15 +396,15 @@ def load_rule_file(path: str) -> List[Rule]:
     Raises:
         ConfigError: File unreadable or any rule invalid.
     """
-    documento = _read_document(path)
-    brutas = documento.get("rules")
-    if brutas is None:
+    document_data = _read_document(path)
+    raw_rules = document_data.get("rules")
+    if raw_rules is None:
         raise ConfigError("rule file %s has no 'rules' list" % path, path=path)
-    if not isinstance(brutas, list):
+    if not isinstance(raw_rules, list):
         raise ConfigError("rule file %s: 'rules' must be a list" % path, path=path)
-    regras = [validate_rule(item, source=path) for item in brutas]
-    log_event(logger, "rules_loaded", level=10, path=path, rules=len(regras))
-    return regras
+    rule_items = [validate_rule(item, source=path) for item in raw_rules]
+    log_event(logger, "rules_loaded", level=10, path=path, rules=len(rule_items))
+    return rule_items
 
 
 def load_rules(
@@ -419,22 +425,22 @@ def load_rules(
         ConfigError: A file is unreadable or a rule is invalid.
         ProjectError: No rule file was found where one was expected.
     """
-    arquivos = list(paths) if paths else rule_files(directory)
-    if not arquivos:
+    source_files = list(paths) if paths else rule_files(directory)
+    if not source_files:
         raise ProjectError("no rule file found (looked in %s)" % (directory or default_rules_dir()))
-    regras: List[Rule] = []
-    vistos: Dict[str, Rule] = {}
-    for caminho in arquivos:
-        for regra in load_rule_file(caminho):
-            if regra.id in vistos:
+    rule_items: List[Rule] = []
+    seen_items: Dict[str, Rule] = {}
+    for file_path in source_files:
+        for rule_item in load_rule_file(file_path):
+            if rule_item.id in seen_items:
                 logger.warning(
-                    "rule %s redefined in %s; keeping the first definition", regra.id, caminho
+                    "rule %s redefined in %s; keeping the first definition", rule_item.id, file_path
                 )
                 continue
-            vistos[regra.id] = regra
-            regras.append(regra)
-    log_event(logger, "ruleset_loaded", files=len(arquivos), rules=len(regras))
-    return regras
+            seen_items[rule_item.id] = rule_item
+            rule_items.append(rule_item)
+    log_event(logger, "ruleset_loaded", files=len(source_files), rules=len(rule_items))
+    return rule_items
 
 
 # ----------------------------------------------------------------- match ----
@@ -467,14 +473,14 @@ def _line_context(text: str, start: int, end: int) -> str:
     Returns:
         One-line snippet, with an ellipsis when it was cut.
     """
-    inicio = max(0, start - CONTEXT_CHARS)
+    started = max(0, start - CONTEXT_CHARS)
     fim = min(len(text), end + CONTEXT_CHARS)
-    trecho = " ".join(text[inicio:fim].split())
-    if inicio > 0:
-        trecho = "…" + trecho
+    excerpt_text = " ".join(text[started:fim].split())
+    if started > 0:
+        excerpt_text = "…" + excerpt_text
     if fim < len(text):
-        trecho += "…"
-    return trecho
+        excerpt_text += "…"
+    return excerpt_text
 
 
 def _code_only(text: str) -> str:
@@ -496,11 +502,11 @@ def _code_only(text: str) -> str:
         >>> _code_only('mov rax, 1  ; socket')
         'mov rax, 1          '
     """
-    saida = []
-    for linha in text.splitlines(keepends=True):
-        codigo, comentario = strip_comment(linha)
-        saida.append(codigo + " " * len(comentario))
-    return "".join(saida)
+    output_value = []
+    for source_line in text.splitlines(keepends=True):
+        status_code, comment_text = strip_comment(source_line)
+        output_value.append(status_code + " " * len(comment_text))
+    return "".join(output_value)
 
 
 def _line_of(text: str, offset: int) -> int:
@@ -519,44 +525,44 @@ def _line_of(text: str, offset: int) -> int:
 
 
 def _string_evidence(
-    text: str, padroes: Sequence[str], *, case_sensitive: bool, minimo: int
+    text: str, pattern_list: Sequence[str], *, case_sensitive: bool, minimum_count: int
 ) -> Tuple[List[str], List[int]]:
     """Searches the source for the rule's string patterns.
 
     Args:
         text: Whole source.
-        padroes: Regular expressions to look for.
+        pattern_list: Regular expressions to look for.
         case_sensitive: Whether the search respects case.
-        minimo: How many patterns must match for the condition to hold.
+        minimum_count: How many patterns must match for the condition to hold.
 
     Returns:
         Tuple ``(evidence, lines)``; evidence is empty when fewer than
-        ``minimo`` patterns matched.
+        ``minimum_count`` patterns matched.
 
     Raises:
         ConfigError: One of the patterns is not a valid regular expression.
     """
-    bandeiras = 0 if case_sensitive else re.IGNORECASE
-    evidencias: List[str] = []
-    linhas: List[int] = []
-    for padrao in padroes:
+    regex_flags = 0 if case_sensitive else re.IGNORECASE
+    evidence_items: List[str] = []
+    source_lines: List[int] = []
+    for pattern_text in pattern_list:
         try:
-            achado = re.search(padrao, text, bandeiras)
-        except re.error as erro:
+            match_item = re.search(pattern_text, text, regex_flags)
+        except re.error as caught_error:
             raise ConfigError(
-                "invalid regular expression %r: %s" % (padrao, erro), field="strings"
-            ) from erro
-        if not achado:
+                "invalid regular expression %r: %s" % (pattern_text, caught_error), field="strings"
+            ) from caught_error
+        if not match_item:
             continue
-        linha = _line_of(text, achado.start())
-        evidencias.append(
+        source_line = _line_of(text, match_item.start())
+        evidence_items.append(
             "line %d: `%s` -> %s"
-            % (linha, padrao, _line_context(text, achado.start(), achado.end()))
+            % (source_line, pattern_text, _line_context(text, match_item.start(), match_item.end()))
         )
-        linhas.append(linha)
-    if len(evidencias) < max(1, minimo):
+        source_lines.append(source_line)
+    if len(evidence_items) < max(1, minimum_count):
         return [], []
-    return evidencias, linhas
+    return evidence_items, source_lines
 
 
 def _syscall_names(analysis: Analysis) -> Dict[str, int]:
@@ -568,14 +574,14 @@ def _syscall_names(analysis: Analysis) -> Dict[str, int]:
     Returns:
         Mapping ``syscall name -> first line`` where it appears.
     """
-    nomes: Dict[str, int] = {}
+    item_names: Dict[str, int] = {}
     for ins in analysis.instrs:
         if ins.mnemonic not in ("syscall", "int"):
             continue
-        nome = ins.sem.syscall_name if ins.sem else None
-        if nome and nome not in nomes:
-            nomes[nome] = ins.n
-    return nomes
+        item_name = ins.sem.syscall_name if ins.sem else None
+        if item_name and item_name not in item_names:
+            item_names[item_name] = ins.n
+    return item_names
 
 
 def _api_names(analysis: Analysis) -> Dict[str, int]:
@@ -588,14 +594,14 @@ def _api_names(analysis: Analysis) -> Dict[str, int]:
         Mapping ``callee -> first line`` for calls whose target is not a label
         declared in the file.
     """
-    nomes: Dict[str, int] = {}
+    item_names: Dict[str, int] = {}
     for ins in analysis.instrs:
         if ins.mnemonic != "call" or not ins.operands:
             continue
-        alvo = ins.operands[0].symbol or ins.operands[0].text
-        if alvo and alvo not in analysis.label_at and alvo not in nomes:
-            nomes[str(alvo)] = ins.n
-    return nomes
+        target_name = ins.operands[0].symbol or ins.operands[0].text
+        if target_name and target_name not in analysis.label_at and target_name not in item_names:
+            item_names[str(target_name)] = ins.n
+    return item_names
 
 
 def _section_names(analysis: Analysis) -> List[str]:
@@ -608,11 +614,11 @@ def _section_names(analysis: Analysis) -> List[str]:
         Section names without the leading dot (``.data`` -> ``data``), in order
         of appearance and without duplicates.
     """
-    vistas: List[str] = []
-    for linha in analysis.program.lines:
-        if linha.new_section and linha.new_section not in vistas:
-            vistas.append(linha.new_section)
-    return vistas
+    seen_values: List[str] = []
+    for source_line in analysis.program.lines:
+        if source_line.new_section and source_line.new_section not in seen_values:
+            seen_values.append(source_line.new_section)
+    return seen_values
 
 
 def _instructions_by_mnemonic(analysis: Analysis) -> Dict[str, int]:
@@ -624,11 +630,11 @@ def _instructions_by_mnemonic(analysis: Analysis) -> Dict[str, int]:
     Returns:
         Mapping ``mnemonic -> first line``.
     """
-    indice: Dict[str, int] = {}
+    idx: Dict[str, int] = {}
     for ins in analysis.instrs:
-        if ins.mnemonic and ins.mnemonic not in indice:
-            indice[ins.mnemonic] = ins.n
-    return indice
+        if ins.mnemonic and ins.mnemonic not in idx:
+            idx[ins.mnemonic] = ins.n
+    return idx
 
 
 def _match_against(
@@ -645,18 +651,18 @@ def _match_against(
         Tuple ``(matched names as spelled in the program, their lines)``; the
         name list is empty when the condition did not hold.
     """
-    por_minuscula = {nome.lower(): nome for nome in universe}
-    casados: List[str] = []
-    linhas: List[int] = []
+    by_lowercase = {item_name.lower(): item_name for item_name in universe}
+    matched_items: List[str] = []
+    source_lines: List[int] = []
     for item in requested:
-        nome = por_minuscula.get(item.lower())
-        if nome is None:
+        item_name = by_lowercase.get(item.lower())
+        if item_name is None:
             continue
-        casados.append(nome)
-        linhas.append(universe[nome])
-    if require_all and len(casados) != len(requested):
+        matched_items.append(item_name)
+        source_lines.append(universe[item_name])
+    if require_all and len(matched_items) != len(requested):
         return [], []
-    return casados, linhas
+    return matched_items, source_lines
 
 
 def _eval_condition(
@@ -684,99 +690,112 @@ def _eval_condition(
         ConfigError: A numeric threshold is not a number, or a pattern is not a
             valid regular expression.
     """
-    exige_todos = bool(condition.get("require_all", False))
-    sensivel = bool(condition.get("case_sensitive", False))
-    evidencias: List[str] = []
-    linhas: List[int] = []
+    needs_all = bool(condition.get("require_all", False))
+    case_sensitive_flag = bool(condition.get("case_sensitive", False))
+    evidence_items: List[str] = []
+    source_lines: List[int] = []
 
-    padroes = _as_list(condition.get("strings"))
-    if padroes:
-        minimo = int(condition.get("strings_min", len(padroes) if exige_todos else 1))
-        achados, linhas_achadas = _string_evidence(
-            _code_only(text), padroes, case_sensitive=sensivel, minimo=minimo
+    pattern_list = _as_list(condition.get("strings"))
+    if pattern_list:
+        minimum_count = int(condition.get("strings_min", len(pattern_list) if needs_all else 1))
+        found_matches, found_lines = _string_evidence(
+            _code_only(text),
+            pattern_list,
+            case_sensitive=case_sensitive_flag,
+            minimum_count=minimum_count,
         )
-        if not achados:
+        if not found_matches:
             return None
-        evidencias.extend(achados)
-        linhas.extend(linhas_achadas)
+        evidence_items.extend(found_matches)
+        source_lines.extend(found_lines)
 
-    for chave, rotulo, universo in (
+    for key, label_text, known_values in (
         ("syscalls", "syscall", _syscall_names(analysis)),
         ("apis", "call", _api_names(analysis)),
         ("mnemonics", "instruction", _instructions_by_mnemonic(analysis)),
     ):
-        pedidos = _as_list(condition.get(chave))
-        if not pedidos:
+        requested_values = _as_list(condition.get(key))
+        if not requested_values:
             continue
-        casados, linhas_casadas = _match_against(pedidos, universo, exige_todos)
-        if not casados:
+        matched_items, matched_source_lines = _match_against(
+            requested_values, known_values, needs_all
+        )
+        if not matched_items:
             return None
-        for nome in casados:
-            evidencias.append("line %d: %s %s" % (universo[nome], rotulo, nome))
-        linhas.extend(linhas_casadas)
-
-    categorias = {b.category: b for b in behaviors}
-    pedidas = _as_list(condition.get("behaviors"))
-    if pedidas:
-        casadas = [c for c in pedidas if c in categorias]
-        if (exige_todos and len(casadas) != len(pedidas)) or not casadas:
-            return None
-        for categoria in casadas:
-            comportamento = categorias[categoria]
-            primeira = comportamento.evidence[0] if comportamento.evidence else ""
-            evidencias.append(
-                "behaviour %s (%s): %s" % (categoria, comportamento.severity, primeira)
+        for item_name in matched_items:
+            evidence_items.append(
+                "line %d: %s %s" % (known_values[item_name], label_text, item_name)
             )
-            linhas.extend(comportamento.lines[:1])
+        source_lines.extend(matched_source_lines)
 
-    codigos = {p.code: p for p in problems}
-    pedidos_codigos = _as_list(condition.get("problems"))
-    if pedidos_codigos:
-        casados = [c for c in pedidos_codigos if c in codigos]
-        if (exige_todos and len(casados) != len(pedidos_codigos)) or not casados:
+    category_names = {b.category: b for b in behaviors}
+    requested_items = _as_list(condition.get("behaviors"))
+    if requested_items:
+        matched_lines = [c for c in requested_items if c in category_names]
+        if (needs_all and len(matched_lines) != len(requested_items)) or not matched_lines:
             return None
-        for codigo in casados:
-            problema = codigos[codigo]
-            evidencias.append("line %d: %s %s" % (problema.line, problema.code, problema.message))
-            linhas.append(problema.line)
+        for category_name in matched_lines:
+            behavior_item = category_names[category_name]
+            first_item = behavior_item.evidence[0] if behavior_item.evidence else ""
+            evidence_items.append(
+                "behaviour %s (%s): %s" % (category_name, behavior_item.severity, first_item)
+            )
+            source_lines.extend(behavior_item.lines[:1])
 
-    secoes = _section_names(analysis)
-    pedidas_secoes = _as_list(condition.get("sections"))
-    if pedidas_secoes:
-        indice = {secao.lstrip("."): 0 for secao in secoes}
-        casadas, _ = _match_against([p.lstrip(".") for p in pedidas_secoes], indice, exige_todos)
-        if not casadas:
+    problem_codes = {p.code: p for p in problems}
+    requested_codes = _as_list(condition.get("problems"))
+    if requested_codes:
+        matched_items = [c for c in requested_codes if c in problem_codes]
+        if (needs_all and len(matched_items) != len(requested_codes)) or not matched_items:
             return None
-        evidencias.append("sections: %s" % ", ".join(casadas))
+        for status_code in matched_items:
+            problem_item = problem_codes[status_code]
+            evidence_items.append(
+                "line %d: %s %s" % (problem_item.line, problem_item.code, problem_item.message)
+            )
+            source_lines.append(problem_item.line)
 
-    for chave, valor, rotulo in (
+    section_names = _section_names(analysis)
+    requested_sections = _as_list(condition.get("sections"))
+    if requested_sections:
+        idx = {section_name.lstrip("."): 0 for section_name in section_names}
+        matched_lines, _ = _match_against(
+            [p.lstrip(".") for p in requested_sections], idx, needs_all
+        )
+        if not matched_lines:
+            return None
+        evidence_items.append("sections: %s" % ", ".join(matched_lines))
+
+    for key, numeric_value, label_text in (
         ("min_instructions", len(analysis.instrs), "instructions"),
         ("min_blocks", len(analysis.blocks), "blocks"),
         ("min_syscalls", len(_syscall_names(analysis)), "syscalls"),
     ):
-        if chave not in condition:
+        if key not in condition:
             continue
         try:
-            esperado = int(condition[chave])
-        except (TypeError, ValueError) as erro:
-            raise ConfigError("%s must be an integer" % chave, field=chave) from erro
-        if valor < esperado:
+            expected_type = int(condition[key])
+        except (TypeError, ValueError) as caught_error:
+            raise ConfigError("%s must be an integer" % key, field=key) from caught_error
+        if numeric_value < expected_type:
             return None
-        evidencias.append("%d %s (>= %d)" % (valor, rotulo, esperado))
+        evidence_items.append("%d %s (>= %d)" % (numeric_value, label_text, expected_type))
 
     if "min_strings" in condition:
         total = len(
             [
-                linha
-                for linha in analysis.program.lines
-                if linha.kind == "data" and not linha.reserve
+                source_line
+                for source_line in analysis.program.lines
+                if source_line.kind == "data" and not source_line.reserve
             ]
         )
         if total < int(condition["min_strings"]):
             return None
-        evidencias.append("%d data declaration(s) (>= %d)" % (total, int(condition["min_strings"])))
+        evidence_items.append(
+            "%d data declaration(s) (>= %d)" % (total, int(condition["min_strings"]))
+        )
 
-    return evidencias, linhas
+    return evidence_items, source_lines
 
 
 def _match_rule(
@@ -794,24 +813,24 @@ def _match_rule(
     Returns:
         The :class:`RuleMatch` when the rule fired, ``None`` otherwise.
     """
-    condicao = dict(rule.match)
-    grupos = condicao.pop("any_of", None)
-    base = _eval_condition(condicao, text, analysis, problems, behaviors)
+    condition_data = dict(rule.match)
+    group_items = condition_data.pop("any_of", None)
+    base = _eval_condition(condition_data, text, analysis, problems, behaviors)
     if base is None:
         return None
-    evidencias, linhas = base
+    evidence_items, source_lines = base
 
-    if grupos:
-        for grupo in grupos:
-            achado = _eval_condition(dict(grupo), text, analysis, problems, behaviors)
-            if achado is not None:
-                evidencias.extend(achado[0])
-                linhas.extend(achado[1])
+    if group_items:
+        for group_item in group_items:
+            match_item = _eval_condition(dict(group_item), text, analysis, problems, behaviors)
+            if match_item is not None:
+                evidence_items.extend(match_item[0])
+                source_lines.extend(match_item[1])
                 break
         else:
             return None
 
-    if not evidencias:
+    if not evidence_items:
         return None
     return RuleMatch(
         rule_id=rule.id,
@@ -820,8 +839,8 @@ def _match_rule(
         description=rule.description,
         tags=rule.tags,
         mitre=rule.mitre,
-        evidence=tuple(evidencias),
-        lines=tuple(sorted(set(linhas))),
+        evidence=tuple(evidence_items),
+        lines=tuple(sorted(set(source_lines))),
     )
 
 
@@ -850,19 +869,17 @@ def match_rules(
         >>> match_text("nop", rules=[])
         []
     """
-    fonte = analysis.program.source if text is None else text
-    lista_problemas = list(problems) if problems is not None else validate(analysis)
-    lista_comportamentos = (
-        list(behaviors) if behaviors is not None else classify(analysis, lista_problemas)
-    )
-    achados: List[RuleMatch] = []
-    for regra in rules:
-        achado = _match_rule(regra, fonte, analysis, lista_problemas, lista_comportamentos)
-        if achado is not None:
-            achados.append(achado)
-    achados.sort(key=lambda m: (severity_rank(m.severity), m.rule_id))
-    log_event(logger, "rules_matched", level=10, rules=len(rules), matches=len(achados))
-    return achados
+    source_text = analysis.program.source if text is None else text
+    problem_list = list(problems) if problems is not None else validate(analysis)
+    behavior_list = list(behaviors) if behaviors is not None else classify(analysis, problem_list)
+    found_matches: List[RuleMatch] = []
+    for rule_item in rules:
+        match_item = _match_rule(rule_item, source_text, analysis, problem_list, behavior_list)
+        if match_item is not None:
+            found_matches.append(match_item)
+    found_matches.sort(key=lambda m: (severity_rank(m.severity), m.rule_id))
+    log_event(logger, "rules_matched", level=10, rules=len(rules), matches=len(found_matches))
+    return found_matches
 
 
 def match_text(
@@ -884,11 +901,11 @@ def match_text(
         >>> match_text("nop", rules=[])
         []
     """
-    conjunto = list(rules) if rules is not None else _safe_default_rules(directory)
-    if not conjunto:
+    value_set = list(rules) if rules is not None else _safe_default_rules(directory)
+    if not value_set:
         return []
-    analise = analyze(text)
-    return match_rules(conjunto, analise, text=text)
+    analysis_result = analyze(text)
+    return match_rules(value_set, analysis_result, text=text)
 
 
 def _safe_default_rules(directory: Optional[str]) -> List[Rule]:
@@ -902,8 +919,8 @@ def _safe_default_rules(directory: Optional[str]) -> List[Rule]:
     """
     try:
         return load_rules(directory=directory)
-    except (ProjectError, ConfigError) as erro:
-        logger.warning("no rules loaded: %s", erro)
+    except (ProjectError, ConfigError) as caught_error:
+        logger.warning("no rules loaded: %s", caught_error)
         return []
 
 
@@ -922,11 +939,12 @@ def summary(matches: Sequence[RuleMatch]) -> str:
     """
     if not matches:
         return "0 rule(s) matched"
-    contagem = {
-        severidade: sum(1 for m in matches if m.severity == severidade) for severidade in SEVERITIES
+    item_count = {
+        severity_name: sum(1 for m in matches if m.severity == severity_name)
+        for severity_name in SEVERITIES
     }
-    detalhe = ", ".join("%d %s" % (contagem[s], s) for s in SEVERITIES if contagem[s])
-    return "%d rule(s) matched: %s" % (len(matches), detalhe)
+    detail_text = ", ".join("%d %s" % (item_count[s], s) for s in SEVERITIES if item_count[s])
+    return "%d rule(s) matched: %s" % (len(matches), detail_text)
 
 
 def known_mnemonics() -> Iterable[str]:

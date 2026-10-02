@@ -25,59 +25,59 @@ import os
 import sys
 from typing import List
 
-RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, RAIZ)
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
 
 from asmx.examples import EXAMPLES, render  # noqa: E402  (sys.path comes first)
 
 #: Default output directory, relative to the project root.
-DESTINO_PADRAO = os.path.join(RAIZ, "examples")
+DEFAULT_OUTPUT = os.path.join(ROOT, "examples")
 
 
-def export(destino: str = DESTINO_PADRAO) -> List[str]:
+def export(destination: str = DEFAULT_OUTPUT) -> List[str]:
     """Writes every example as ``.asm``.
 
     Args:
-        destino: Output directory (created when it does not exist).
+        destination: Output directory (created when it does not exist).
 
     Returns:
         List of the written paths, in alphabetical order.
     """
-    os.makedirs(destino, exist_ok=True)
-    caminhos = []
-    for nome in sorted(EXAMPLES):
-        caminho = os.path.join(destino, "%s.asm" % nome)
-        with open(caminho, "w", encoding="utf-8") as arquivo:
-            arquivo.write(render(nome))
-        caminhos.append(caminho)
-    return caminhos
+    os.makedirs(destination, exist_ok=True)
+    paths = []
+    for item_name in sorted(EXAMPLES):
+        file_path = os.path.join(destination, "%s.asm" % item_name)
+        with open(file_path, "w", encoding="utf-8") as source_file:
+            source_file.write(render(item_name))
+        paths.append(file_path)
+    return paths
 
 
-def check(destino: str = DESTINO_PADRAO) -> List[str]:
+def check(destination: str = DEFAULT_OUTPUT) -> List[str]:
     """Compares the files on disk with the built-in examples.
 
     Args:
-        destino: Directory where the files should be.
+        destination: Directory where the files should be.
 
     Returns:
         List of problems found (empty when everything matches).
     """
-    problemas = []
-    for nome in sorted(EXAMPLES):
-        caminho = os.path.join(destino, "%s.asm" % nome)
-        if not os.path.exists(caminho):
-            problemas.append("missing file %s" % caminho)
+    problems = []
+    for item_name in sorted(EXAMPLES):
+        file_path = os.path.join(destination, "%s.asm" % item_name)
+        if not os.path.exists(file_path):
+            problems.append("missing file %s" % file_path)
             continue
-        with open(caminho, encoding="utf-8") as arquivo:
-            atual = arquivo.read()
-        if atual != render(nome):
-            problemas.append("%s differs from asmx/examples.py" % caminho)
-    extras = {f for f in os.listdir(destino) if f.endswith(".asm")} - {
+        with open(file_path, encoding="utf-8") as source_file:
+            current_value = source_file.read()
+        if current_value != render(item_name):
+            problems.append("%s differs from asmx/examples.py" % file_path)
+    extras = {f for f in os.listdir(destination) if f.endswith(".asm")} - {
         "%s.asm" % n for n in EXAMPLES
     }
     for extra in sorted(extras):
-        problemas.append("file without a matching example: %s" % extra)
-    return problemas
+        problems.append("file without a matching example: %s" % extra)
+    return problems
 
 
 def main(argv: List[str]) -> int:
@@ -89,21 +89,21 @@ def main(argv: List[str]) -> int:
     Returns:
         Exit code described at the top of the module.
     """
-    conferir = "--check" in argv
-    restantes = [a for a in argv if not a.startswith("-")]
-    destino = restantes[0] if restantes else DESTINO_PADRAO
+    check_only = "--check" in argv
+    remaining = [a for a in argv if not a.startswith("-")]
+    destination = remaining[0] if remaining else DEFAULT_OUTPUT
 
-    if conferir:
-        problemas = check(destino)
-        for problema in problemas:
-            print(problema)
-        if problemas:
+    if check_only:
+        problems = check(destination)
+        for problem_item in problems:
+            print(problem_item)
+        if problems:
             return 1
-        print("the %d examples in %s match the package" % (len(EXAMPLES), destino))
+        print("the %d examples in %s match the package" % (len(EXAMPLES), destination))
         return 0
 
-    caminhos = export(destino)
-    print("%d examples written to %s" % (len(caminhos), destino))
+    paths = export(destination)
+    print("%d examples written to %s" % (len(paths), destination))
     return 0
 
 

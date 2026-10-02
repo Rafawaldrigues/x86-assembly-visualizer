@@ -294,12 +294,14 @@ def semantics_of(ins: Line, ctx: Dict[str, Any]) -> Semantic:
 
     if m in ("mov", "movzx", "movsx", "movsxd"):
         if o0 and o0.type == "mem":
-            alvo = o0.symbol or ("local" if re.search(r"rbp|rsp", o0.inner or "") else "*pointer")
+            target_name = o0.symbol or (
+                "local" if re.search(r"rbp|rsp", o0.inner or "") else "*pointer"
+            )
             sem.tag, sem.label = "store", "Writes to memory"
             sem.detail = "Stores %s in %s. In a high-level language: %s = %s;" % (
                 o1.text if o1 else "?",
                 _mem_name(o0),
-                alvo,
+                target_name,
                 o1.text if o1 else "?",
             )
         elif o1 and o1.type == "mem":
@@ -329,12 +331,12 @@ def semantics_of(ins: Line, ctx: Dict[str, Any]) -> Semantic:
                 sem.detail = "%s gets a copy of %s." % (o0.text, o1.text)
     elif m == "lea":
         sem.tag, sem.label = "addr", "Computes address"
-        alvo = (o1.symbol or o1.inner or o1.text) if o1 else "?"
+        target_name = (o1.symbol or o1.inner or o1.text) if o1 else "?"
         sem.detail = (
             "%s receives the ADDRESS of %s, without reading its contents. It is like & in C."
             % (
                 o0.text,
-                alvo,
+                target_name,
             )
         )
     elif m == "push":
@@ -347,16 +349,16 @@ def semantics_of(ins: Line, ctx: Dict[str, Any]) -> Semantic:
         )
     elif m == "call":
         sem.tag, sem.label = "call", "Calls a function"
-        alvo = (o0.symbol or o0.text) if o0 else "?"
-        api = WIN_APIS.get(re.sub(r"^_+|@.*$", "", str(alvo).lower()))
-        sem.detail = "Saves the return address and jumps to %s." % alvo
+        target_name = (o0.symbol or o0.text) if o0 else "?"
+        api = WIN_APIS.get(re.sub(r"^_+|@.*$", "", str(target_name).lower()))
+        sem.detail = "Saves the return address and jumps to %s." % target_name
         if api:
             sem.detail += " This is the Windows API %s: %s (parameters: %s)." % (
                 api[0],
                 api[1],
                 api[2],
             )
-        elif ctx["symbols"].get(alvo, {}).get("type") == "extern":
+        elif ctx["symbols"].get(target_name, {}).get("type") == "extern":
             sem.detail += " External function, resolved at link time."
     elif m.startswith("ret"):
         sem.tag, sem.label = "return", "Returns"
@@ -535,12 +537,14 @@ def _annotate_args(instrs: List[Line], platform: Platform) -> None:
             pending = []
             last_func = ins.func
         if ins.mnemonic == "call":
-            alvo = (ins.operands[0].symbol or ins.operands[0].text) if ins.operands else "function"
+            target_name = (
+                (ins.operands[0].symbol or ins.operands[0].text) if ins.operands else "function"
+            )
             for reg, line in pending:
                 if reg in arg_regs:
                     line.sem.detail += " Sets up argument %d of the call to %s." % (
                         arg_regs.index(reg) + 1,
-                        alvo,
+                        target_name,
                     )
             pending = []
         elif ins.mnemonic == "syscall":
@@ -570,15 +574,15 @@ def build_blocks(program: Program) -> Tuple[List[Block], Dict[str, int]]:
 
     label_at: Dict[str, int] = {}
     pending_labels: List[str] = []
-    for linha in program.lines:
-        if linha.kind == "label":
-            pending_labels.append(linha.label)
-        elif linha.kind == "directive" and linha.directive == "proc":
-            pending_labels.append(linha.label)
-        elif linha.kind == "instruction":
-            linha.labels = list(pending_labels)
+    for source_line in program.lines:
+        if source_line.kind == "label":
+            pending_labels.append(source_line.label)
+        elif source_line.kind == "directive" and source_line.directive == "proc":
+            pending_labels.append(source_line.label)
+        elif source_line.kind == "instruction":
+            source_line.labels = list(pending_labels)
             for lb in pending_labels:
-                label_at[lb] = linha.idx
+                label_at[lb] = source_line.idx
             pending_labels = []
 
     leaders = set()

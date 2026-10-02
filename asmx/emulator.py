@@ -12,17 +12,19 @@ import random
 import re
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from .analyzer import Analysis
 from .errors import AnalysisTimeoutError
 from .isa import LINUX_SYSCALLS, REGS64, REG_INFO, WIN_APIS, is_cond_jump
-from .parser import Operand, parse_number
+from .memory import Memory, MemoryFault, PAGE_SIZE
+from .parser import Line, Operand, parse_number, split_operands
 
 MASK64 = (1 << 64) - 1
 DATA_BASE = 0x00400000
 BSS_BASE = 0x00600000
 STACK_TOP = 0x00007FFFFFFFF000
+STACK_SIZE = 1 << 20
 RET_MAGIC = 0xC0DE0000
 RET_SENTINEL = 0xDEAD0000  # return of a function run standalone
 
@@ -121,6 +123,7 @@ class Machine:
         stdin: str = "",
         entry: Optional[str] = None,
         clock: Optional[Callable[[], float]] = None,
+        max_memory: int = 512,
     ) -> None:
         """Prepares the machine and loads the program data.
 
@@ -130,7 +133,9 @@ class Machine:
             entry: Function to run standalone; without it ``_start``,
                 ``main``, ``start`` and ``WinMain`` apply.
             clock: Clock used for the time limit (``time.monotonic`` by default).
+            max_memory: Simulated allocation budget in MiB; excludes Python overhead.
         """
+        self.max_memory = max_memory
         self.analysis = analysis
         self.instrs = analysis.instrs
         self.label_at = analysis.label_at
@@ -150,8 +155,10 @@ class Machine:
         self.regs: Dict[str, int] = {r: 0 for r in REGS64}
         self.xmm: Dict[str, int] = {}
         self.flags = {"ZF": 0, "SF": 0, "CF": 0, "OF": 0, "PF": 0, "DF": 0}
-        self.mem: Dict[int, int] = {}
-        self.written: set = set()
+        self.memory = Memory(self.max_memory * 1024 * 1024)
+        self.memory_fault: Optional[Dict[str, Any]] = None
+        self.out_of_memory = False
+        self._loading_line = 0
         self.output = ""
         self.issues: List[str] = []
         self.trace: List[Step] = []
@@ -164,13 +171,28 @@ class Machine:
         self.regs["rsp"] = STACK_TOP
         self.regs["rbp"] = STACK_TOP
         self.symbols: Dict[str, Symbol] = {}
-        self._load_data()
         self.ip = self._entry_index()
+        self.stack = self.memory.allocate(STACK_TOP, 0, "stack", initialized=False)
+        try:
+            self._load_data()
+        except MemoryFault as fault:
+            self._halt_memory_fault(fault, self._loading_line)
+        except MemoryError:
+            self._halt_memory_fault(
+                MemoryFault("MEM_HOST", "host memory allocation failed"), self._loading_line
+            )
         self.entry_ip = self.ip
-        if self.entry:
+        function_entry = self.entry or (
+            "_start" not in self.label_at
+            and any(self.label_at.get(name) == self.ip for name in ("main", "WinMain"))
+        )
+        if function_entry and not self.halted:
             # running a standalone function: put a fake return address on the
             # stack so that its RET ends the execution without looking like an error
-            self.push(RET_SENTINEL)
+            try:
+                self.push(RET_SENTINEL)
+            except MemoryFault as fault:
+                self._halt_memory_fault(fault, 0)
 
     def _entry_index(self) -> int:
         """Chooses the index of the instruction where execution starts.
@@ -187,184 +209,196 @@ class Machine:
         return 0
 
     # ------------------------------------------------------------- memory -
-    def rd8(self, addr: int) -> int:
-        """Reads one byte from the simulated memory.
+    def _halt_memory_fault(self, fault: MemoryFault, line: int) -> None:
+        """Stop execution and retain a structured memory diagnostic."""
+        self.halted = True
+        self.out_of_memory = fault.code in ("MEM_LIMIT", "MEM_HOST")
+        self.memory_fault = {
+            "code": fault.code,
+            "line": line,
+            "address": fault.address,
+            "size": fault.size,
+            "message": str(fault),
+        }
+        self._issue("line %d: %s: %s" % (line, fault.code, fault))
+
+    def _check_memory(self, addr: int, size: int, write: bool = False) -> None:
+        """Check a complete access and warn on partially uninitialized reads.
 
         Args:
-            addr: Address to read from.
+            addr: First address.
+            size: Number of bytes accessed.
+            write: Whether the access changes memory.
+
+        Raises:
+            MemoryFault: If the range is invalid or protected.
+        """
+        if not size:
+            return
+        # The SysV red zone permits 128 bytes below RSP. Account for those bytes
+        # when accessed; a random pointer elsewhere must never create memory.
+        if STACK_TOP - STACK_SIZE <= addr < STACK_TOP and addr + size <= STACK_TOP:
+            if addr < self.regs["rsp"] - 128:
+                raise MemoryFault("MEM_STACK", "access below the stack red zone", addr, size)
+            self._grow_stack(addr)
+        self.memory.check(addr, size, write)
+        if not write and not self.memory.initialized(addr, size):
+            self._issue(
+                "MEM_UNINITIALIZED: read of memory never written at %s (%d bytes)"
+                % (hexs(addr), size)
+            )
+
+    def _grow_stack(self, pointer: int) -> None:
+        """Account for stack growth and reject pointers outside its one-MiB range.
+
+        Raises:
+            MemoryFault: On stack overflow or exhausted allocation budget.
+        """
+        if not STACK_TOP - STACK_SIZE <= pointer <= STACK_TOP:
+            raise MemoryFault("MEM_STACK", "stack overflow: RSP is outside the stack", pointer, 8)
+        if pointer < self.stack.start:
+            self.memory.resize(self.stack, pointer, STACK_TOP - pointer)
+
+    def rd8(self, addr: int) -> int:
+        """Read a checked byte.
 
         Returns:
-            The byte stored at the address, or 0 when nothing was written there.
+            The byte stored at the address.
         """
-        return self.mem.get(addr & MASK64, 0)
+        self._check_memory(addr, 1)
+        return self.memory.peek(addr)
 
     def wr8(self, addr: int, value: int) -> None:
-        """Writes one byte into the simulated memory.
-
-        Args:
-            addr: Address to write to.
-            value: Stored value; only the low 8 bits go in.
-        """
-        addr &= MASK64
-        self.mem[addr] = value & 0xFF
-        self.written.add(addr)
+        """Write a checked byte; only the low eight bits are stored."""
+        self._check_memory(addr, 1, write=True)
+        self.memory.store(addr, bytes([value & 0xFF]))
 
     def read_mem(self, addr: int, size: int) -> int:
-        """Reads a little-endian value from memory.
-
-        Args:
-            addr: Address of the first byte.
-            size: Number of bytes read.
+        """Read a checked little-endian value.
 
         Returns:
-            The integer formed by the bytes read.
+            The unsigned integer formed by the requested bytes.
         """
-        v = 0
-        for i in range(size - 1, -1, -1):
-            v = (v << 8) | self.rd8(addr + i)
-        return v
+        self._check_memory(addr, size)
+        return sum(self.memory.peek(addr + i) << (8 * i) for i in range(size))
 
     def write_mem(self, addr: int, size: int, value: int) -> None:
-        """Writes a little-endian value into memory.
+        """Validate the entire write before changing any bytes.
 
         Args:
-            addr: Address of the first byte.
+            addr: First address.
             size: Number of bytes written.
-            value: Stored value; bytes above ``size`` are discarded.
+            value: Little-endian integer value to store.
         """
-        v = value & MASK64
-        for i in range(size):
-            self.wr8(addr + i, v & 0xFF)
-            v >>= 8
+        self._check_memory(addr, size, write=True)
+        self.memory.store(addr, (value & ((1 << (8 * size)) - 1)).to_bytes(size, "little"))
 
     def read_cstring(self, addr: int, limit: int = 4096) -> str:
-        """Reads a zero-terminated string.
-
-        Args:
-            addr: Address of the first character.
-            limit: Maximum number of bytes read.
+        """Read a checked zero-terminated string, up to the byte limit.
 
         Returns:
-            The text found before the terminator, or up to the limit.
+            Characters before the terminator or limit.
         """
         out = []
         for i in range(limit):
-            b = self.rd8(addr + i)
-            if not b:
+            byte = self.rd8(addr + i)
+            if not byte:
                 break
-            out.append(chr(b))
+            out.append(chr(byte))
         return "".join(out)
 
-    def _load_data(self) -> None:
-        """Loads the data, the reserves and the ``equ`` symbols into memory.
-
-        Builds ``self.symbols``, writes the initial content of ``.data`` and
-        gives addresses to the ``.bss`` reserves, which have no content.
-        """
-        cursor, bss_cursor = DATA_BASE, BSS_BASE
-        for linha in self.analysis.program.lines:
-            if linha.kind != "data":
-                continue
-            if linha.directive == "equ":
-                if linha.label:
-                    self.symbols[linha.label] = Symbol(
-                        addr=None,
-                        equ=parse_number(linha.args[0] if linha.args else "0"),
-                        line=linha.n,
-                    )
-                continue
-            if linha.reserve:
-                n = parse_number(linha.args[0] if linha.args else "0") * linha.unit
-                if linha.label:
-                    self.symbols[linha.label] = Symbol(
-                        addr=bss_cursor, size=n, bss=True, line=linha.n
-                    )
-                linha.addr = bss_cursor
-                bss_cursor += max(n, 1)
-                continue
-
-            data: List[int] = []
-            if linha.directive == "times":
-                data = self._repeat_bytes(linha)
-            else:
-                for a in linha.args:
-                    a = a.strip()
-                    sm = re.fullmatch(r"(['\"])([\s\S]*)\1", a)
-                    if sm:
-                        s = (
-                            sm.group(2)
-                            .replace("\\n", "\n")
-                            .replace("\\t", "\t")
-                            .replace("\\0", "\0")
-                            .replace("\\\\", "\\")
-                        )
-                        data += [ord(c) & 0xFF for c in s]
-                        data += [0] * (linha.unit - 1)
-                        continue
-                    dm = re.match(r"^(\d+)\s+dup\s*\(\s*([^)]*)\)", a, re.I)
-                    if dm:
-                        cnt = int(dm.group(1))
-                        val = 0 if "?" in dm.group(2) else parse_number(dm.group(2))
-                        for _ in range(cnt):
-                            for u in range(linha.unit):
-                                data.append((val >> (8 * u)) & 0xFF)
-                        continue
-                    val = 0 if a == "?" else parse_number(a)
-                    val &= (1 << (linha.unit * 8)) - 1
-                    for u in range(linha.unit):
-                        data.append((val >> (8 * u)) & 0xFF)
-
-            addr = cursor
-            if linha.label:
-                self.symbols[linha.label] = Symbol(addr=addr, size=len(data), line=linha.n)
-            for i, b in enumerate(data):
-                self.wr8(addr + i, b)
-            linha.addr = addr
-            cursor += max(len(data), 1)
-
-        # "len equ $ - msg" symbols
-        for linha in self.analysis.program.lines:
-            if linha.kind == "data" and linha.directive == "equ" and linha.label and linha.args:
-                m = re.search(r"\$\s*-\s*([A-Za-z_.$][\w.$]*)", linha.args[0])
-                if m and m.group(1) in self.symbols:
-                    self.symbols[linha.label] = Symbol(
-                        addr=None, equ=self.symbols[m.group(1)].size, line=linha.n
-                    )
-
-    @staticmethod
-    def _repeat_bytes(line: Any) -> List[int]:
-        """Builds the bytes of a ``times`` directive.
-
-        Understands ``times 64 db 0`` (zeros), ``times 3 db 7`` (repeated
-        value), ``times 4 dw 0x1234`` (value with more than one byte,
-        little-endian) and ``times 2 db "ab"`` (repeated string). When the
-        syntax is not recognized, it returns an empty list — the same as the
-        directive generating no data at all.
-
-        Args:
-            line: Data line from the parser.
+    def _initializer_parts(self, line: Line) -> List[Tuple[bytes, int]]:
+        """Describe data without expanding TIMES or DUP into a large list.
 
         Returns:
-            The list of bytes, in the order they go into memory.
+            Byte patterns and repetition counts in declaration order.
+
+        Raises:
+            MemoryFault: For negative sizes or unsupported repeated declarations.
         """
-        texto = line.args[0] if line.args else ""
-        m = re.match(r"^(\w+)\s+(db|dw|dd|dq)\s+(.*)$", texto, re.I)
-        if not m:
-            return []
-        count = parse_number(m.group(1))
-        unit = {"db": 1, "dw": 2, "dd": 4, "dq": 8}[m.group(2).lower()]
-        valor = m.group(3).strip()
-        if count <= 0:
-            return []
+        repeat, unit, args = 1, line.unit, line.args
+        if line.directive == "times":
+            match = re.fullmatch(r"(\S+)\s+(db|dw|dd|dq)\s+(.*)", ", ".join(args), re.I)
+            if not match:
+                raise MemoryFault("MEM_SIZE", "unsupported TIMES initializer")
+            repeat = parse_number(match.group(1))
+            unit = {"db": 1, "dw": 2, "dd": 4, "dq": 8}[match.group(2).lower()]
+            args = split_operands(match.group(3))
+        self.memory.check_capacity(repeat)
+        parts: List[Tuple[bytes, int]] = []
+        for arg in args:
+            count = 1
+            duplicate = re.fullmatch(r"([+-]?\d+)\s+dup\s*\(\s*(.*?)\s*\)", arg, re.I)
+            if duplicate:
+                count, arg = int(duplicate.group(1)), duplicate.group(2)
+                self.memory.check_capacity(count * unit)
+            string = re.fullmatch(r"(['\"])([\s\S]*)\1", arg.strip())
+            if string:
+                text = (
+                    string.group(2)
+                    .replace("\\n", "\n")
+                    .replace("\\t", "\t")
+                    .replace("\\0", "\0")
+                    .replace("\\\\", "\\")
+                )
+                data = bytes(ord(char) & 0xFF for char in text) + bytes(unit - 1)
+            else:
+                value = 0 if arg == "?" else parse_number(arg)
+                data = (value & ((1 << (unit * 8)) - 1)).to_bytes(unit, "little")
+            parts.append((data, count))
+        total = sum(len(data) * count for data, count in parts) * repeat
+        self.memory.check_capacity(total)
+        if repeat != 1:
+            # The pattern is source-sized; check its total before materializing it.
+            pattern = b"".join(data * count for data, count in parts)
+            return [(pattern, repeat)]
+        return parts
 
-        sm = re.fullmatch(r"(['\"])([\s\S]*)\1", valor)
-        if sm:
-            bruto = [ord(c) & 0xFF for c in sm.group(2)]
-            return bruto * count
-
-        numero = 0 if valor in ("?", "") else parse_number(valor)
-        numero &= (1 << (unit * 8)) - 1
-        return [((numero >> (8 * u)) & 0xFF) for _ in range(count) for u in range(unit)]
+    def _load_data(self) -> None:
+        """Load bounded declarations, then zero-initialized BSS and an empty heap."""
+        cursor = DATA_BASE
+        lines = [line for line in self.analysis.program.lines if line.kind == "data"]
+        # Put initialized data first so large declarations cannot overlap BSS.
+        for line in sorted(lines, key=lambda item: item.reserve):
+            self._loading_line = line.n
+            if line.directive == "equ":
+                if line.label:
+                    self.symbols[line.label] = Symbol(
+                        addr=None, equ=parse_number(line.args[0] if line.args else "0"), line=line.n
+                    )
+                continue
+            if line.reserve:
+                cursor = max(cursor, BSS_BASE)
+                size = parse_number(line.args[0] if line.args else "0") * line.unit
+                parts = []
+            else:
+                parts = self._initializer_parts(line)
+                size = sum(len(data) * count for data, count in parts)
+            self.memory.allocate(
+                cursor,
+                size,
+                line.label or "data on line %d" % line.n,
+                writable=line.section not in ("rodata", "const", "text", "code"),
+            )
+            if line.label:
+                self.symbols[line.label] = Symbol(
+                    addr=cursor, size=size, bss=line.reserve, line=line.n
+                )
+            line.addr = cursor
+            offset = cursor
+            for data, count in parts:
+                self.memory.fill(offset, data, count)
+                offset += len(data) * count
+            cursor += size
+        self.heap_base = max(BSS_BASE + 0x10000, (cursor + PAGE_SIZE - 1) // PAGE_SIZE * PAGE_SIZE)
+        self.heap = self.memory.allocate(self.heap_base, 0, "heap", initialized=False)
+        for line in lines:
+            if line.directive == "equ" and line.label and line.args:
+                match = re.search(r"\$\s*-\s*([A-Za-z_.$][\w.$]*)", line.args[0])
+                if match and match.group(1) in self.symbols:
+                    self.symbols[line.label] = Symbol(
+                        addr=None, equ=self.symbols[match.group(1)].size, line=line.n
+                    )
 
     # ----------------------------------------------------------- registers -
     def get_reg(self, name: str) -> int:
@@ -406,14 +440,17 @@ class Machine:
         v = value & MASK64
         cur = self.regs.get(info["base"], 0)
         if info["size"] == 8:
-            self.regs[info["base"]] = v
+            result = v
         elif info["size"] == 4:
-            self.regs[info["base"]] = v & 0xFFFFFFFF
+            result = v & 0xFFFFFFFF
         elif info["high"]:
-            self.regs[info["base"]] = (cur & ~0xFF00) | ((v & 0xFF) << 8)
+            result = (cur & ~0xFF00) | ((v & 0xFF) << 8)
         else:
             mask = (1 << (info["size"] * 8)) - 1
-            self.regs[info["base"]] = (cur & ~mask) | (v & mask)
+            result = (cur & ~mask) | (v & mask)
+        if info["base"] == "rsp":
+            self._grow_stack(result)
+        self.regs[info["base"]] = result
 
     # ----------------------------------------------------------- operands -
     def symbol_addr(self, name: str) -> int:
@@ -492,8 +529,8 @@ class Machine:
     def read(self, op: Operand, other: Optional[Operand] = None) -> int:
         """Reads the value of an operand.
 
-        Reading memory that was never written records an issue, because on the
-        real machine the content would be garbage.
+        Reading any uninitialized byte records an issue. Declared data and BSS
+        are initialized; unmapped and read-only accesses stop execution.
 
         Args:
             op: Operand to read.
@@ -512,11 +549,6 @@ class Machine:
         if op.type == "mem":
             addr = self.eval_addr(op)
             size = self.op_size(op, other)
-            if not any((addr + i) in self.written for i in range(size)):
-                self._issue(
-                    "read of memory never written at %s — the real value would be garbage"
-                    % hexs(addr)
-                )
             return self.read_mem(addr, size)
         if op.type == "expr":
             return self.eval_addr(op)
@@ -636,19 +668,27 @@ class Machine:
         Args:
             v: Value pushed; RSP decreases by 8 before the write.
         """
-        self.regs["rsp"] = (self.regs["rsp"] - 8) & MASK64
-        self.write_mem(self.regs["rsp"], 8, v)
+        pointer = self.regs["rsp"] - 8
+        self._grow_stack(pointer)
+        self.write_mem(pointer, 8, v)
+        self.regs["rsp"] = pointer
 
     def pop(self) -> int:
         """Pops an 8-byte value.
 
-        Records an issue when the stack is already empty.
+        Raises:
+            MemoryFault: When the stack is empty or points outside allocated memory.
 
         Returns:
             The value that was on top; RSP increases by 8.
         """
         if self.regs["rsp"] >= STACK_TOP:
-            self._issue("POP with an empty stack — stack underflow")
+            raise MemoryFault(
+                "MEM_STACK",
+                "empty stack: stack underflow or unbalanced return",
+                self.regs["rsp"],
+                8,
+            )
         v = self.read_mem(self.regs["rsp"], 8)
         self.regs["rsp"] = (self.regs["rsp"] + 8) & MASK64
         return v
@@ -662,6 +702,34 @@ class Machine:
         if msg not in self.issues:
             self.issues.append(msg)
 
+    @staticmethod
+    def _check_transfer(size: int, operation: str) -> None:
+        """Reject a transfer above one MiB.
+
+        Raises:
+            MemoryFault: If the operation exceeds the transfer limit.
+        """
+        if size > 1 << 20:
+            raise MemoryFault("MEM_SIZE", "%s exceeds the one-MiB transfer limit" % operation)
+
+    def _append_output(self, text: str) -> None:
+        """Bound retained console output independently of guest allocation.
+
+        Raises:
+            MemoryFault: If output would exceed one MiB of simulated bytes.
+        """
+        if len(self.output) + len(text) > 1 << 20:
+            raise MemoryFault("MEM_OUTPUT", "console output exceeds the one-MiB limit")
+        self.output += text
+
+    def peek8(self, addr: int) -> int:
+        """Inspect memory without changing execution diagnostics.
+
+        Returns:
+            Stored byte or zero when absent.
+        """
+        return self.memory.peek(addr)
+
     # ----------------------------------------------------------- syscalls -
     def do_syscall(self) -> str:
         """Runs the syscall indicated by the number in RAX.
@@ -669,6 +737,9 @@ class Machine:
         Emulates ``write``, ``read``, ``exit``/``exit_group``, ``getpid``,
         ``time``, ``nanosleep``, ``brk`` and ``getrandom``; any other one zeroes
         RAX and goes into the issue list.
+
+        Raises:
+            MemoryFault: If a buffer or allocation is invalid.
 
         Returns:
             Description of what the call did.
@@ -681,14 +752,16 @@ class Machine:
             addr = self.regs["rsi"]
             if length > 1 << 20:
                 self._issue("write with an absurd size (%d bytes) — RDX is probably wrong" % length)
-                length = 4096
-            s = "".join(chr(self.rd8(addr + i)) for i in range(length))
-            self.output += s
+                raise MemoryFault("MEM_SIZE", "write exceeds the one-MiB transfer limit")
+            self._check_memory(addr, length)
+            s = "".join(chr(self.memory.peek(addr + i)) for i in range(length))
+            self._append_output(s)
             self.regs["rax"] = length
             return "write: wrote %d bytes to descriptor %d" % (length, self.regs["rdi"])
         if n == 0:
             cnt = self.regs["rdx"]
             dst = self.regs["rsi"]
+            self._check_memory(dst, min(cnt, len(self.stdin) - self.stdin_pos), write=True)
             got = 0
             while got < cnt and self.stdin_pos < len(self.stdin):
                 self.wr8(dst + got, ord(self.stdin[self.stdin_pos]) & 0xFF)
@@ -709,11 +782,16 @@ class Machine:
         if n == 35:
             return "nanosleep: ignored in the simulation"
         if n == 12:
-            self.regs["rax"] = BSS_BASE + 0x10000
-            return "brk: simulated heap"
+            requested = self.regs["rdi"]
+            if requested and requested >= self.heap_base:
+                self.memory.resize(self.heap, self.heap_base, requested - self.heap_base)
+            self.regs["rax"] = self.heap.end
+            return "brk: heap ends at %s" % hexs(self.heap.end)
         if n == 318:
             qn = self.regs["rsi"]
-            for i in range(min(qn, 4096)):
+            qn = min(qn, 4096)
+            self._check_memory(self.regs["rdi"], qn, write=True)
+            for i in range(qn):
                 self.wr8(self.regs["rdi"] + i, random.randrange(256))
             self.regs["rax"] = qn
             return "getrandom: %d random bytes" % qn
@@ -730,6 +808,9 @@ class Machine:
         Args:
             raw_name: Function name as it appeared in the CALL.
 
+        Raises:
+            MemoryFault: If a buffer or allocation is invalid.
+
         Returns:
             Description of what the call did.
         """
@@ -745,14 +826,17 @@ class Machine:
         if key in ("writeconsolea", "writefile"):
             length = self.regs["r8"]
             addr = self.regs["rdx"]
-            s = "".join(chr(self.rd8(addr + i)) for i in range(min(length, 1 << 20)))
-            self.output += s
+            if length > 1 << 20:
+                raise MemoryFault("MEM_SIZE", "console write exceeds the one-MiB transfer limit")
+            self._check_memory(addr, length)
+            s = "".join(chr(self.memory.peek(addr + i)) for i in range(length))
+            self._append_output(s)
             self.regs["rax"] = 1
             return "%s: wrote %d bytes to the console" % (api[0] if api else key, length)
         if key in ("messageboxa", "messageboxw"):
             txt = self.read_cstring(self.regs["rdx"], 512)
             tit = self.read_cstring(self.regs["r8"], 256)
-            self.output += "[MessageBox] %s: %s\n" % (tit, txt)
+            self._append_output("[MessageBox] %s: %s\n" % (tit, txt))
             self.regs["rax"] = 1
             return "MessageBoxA: message box displayed (shown in the output)"
         if key == "sleep":
@@ -1056,7 +1140,7 @@ class Machine:
                 if o0 is not None and o0.type == "imm":
                     self.regs["rsp"] = (self.regs["rsp"] + o0.value) & MASK64
             elif m == "leave":
-                self.regs["rsp"] = self.regs["rbp"]
+                self.set_reg("rsp", self.regs["rbp"])
                 self.regs["rbp"] = self.pop()
                 note = "frame torn down; RSP = %s" % hexs(self.regs["rsp"])
             elif m == "syscall":
@@ -1066,17 +1150,17 @@ class Machine:
                     self.regs["rdi"] = self.regs["rbx"]
                     self.regs["rsi"] = self.regs["rcx"]
                     i386 = self.regs["rax"] & 0xFFFFFFFF
-                    equivalente = I386_SYSCALLS.get(i386)
-                    if equivalente is None:
+                    equivalent = I386_SYSCALLS.get(i386)
+                    if equivalent is None:
                         note = (
                             "INT 0x80: the 32-bit syscall %d has no known 64-bit "
                             "equivalent" % i386
                         )
                         self._issue("line %d: %s" % (ins.n, note))
                     else:
-                        self.regs["rax"] = equivalente
+                        self.regs["rax"] = equivalent
                         note = (
-                            "INT 0x80 (32-bit ABI, syscall %d → %d): " % (i386, equivalente)
+                            "INT 0x80 (32-bit ABI, syscall %d → %d): " % (i386, equivalent)
                         ) + self.do_syscall()
                 elif o0 is not None and o0.text == "3":
                     note = "INT 3 — breakpoint"
@@ -1095,7 +1179,7 @@ class Machine:
                     self._issue(
                         "line %d: REP with RCX = %d — probably a wrong counter" % (ins.n, count)
                     )
-                    count = 1 << 20
+                    self._check_transfer(count, "REP")
                 delta = -1 if self.flags["DF"] else 1
                 done = 0
                 while done < count:
@@ -1118,7 +1202,7 @@ class Machine:
                             break
                     done += 1
                 if rep:
-                    self.regs["rcx"] = 0
+                    self.regs["rcx"] = count - done
                 note = "%s %s" % (m, ("repeated %d times" % done) if rep else "executed")
             elif m == "hlt":
                 self.halted = True
@@ -1126,12 +1210,20 @@ class Machine:
             else:
                 note = 'instruction "%s" is not emulated; it was skipped' % m
                 self._issue("line %d: %s is not emulated by the virtual machine" % (ins.n, m))
+        except (MemoryFault, MemoryError) as exc:
+            fault = (
+                exc
+                if isinstance(exc, MemoryFault)
+                else MemoryFault("MEM_HOST", "host memory allocation failed")
+            )
+            self._halt_memory_fault(fault, ins.n)
+            return self._record(ins, str(fault), issue="fatal")
         except Exception as exc:  # noqa: BLE001
             self._issue("line %d: simulation error — %s" % (ins.n, exc))
             note = "simulation error: %s" % exc
 
         self.ip = nxt
-        if self.ip >= len(self.instrs):
+        if self.ip >= len(self.instrs) and not self.halted:
             self.halted = True
             note += " | end of code reached"
             if self.exit_code is None:
@@ -1181,12 +1273,12 @@ class Machine:
             AnalysisTimeoutError: If ``raise_on_timeout`` is true and the time
                 limit is exceeded.
         """
-        inicio = self.clock()
+        started = self.clock()
         n = 0
         while not self.halted and n < limit:
             self.step()
             n += 1
-            if timeout is not None and n % 256 == 0 and (self.clock() - inicio) > timeout:
+            if timeout is not None and n % 256 == 0 and (self.clock() - started) > timeout:
                 self.timed_out = True
                 self.halted = True
                 self._issue("execution went past %g s — stopped by time (timeout)" % timeout)
@@ -1235,4 +1327,7 @@ class Machine:
             "issues": list(self.issues),
             "steps": self.steps,
             "halted": self.halted,
+            "out_of_memory": self.out_of_memory,
+            "memory_fault": self.memory_fault,
+            "memory": self.memory.snapshot(),
         }

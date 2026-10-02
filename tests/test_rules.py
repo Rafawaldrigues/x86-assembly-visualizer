@@ -35,351 +35,365 @@ from asmx.rules import (
     validate_rule,
 )
 
-CONDICAO_MINIMA = {"strings": ["nop"]}
+MINIMAL_CONDITION = {"strings": ["nop"]}
 
 
-def regra(**campos: object) -> dict:
+def rule_item(**fields: object) -> dict:
     """Builds a raw rule mapping with sensible defaults."""
-    base = {"id": "TST001", "name": "Test rule", "severity": "medium", "match": CONDICAO_MINIMA}
-    base.update(campos)
+    base = {"id": "TST001", "name": "Test rule", "severity": "medium", "match": MINIMAL_CONDITION}
+    base.update(fields)
     return base
 
 
-def escrever(tmp: str, nome: str, dados: object) -> str:
+def write_fixture(tmp: str, item_name: str, values_data: object) -> str:
     """Writes a rule file inside a temporary directory and returns its path."""
-    caminho = os.path.join(tmp, nome)
-    with open(caminho, "w", encoding="utf-8") as arquivo:
-        if isinstance(dados, str):
-            arquivo.write(dados)
+    file_path = os.path.join(tmp, item_name)
+    with open(file_path, "w", encoding="utf-8") as source_file:
+        if isinstance(values_data, str):
+            source_file.write(values_data)
         else:
-            json.dump(dados, arquivo)
-    return caminho
+            json.dump(values_data, source_file)
+    return file_path
 
 
-class TestValidacao(unittest.TestCase):
+class TestValidation(unittest.TestCase):
     """A bad rule file must fail loudly, naming the rule and the field."""
 
-    def test_regra_minima_valida(self) -> None:
-        regra_pronta = validate_rule(regra(), source="memoria.json")
-        self.assertEqual(regra_pronta.id, "TST001")
-        self.assertEqual(regra_pronta.severity, "medium")
-        self.assertEqual(regra_pronta.source, "memoria.json")
+    def test_minimal_rule_validates(self) -> None:
+        validated_rule = validate_rule(rule_item(), source="memory.json")
+        self.assertEqual(validated_rule.id, "TST001")
+        self.assertEqual(validated_rule.severity, "medium")
+        self.assertEqual(validated_rule.source, "memory.json")
 
-    def test_severidade_padrao_e_medium(self) -> None:
+    def test_default_severity_is_medium(self) -> None:
         self.assertEqual(
-            validate_rule({"id": "X", "name": "Y", "match": CONDICAO_MINIMA}).severity, "medium"
+            validate_rule({"id": "X", "name": "Y", "match": MINIMAL_CONDITION}).severity, "medium"
         )
 
-    def test_sem_id_ou_nome(self) -> None:
-        for campo in ("id", "name"):
-            with self.subTest(campo=campo):
-                with self.assertRaises(ConfigError) as capturado:
-                    validate_rule(regra(**{campo: "   "}))
-                self.assertIn("id or name", str(capturado.exception))
+    def test_missing_id_or_name(self) -> None:
+        for field in ("id", "name"):
+            with self.subTest(field=field):
+                with self.assertRaises(ConfigError) as caught:
+                    validate_rule(rule_item(**{field: "   "}))
+                self.assertIn("id or name", str(caught.exception))
 
-    def test_severidade_desconhecida(self) -> None:
-        with self.assertRaises(ConfigError) as capturado:
-            validate_rule(regra(severity="urgente"))
-        self.assertIn("unknown severity", str(capturado.exception))
-        self.assertIn("high", str(capturado.exception))
+    def test_unknown_severity(self) -> None:
+        with self.assertRaises(ConfigError) as caught:
+            validate_rule(rule_item(severity="urgent"))
+        self.assertIn("unknown severity", str(caught.exception))
+        self.assertIn("high", str(caught.exception))
 
-    def test_match_precisa_ser_objeto(self) -> None:
-        with self.assertRaises(ConfigError) as capturado:
-            validate_rule(regra(match=["strings"]))
-        self.assertIn("'match' must be an object", str(capturado.exception))
+    def test_match_must_be_object(self) -> None:
+        with self.assertRaises(ConfigError) as caught:
+            validate_rule(rule_item(match=["strings"]))
+        self.assertIn("'match' must be an object", str(caught.exception))
 
-    def test_chave_desconhecida_no_match(self) -> None:
-        with self.assertRaises(ConfigError) as capturado:
-            validate_rule(regra(match={"syscall": ["open"]}))
-        self.assertIn("unknown match key syscall", str(capturado.exception))
+    def test_unknown_match_key(self) -> None:
+        with self.assertRaises(ConfigError) as caught:
+            validate_rule(rule_item(match={"syscall": ["open"]}))
+        self.assertIn("unknown match key syscall", str(caught.exception))
 
-    def test_match_vazio_nunca_dispararia(self) -> None:
-        with self.assertRaises(ConfigError) as capturado:
-            validate_rule(regra(match={"require_all": True}))
-        self.assertIn("no usable condition", str(capturado.exception))
+    def test_empty_match_is_rejected(self) -> None:
+        with self.assertRaises(ConfigError) as caught:
+            validate_rule(rule_item(match={"require_all": True}))
+        self.assertIn("no usable condition", str(caught.exception))
 
-    def test_any_of_precisa_de_lista_de_objetos(self) -> None:
-        with self.assertRaises(ConfigError) as capturado:
-            validate_rule(regra(match={"any_of": []}))
-        self.assertIn("non-empty list", str(capturado.exception))
-        with self.assertRaises(ConfigError) as capturado:
-            validate_rule(regra(match={"any_of": [{"syscalls": ["open"]}, "connect"]}))
-        self.assertIn("at least one condition", str(capturado.exception))
+    def test_any_of_requires_object_list(self) -> None:
+        with self.assertRaises(ConfigError) as caught:
+            validate_rule(rule_item(match={"any_of": []}))
+        self.assertIn("non-empty list", str(caught.exception))
+        with self.assertRaises(ConfigError) as caught:
+            validate_rule(rule_item(match={"any_of": [{"syscalls": ["open"]}, "connect"]}))
+        self.assertIn("at least one condition", str(caught.exception))
 
-    def test_any_of_aceita_chave_desconhecida(self) -> None:
-        with self.assertRaises(ConfigError) as capturado:
-            validate_rule(regra(match={"any_of": [{"syscall": ["open"]}]}))
-        self.assertIn("inside 'any_of'", str(capturado.exception))
+    def test_any_of_rejects_unknown_key(self) -> None:
+        with self.assertRaises(ConfigError) as caught:
+            validate_rule(rule_item(match={"any_of": [{"syscall": ["open"]}]}))
+        self.assertIn("inside 'any_of'", str(caught.exception))
 
-    def test_any_of_sozinho_e_valido(self) -> None:
-        pronta = validate_rule(
-            regra(match={"any_of": [{"syscalls": ["open"]}, {"apis": ["CreateFileA"]}]})
+    def test_any_of_alone_is_valid(self) -> None:
+        validated = validate_rule(
+            rule_item(match={"any_of": [{"syscalls": ["open"]}, {"apis": ["CreateFileA"]}]})
         )
-        self.assertIn("any_of", pronta.match)
+        self.assertIn("any_of", validated.match)
 
-    def test_tags_e_mitre_viram_tuplas(self) -> None:
-        pronta = validate_rule(regra(tags=["network"], mitre=["t1071"]))
-        self.assertEqual(pronta.tags, ("network",))
-        self.assertEqual(pronta.mitre, ("T1071",))
+    def test_tags_and_mitre_become_tuples(self) -> None:
+        validated = validate_rule(rule_item(tags=["network"], mitre=["t1071"]))
+        self.assertEqual(validated.tags, ("network",))
+        self.assertEqual(validated.mitre, ("T1071",))
 
-    def test_to_dict_serializa(self) -> None:
-        dados = validate_rule(regra(tags=["a"], mitre=["T1"]), source="x.json").to_dict()
-        self.assertEqual(dados["tags"], ["a"])
-        self.assertEqual(dados["mitre"], ["T1"])
-        self.assertEqual(dados["source"], "x.json")
-        self.assertIn("match", dados)
+    def test_to_dict_serializes(self) -> None:
+        values_data = validate_rule(rule_item(tags=["a"], mitre=["T1"]), source="x.json").to_dict()
+        self.assertEqual(values_data["tags"], ["a"])
+        self.assertEqual(values_data["mitre"], ["T1"])
+        self.assertEqual(values_data["source"], "x.json")
+        self.assertIn("match", values_data)
 
 
-class TestArquivos(unittest.TestCase):
+class TestFiles(unittest.TestCase):
     """Reading rule files: JSON always, YAML when PyYAML is around."""
 
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
 
-    def test_le_json(self) -> None:
-        caminho = escrever(self.tmp.name, "a.json", {"rules": [regra()]})
-        self.assertEqual([r.id for r in load_rule_file(caminho)], ["TST001"])
+    def test_reads_json(self) -> None:
+        file_path = write_fixture(self.tmp.name, "a.json", {"rules": [rule_item()]})
+        self.assertEqual([r.id for r in load_rule_file(file_path)], ["TST001"])
 
-    def test_lista_solta_e_aceita(self) -> None:
-        caminho = escrever(self.tmp.name, "a.json", [regra(id="A"), regra(id="B")])
-        self.assertEqual([r.id for r in load_rule_file(caminho)], ["A", "B"])
+    def test_bare_list_is_accepted(self) -> None:
+        file_path = write_fixture(self.tmp.name, "a.json", [rule_item(id="A"), rule_item(id="B")])
+        self.assertEqual([r.id for r in load_rule_file(file_path)], ["A", "B"])
 
-    def test_json_invalido(self) -> None:
-        caminho = escrever(self.tmp.name, "a.json", "{ this is not json }")
-        with self.assertRaises(ConfigError) as capturado:
-            load_rule_file(caminho)
-        self.assertIn("invalid rule file", str(capturado.exception))
+    def test_invalid_json(self) -> None:
+        file_path = write_fixture(self.tmp.name, "a.json", "{ this is not json }")
+        with self.assertRaises(ConfigError) as caught:
+            load_rule_file(file_path)
+        self.assertIn("invalid rule file", str(caught.exception))
 
-    def test_arquivo_sem_lista_rules(self) -> None:
-        caminho = escrever(self.tmp.name, "a.json", {"schema": RULES_SCHEMA})
-        with self.assertRaises(ConfigError) as capturado:
-            load_rule_file(caminho)
-        self.assertIn("no 'rules' list", str(capturado.exception))
+    def test_file_without_rules_list(self) -> None:
+        file_path = write_fixture(self.tmp.name, "a.json", {"schema": RULES_SCHEMA})
+        with self.assertRaises(ConfigError) as caught:
+            load_rule_file(file_path)
+        self.assertIn("no 'rules' list", str(caught.exception))
 
-    def test_rules_precisa_ser_lista(self) -> None:
-        caminho = escrever(self.tmp.name, "a.json", {"rules": {"id": "X"}})
-        with self.assertRaises(ConfigError) as capturado:
-            load_rule_file(caminho)
-        self.assertIn("must be a list", str(capturado.exception))
+    def test_rules_must_be_list(self) -> None:
+        file_path = write_fixture(self.tmp.name, "a.json", {"rules": {"id": "X"}})
+        with self.assertRaises(ConfigError) as caught:
+            load_rule_file(file_path)
+        self.assertIn("must be a list", str(caught.exception))
 
-    def test_arquivo_inexistente(self) -> None:
-        with self.assertRaises(ConfigError) as capturado:
-            load_rule_file(os.path.join(self.tmp.name, "nao-existe.json"))
-        self.assertIn("rule file not found", str(capturado.exception))
+    def test_missing_file(self) -> None:
+        with self.assertRaises(ConfigError) as caught:
+            load_rule_file(os.path.join(self.tmp.name, "does-not-exist.json"))
+        self.assertIn("rule file not found", str(caught.exception))
 
-    def test_arquivo_vazio_e_erro(self) -> None:
+    def test_empty_file_is_error(self) -> None:
         """A truncated file must fail loudly instead of silently loading nothing."""
-        caminho = escrever(self.tmp.name, "vazio.json", "")
-        with self.assertRaises(ConfigError) as capturado:
-            load_rule_file(caminho)
-        self.assertIn("invalid rule file", str(capturado.exception))
+        file_path = write_fixture(self.tmp.name, "empty_state.json", "")
+        with self.assertRaises(ConfigError) as caught:
+            load_rule_file(file_path)
+        self.assertIn("invalid rule file", str(caught.exception))
 
-    def test_documento_que_nao_e_objeto(self) -> None:
-        caminho = escrever(self.tmp.name, "numero.json", "42")
-        with self.assertRaises(ConfigError) as capturado:
-            load_rule_file(caminho)
-        self.assertIn("must contain an object or a list", str(capturado.exception))
+    def test_non_object_document(self) -> None:
+        file_path = write_fixture(self.tmp.name, "numero.json", "42")
+        with self.assertRaises(ConfigError) as caught:
+            load_rule_file(file_path)
+        self.assertIn("must contain an object or a list", str(caught.exception))
 
-    def test_yaml_depende_do_pyyaml(self) -> None:
+    def test_yaml_requires_pyyaml(self) -> None:
         try:
             import yaml  # noqa: F401
         except ImportError:
-            caminho = escrever(self.tmp.name, "a.yaml", "rules: []\n")
-            with self.assertRaises(ConfigError) as capturado:
-                load_rule_file(caminho)
-            self.assertIn("PyYAML", str(capturado.exception))
+            file_path = write_fixture(self.tmp.name, "a.yaml", "rules: []\n")
+            with self.assertRaises(ConfigError) as caught:
+                load_rule_file(file_path)
+            self.assertIn("PyYAML", str(caught.exception))
         else:
-            caminho = escrever(
+            file_path = write_fixture(
                 self.tmp.name,
                 "a.yaml",
                 "rules:\n  - id: Y1\n    name: Y\n    match:\n      strings: [nop]\n",
             )
-            self.assertEqual([r.id for r in load_rule_file(caminho)], ["Y1"])
+            self.assertEqual([r.id for r in load_rule_file(file_path)], ["Y1"])
 
-    def test_rule_files_lista_e_ignora_pasta_ausente(self) -> None:
-        escrever(self.tmp.name, "a.json", {"rules": []})
-        escrever(self.tmp.name, "b.txt", "nada")
+    def test_rule_files_ignores_missing_directory(self) -> None:
+        write_fixture(self.tmp.name, "a.json", {"rules": []})
+        write_fixture(self.tmp.name, "b.txt", "nothing")
         self.assertEqual([os.path.basename(p) for p in rule_files(self.tmp.name)], ["a.json"])
-        self.assertEqual(rule_files(os.path.join(self.tmp.name, "nao-existe")), [])
+        self.assertEqual(rule_files(os.path.join(self.tmp.name, "does-not-exist")), [])
 
-    def test_load_rules_de_pasta(self) -> None:
-        escrever(self.tmp.name, "a.json", {"rules": [regra(id="A")]})
-        escrever(self.tmp.name, "b.json", {"rules": [regra(id="B")]})
+    def test_load_rules_from_directory(self) -> None:
+        write_fixture(self.tmp.name, "a.json", {"rules": [rule_item(id="A")]})
+        write_fixture(self.tmp.name, "b.json", {"rules": [rule_item(id="B")]})
         self.assertEqual([r.id for r in load_rules(directory=self.tmp.name)], ["A", "B"])
 
-    def test_id_repetido_fica_com_o_primeiro(self) -> None:
-        escrever(self.tmp.name, "a.json", {"rules": [regra(id="A", name="first")]})
-        escrever(self.tmp.name, "b.json", {"rules": [regra(id="A", name="second")]})
-        regras = load_rules(directory=self.tmp.name)
-        self.assertEqual(len(regras), 1)
-        self.assertEqual(regras[0].name, "first")
+    def test_duplicate_id_keeps_first(self) -> None:
+        write_fixture(self.tmp.name, "a.json", {"rules": [rule_item(id="A", name="first")]})
+        write_fixture(self.tmp.name, "b.json", {"rules": [rule_item(id="A", name="second")]})
+        rule_items = load_rules(directory=self.tmp.name)
+        self.assertEqual(len(rule_items), 1)
+        self.assertEqual(rule_items[0].name, "first")
 
-    def test_pasta_sem_regras(self) -> None:
-        with self.assertRaises(ProjectError) as capturado:
+    def test_directory_without_rules(self) -> None:
+        with self.assertRaises(ProjectError) as caught:
             load_rules(directory=self.tmp.name)
-        self.assertIn("no rule file found", str(capturado.exception))
+        self.assertIn("no rule file found", str(caught.exception))
 
-    def test_lista_explicita_de_arquivos(self) -> None:
-        caminho = escrever(self.tmp.name, "a.json", {"rules": [regra(id="A")]})
-        self.assertEqual([r.id for r in load_rules([caminho])], ["A"])
+    def test_explicit_file_list(self) -> None:
+        file_path = write_fixture(self.tmp.name, "a.json", {"rules": [rule_item(id="A")]})
+        self.assertEqual([r.id for r in load_rules([file_path])], ["A"])
 
 
-class TestCasamento(unittest.TestCase):
+class TestMatching(unittest.TestCase):
     """Every condition type must match when it should and refuse when it should not."""
 
-    def rodar(self, condicao: dict, codigo: str) -> list:
+    def match_source(self, condition_data: dict, status_code: str) -> list:
         """Runs a single ad-hoc rule against a source and returns the matches."""
-        pronta = validate_rule(regra(match=condicao))
-        return match_rules([pronta], analyze(codigo), text=codigo)
+        validated = validate_rule(rule_item(match=condition_data))
+        return match_rules([validated], analyze(status_code), text=status_code)
 
-    def test_casa_por_syscall(self) -> None:
-        codigo = "mov rax, 41\nsyscall"
-        self.assertTrue(self.rodar({"syscalls": ["socket"]}, codigo))
-        self.assertFalse(self.rodar({"syscalls": ["connect"]}, codigo))
+    def test_matches_syscall(self) -> None:
+        status_code = "mov rax, 41\nsyscall"
+        self.assertTrue(self.match_source({"syscalls": ["socket"]}, status_code))
+        self.assertFalse(self.match_source({"syscalls": ["connect"]}, status_code))
 
-    def test_casa_por_api_externa(self) -> None:
-        codigo = "extern ExitProcess\ncall ExitProcess"
-        self.assertTrue(self.rodar({"apis": ["ExitProcess"]}, codigo))
-        self.assertFalse(self.rodar({"apis": ["CreateFileA"]}, codigo))
+    def test_matches_external_api(self) -> None:
+        status_code = "extern ExitProcess\ncall ExitProcess"
+        self.assertTrue(self.match_source({"apis": ["ExitProcess"]}, status_code))
+        self.assertFalse(self.match_source({"apis": ["CreateFileA"]}, status_code))
 
-    def test_casa_por_mnemonico(self) -> None:
-        self.assertTrue(self.rodar({"mnemonics": ["div"]}, "mov rax, 4\nxor rdx, rdx\ndiv rbx"))
+    def test_matches_mnemonic(self) -> None:
+        self.assertTrue(
+            self.match_source({"mnemonics": ["div"]}, "mov rax, 4\nxor rdx, rdx\ndiv rbx")
+        )
 
-    def test_casa_por_secao(self) -> None:
-        codigo = "section .data\nsection .text\n_start:"
-        self.assertTrue(self.rodar({"sections": [".data"]}, codigo))
-        self.assertTrue(self.rodar({"sections": ["data"]}, codigo))
-        self.assertFalse(self.rodar({"sections": [".bss"]}, codigo))
+    def test_matches_section(self) -> None:
+        status_code = "section .data\nsection .text\n_start:"
+        self.assertTrue(self.match_source({"sections": [".data"]}, status_code))
+        self.assertTrue(self.match_source({"sections": ["data"]}, status_code))
+        self.assertFalse(self.match_source({"sections": [".bss"]}, status_code))
 
-    def test_casa_por_comportamento(self) -> None:
-        codigo = EXAMPLES["suspicious"]["code"]
-        self.assertTrue(self.rodar({"behaviors": ["network"]}, codigo))
-        self.assertFalse(self.rodar({"behaviors": ["self-modifying"]}, codigo))
+    def test_matches_behavior(self) -> None:
+        status_code = EXAMPLES["suspicious"]["code"]
+        self.assertTrue(self.match_source({"behaviors": ["network"]}, status_code))
+        self.assertFalse(self.match_source({"behaviors": ["self-modifying"]}, status_code))
 
-    def test_casa_por_codigo_de_problema(self) -> None:
-        codigo = EXAMPLES["broken"]["code"]
-        self.assertTrue(self.rodar({"problems": ["DIV001"]}, codigo))
-        self.assertFalse(self.rodar({"problems": ["STR002"]}, codigo))
+    def test_matches_problem_code(self) -> None:
+        status_code = EXAMPLES["broken"]["code"]
+        self.assertTrue(self.match_source({"problems": ["DIV001"]}, status_code))
+        self.assertFalse(self.match_source({"problems": ["STR002"]}, status_code))
 
-    def test_expressao_regular_e_sensivel_a_caixa_quando_pedido(self) -> None:
-        codigo = 'msg db "MALWARE", 0'
-        self.assertTrue(self.rodar({"strings": ["malware"]}, codigo))
-        self.assertFalse(self.rodar({"strings": ["malware"], "case_sensitive": True}, codigo))
+    def test_regex_case_sensitivity(self) -> None:
+        status_code = 'msg db "MALWARE", 0'
+        self.assertTrue(self.match_source({"strings": ["malware"]}, status_code))
+        self.assertFalse(
+            self.match_source({"strings": ["malware"], "case_sensitive": True}, status_code)
+        )
 
     def test_strings_min(self) -> None:
-        codigo = 'a db "alpha", 0'
-        self.assertFalse(self.rodar({"strings": ["alpha", "beta"], "strings_min": 2}, codigo))
-        self.assertTrue(self.rodar({"strings": ["alpha", "beta"], "strings_min": 1}, codigo))
+        status_code = 'a db "alpha", 0'
+        self.assertFalse(
+            self.match_source({"strings": ["alpha", "beta"], "strings_min": 2}, status_code)
+        )
+        self.assertTrue(
+            self.match_source({"strings": ["alpha", "beta"], "strings_min": 1}, status_code)
+        )
 
     def test_require_all(self) -> None:
-        codigo = "mov rax, 41\nsyscall\nmov rax, 42\nsyscall"
+        status_code = "mov rax, 41\nsyscall\nmov rax, 42\nsyscall"
         # socket is used, connect is not: require_all refuses, the default accepts
         self.assertFalse(
-            self.rodar({"syscalls": ["socket", "ptrace"], "require_all": True}, codigo)
+            self.match_source({"syscalls": ["socket", "ptrace"], "require_all": True}, status_code)
         )
-        self.assertTrue(self.rodar({"syscalls": ["socket", "ptrace"]}, codigo))
+        self.assertTrue(self.match_source({"syscalls": ["socket", "ptrace"]}, status_code))
         self.assertTrue(
-            self.rodar({"syscalls": ["socket", "connect"], "require_all": True}, codigo)
+            self.match_source({"syscalls": ["socket", "connect"], "require_all": True}, status_code)
         )
 
-    def test_limiares_numericos(self) -> None:
-        codigo = "nop\nnop\nnop"
-        self.assertTrue(self.rodar({"min_instructions": 3, "strings": ["nop"]}, codigo))
-        self.assertFalse(self.rodar({"min_instructions": 4, "strings": ["nop"]}, codigo))
+    def test_numeric_thresholds(self) -> None:
+        status_code = "nop\nnop\nnop"
+        self.assertTrue(self.match_source({"min_instructions": 3, "strings": ["nop"]}, status_code))
+        self.assertFalse(
+            self.match_source({"min_instructions": 4, "strings": ["nop"]}, status_code)
+        )
 
-    def test_min_blocks_e_min_syscalls(self) -> None:
-        codigo = "cmp rax, 1\nje fim\nmov rax, 60\nsyscall\nfim:\nret"
-        self.assertTrue(self.rodar({"min_blocks": 2, "min_syscalls": 1}, codigo))
-        self.assertFalse(self.rodar({"min_blocks": 9, "min_syscalls": 1}, codigo))
+    def test_block_and_syscall_minimums(self) -> None:
+        status_code = "cmp rax, 1\nje fim\nmov rax, 60\nsyscall\nfim:\nret"
+        self.assertTrue(self.match_source({"min_blocks": 2, "min_syscalls": 1}, status_code))
+        self.assertFalse(self.match_source({"min_blocks": 9, "min_syscalls": 1}, status_code))
 
-    def test_min_strings_conta_declaracoes_de_dados(self) -> None:
-        codigo = 'section .data\na db "x", 0\nb db "y", 0\nsection .text\n_start:'
-        self.assertTrue(self.rodar({"min_strings": 2}, codigo))
-        self.assertFalse(self.rodar({"min_strings": 3}, codigo))
+    def test_min_strings_counts_data_declarations(self) -> None:
+        status_code = 'section .data\na db "x", 0\nb db "y", 0\nsection .text\n_start:'
+        self.assertTrue(self.match_source({"min_strings": 2}, status_code))
+        self.assertFalse(self.match_source({"min_strings": 3}, status_code))
 
-    def test_limiar_invalido(self) -> None:
+    def test_invalid_threshold(self) -> None:
         with self.assertRaises(ConfigError):
-            self.rodar({"min_instructions": "muitas", "strings": ["nop"]}, "nop")
+            self.match_source({"min_instructions": "muitas", "strings": ["nop"]}, "nop")
 
-    def test_regex_invalida(self) -> None:
+    def test_invalid_regex(self) -> None:
         with self.assertRaises(ConfigError):
-            self.rodar({"strings": ["[sem-fechar"]}, "nop")
+            self.match_source({"strings": ["[sem-fechar"]}, "nop")
 
-    def test_any_of_casa_um_dos_grupos(self) -> None:
-        codigo = "mov rax, 41\nsyscall"
-        condicao = {"any_of": [{"apis": ["CreateFileA"]}, {"syscalls": ["socket"]}]}
-        self.assertTrue(self.rodar(condicao, codigo))
+    def test_any_of_matches_one_group(self) -> None:
+        status_code = "mov rax, 41\nsyscall"
+        condition_data = {"any_of": [{"apis": ["CreateFileA"]}, {"syscalls": ["socket"]}]}
+        self.assertTrue(self.match_source(condition_data, status_code))
 
-    def test_any_of_recusa_quando_nenhum_grupo_casa(self) -> None:
-        condicao = {"any_of": [{"apis": ["CreateFileA"]}, {"syscalls": ["ptrace"]}]}
-        self.assertFalse(self.rodar(condicao, "mov rax, 41\nsyscall"))
+    def test_any_of_rejects_when_no_group_matches(self) -> None:
+        condition_data = {"any_of": [{"apis": ["CreateFileA"]}, {"syscalls": ["ptrace"]}]}
+        self.assertFalse(self.match_source(condition_data, "mov rax, 41\nsyscall"))
 
-    def test_any_of_combina_com_and(self) -> None:
-        codigo = "mov rax, 41\nsyscall"
-        condicao = {"mnemonics": ["syscall"], "any_of": [{"syscalls": ["socket"]}]}
-        self.assertTrue(self.rodar(condicao, codigo))
-        condicao = {"mnemonics": ["div"], "any_of": [{"syscalls": ["socket"]}]}
-        self.assertFalse(self.rodar(condicao, codigo))
+    def test_any_of_combines_with_and(self) -> None:
+        status_code = "mov rax, 41\nsyscall"
+        condition_data = {"mnemonics": ["syscall"], "any_of": [{"syscalls": ["socket"]}]}
+        self.assertTrue(self.match_source(condition_data, status_code))
+        condition_data = {"mnemonics": ["div"], "any_of": [{"syscalls": ["socket"]}]}
+        self.assertFalse(self.match_source(condition_data, status_code))
 
-    def test_evidencia_traz_linha(self) -> None:
-        codigo = "nop\nnop\nmov rax, 41\nsyscall"
-        achados = self.rodar({"syscalls": ["socket"]}, codigo)
-        self.assertIn(4, achados[0].lines)
-        self.assertTrue(any("line 4" in e for e in achados[0].evidence))
+    def test_evidence_includes_line(self) -> None:
+        status_code = "nop\nnop\nmov rax, 41\nsyscall"
+        found_matches = self.match_source({"syscalls": ["socket"]}, status_code)
+        self.assertIn(4, found_matches[0].lines)
+        self.assertTrue(any("line 4" in e for e in found_matches[0].evidence))
 
-    def test_linhas_unicas_e_ordenadas(self) -> None:
-        codigo = 'section .data\na db "socket", 0\nsection .text\nmov rax, 41\nsyscall'
-        achados = self.rodar({"strings": ["socket"], "syscalls": ["socket"]}, codigo)
-        self.assertEqual(list(achados[0].lines), sorted(set(achados[0].lines)))
+    def test_unique_sorted_lines(self) -> None:
+        status_code = 'section .data\na db "socket", 0\nsection .text\nmov rax, 41\nsyscall'
+        found_matches = self.match_source(
+            {"strings": ["socket"], "syscalls": ["socket"]}, status_code
+        )
+        self.assertEqual(list(found_matches[0].lines), sorted(set(found_matches[0].lines)))
 
-    def test_ordena_por_severidade(self) -> None:
-        baixa = validate_rule(regra(id="Z", severity="low", match={"strings": ["nop"]}))
-        alta = validate_rule(regra(id="A", severity="high", match={"strings": ["nop"]}))
-        achados = match_rules([baixa, alta], analyze("nop"), text="nop")
-        self.assertEqual([m.rule_id for m in achados], ["A", "Z"])
+    def test_sorts_by_severity(self) -> None:
+        low_rule = validate_rule(rule_item(id="Z", severity="low", match={"strings": ["nop"]}))
+        high_rule = validate_rule(rule_item(id="A", severity="high", match={"strings": ["nop"]}))
+        found_matches = match_rules([low_rule, high_rule], analyze("nop"), text="nop")
+        self.assertEqual([m.rule_id for m in found_matches], ["A", "Z"])
 
-    def test_to_dict_do_match(self) -> None:
-        achados = self.rodar({"strings": ["nop"]}, "nop")
-        dados = achados[0].to_dict()
-        self.assertEqual(dados["evidence"], list(achados[0].evidence))
-        self.assertEqual(dados["lines"], list(achados[0].lines))
+    def test_match_to_dict(self) -> None:
+        found_matches = self.match_source({"strings": ["nop"]}, "nop")
+        values_data = found_matches[0].to_dict()
+        self.assertEqual(values_data["evidence"], list(found_matches[0].evidence))
+        self.assertEqual(values_data["lines"], list(found_matches[0].lines))
 
-    def test_deterministico(self) -> None:
-        codigo = EXAMPLES["suspicious"]["code"]
-        regras = load_rules()
-        primeira = [
-            (m.rule_id, m.evidence) for m in match_rules(regras, analyze(codigo), text=codigo)
+    def test_deterministic(self) -> None:
+        status_code = EXAMPLES["suspicious"]["code"]
+        rule_items = load_rules()
+        first_item = [
+            (m.rule_id, m.evidence)
+            for m in match_rules(rule_items, analyze(status_code), text=status_code)
         ]
-        segunda = [
-            (m.rule_id, m.evidence) for m in match_rules(regras, analyze(codigo), text=codigo)
+        second_result = [
+            (m.rule_id, m.evidence)
+            for m in match_rules(rule_items, analyze(status_code), text=status_code)
         ]
-        self.assertEqual(primeira, segunda)
+        self.assertEqual(first_item, second_result)
 
 
 class TestAPI(unittest.TestCase):
     """The convenience layer used by the CLI, the report and the library."""
 
-    def test_match_text_com_regras_proprias(self) -> None:
-        pronta = validate_rule(regra(id="X", match={"strings": ["beacon"]}))
-        achados = match_text('url db "beacon"', [pronta])
-        self.assertEqual([m.rule_id for m in achados], ["X"])
+    def test_match_text_with_custom_rules(self) -> None:
+        validated = validate_rule(rule_item(id="X", match={"strings": ["beacon"]}))
+        found_matches = match_text('url db "beacon"', [validated])
+        self.assertEqual([m.rule_id for m in found_matches], ["X"])
 
-    def test_match_text_sem_regras(self) -> None:
+    def test_match_text_without_rules(self) -> None:
         self.assertEqual(match_text("nop", []), [])
 
-    def test_match_text_com_pasta_inexistente(self) -> None:
-        self.assertEqual(match_text("nop", directory="/caminho/que/nao/existe"), [])
+    def test_match_text_with_missing_directory(self) -> None:
+        self.assertEqual(match_text("nop", directory="/nonexistent/rule-directory"), [])
 
-    def test_match_text_usa_o_ruleset_padrao(self) -> None:
-        achados = match_text(EXAMPLES["suspicious"]["code"])
-        self.assertTrue(any(m.rule_id.startswith("NET") for m in achados))
+    def test_match_text_uses_default_rules(self) -> None:
+        found_matches = match_text(EXAMPLES["suspicious"]["code"])
+        self.assertTrue(any(m.rule_id.startswith("NET") for m in found_matches))
 
     def test_summary(self) -> None:
         self.assertEqual(summary([]), "0 rule(s) matched")
-        alta = RuleMatch("A", "a", "high")
-        baixa = RuleMatch("B", "b", "low")
-        self.assertEqual(summary([alta, baixa]), "2 rule(s) matched: 1 high, 1 low")
+        high_rule = RuleMatch("A", "a", "high")
+        low_rule = RuleMatch("B", "b", "low")
+        self.assertEqual(summary([high_rule, low_rule]), "2 rule(s) matched: 1 high, 1 low")
 
     def test_severity_rank(self) -> None:
         self.assertLess(severity_rank("high"), severity_rank("medium"))
@@ -392,85 +406,87 @@ class TestAPI(unittest.TestCase):
         self.assertIn("mov", mnemonics)
         self.assertIn("syscall", mnemonics)
 
-    def test_problemas_podem_ser_passados_prontos(self) -> None:
-        codigo = EXAMPLES["broken"]["code"]
-        analise = analyze(codigo)
-        problemas = validate(analise)
-        pronta = validate_rule(regra(id="P", match={"problems": ["DIV001"]}))
-        self.assertTrue(match_rules([pronta], analise, problems=problemas, text=codigo))
+    def test_precomputed_problems(self) -> None:
+        status_code = EXAMPLES["broken"]["code"]
+        analysis_result = analyze(status_code)
+        problems = validate(analysis_result)
+        validated = validate_rule(rule_item(id="P", match={"problems": ["DIV001"]}))
+        self.assertTrue(
+            match_rules([validated], analysis_result, problems=problems, text=status_code)
+        )
 
-    def test_rule_to_dict_redondo(self) -> None:
-        dados = validate_rule(regra()).to_dict()
+    def test_rule_to_dict_roundtrip(self) -> None:
+        values_data = validate_rule(rule_item()).to_dict()
         self.assertEqual(
-            set(dados),
+            set(values_data),
             {"id", "name", "severity", "description", "tags", "mitre", "match", "source"},
         )
         self.assertIsInstance(
-            Rule(**{**{k: v for k, v in dados.items() if k != "tags"}}, tags=()), Rule
+            Rule(**{**{k: v for k, v in values_data.items() if k != "tags"}}, tags=()), Rule
         )
 
-    def test_objeto_rule_aceita_campos_minimos(self) -> None:
+    def test_rule_accepts_minimal_fields(self) -> None:
         self.assertEqual(Rule("A", "a", "low").severity, "low")
 
 
-class TestRulesetEmpacotado(unittest.TestCase):
+class TestPackagedRules(unittest.TestCase):
     """The rules that ship with the package must be usable and honest."""
 
     def setUp(self) -> None:
-        self.regras = load_rules()
+        self.rule_items = load_rules()
 
-    def test_carrega_o_ruleset_do_pacote(self) -> None:
+    def test_loads_packaged_rules(self) -> None:
         self.assertTrue(os.path.isdir(default_rules_dir()))
-        self.assertGreaterEqual(len(self.regras), 20)
+        self.assertGreaterEqual(len(self.rule_items), 20)
 
-    def test_ids_unicos_e_severidade_valida(self) -> None:
-        ids = [r.id for r in self.regras]
+    def test_unique_ids_valid_severity(self) -> None:
+        ids = [r.id for r in self.rule_items]
         self.assertEqual(len(ids), len(set(ids)))
-        for regra_pronta in self.regras:
-            with self.subTest(regra=regra_pronta.id):
-                self.assertIn(regra_pronta.severity, SEVERITIES)
+        for validated_rule in self.rule_items:
+            with self.subTest(rule_item=validated_rule.id):
+                self.assertIn(validated_rule.severity, SEVERITIES)
 
-    def test_toda_regra_explica_o_que_faz(self) -> None:
-        for regra_pronta in self.regras:
-            with self.subTest(regra=regra_pronta.id):
-                self.assertGreater(len(regra_pronta.description), 40)
-                self.assertTrue(regra_pronta.tags)
-                self.assertTrue(regra_pronta.source.endswith(".json"))
+    def test_rules_have_descriptions(self) -> None:
+        for validated_rule in self.rule_items:
+            with self.subTest(rule_item=validated_rule.id):
+                self.assertGreater(len(validated_rule.description), 40)
+                self.assertTrue(validated_rule.tags)
+                self.assertTrue(validated_rule.source.endswith(".json"))
 
-    def test_mitre_bem_formado(self) -> None:
-        for regra_pronta in self.regras:
-            for tecnica in regra_pronta.mitre:
-                with self.subTest(regra=regra_pronta.id, tecnica=tecnica):
-                    self.assertRegex(tecnica, r"^T\d{4}(\.\d{3})?$")
+    def test_mitre_identifiers(self) -> None:
+        for validated_rule in self.rule_items:
+            for technique in validated_rule.mitre:
+                with self.subTest(rule_item=validated_rule.id, technique=technique):
+                    self.assertRegex(technique, r"^T\d{4}(\.\d{3})?$")
 
-    def test_mnemonics_das_regras_existem(self) -> None:
-        catalogo = set(known_mnemonics())
-        for regra_pronta in self.regras:
-            for mnemonic in regra_pronta.match.get("mnemonics", []):
-                with self.subTest(regra=regra_pronta.id, mnemonic=mnemonic):
-                    self.assertIn(mnemonic, catalogo)
+    def test_rule_mnemonics_exist(self) -> None:
+        catalog = set(known_mnemonics())
+        for validated_rule in self.rule_items:
+            for mnemonic in validated_rule.match.get("mnemonics", []):
+                with self.subTest(rule_item=validated_rule.id, mnemonic=mnemonic):
+                    self.assertIn(mnemonic, catalog)
 
-    def test_exemplos_limpos_nao_disparam(self) -> None:
-        for nome in ("linux-hello", "linux-loop", "windows-hello", "bubble", "gcc-att"):
-            with self.subTest(exemplo=nome):
-                self.assertEqual(match_text(EXAMPLES[nome]["code"], self.regras), [])
+    def test_clean_examples_do_not_match(self) -> None:
+        for item_name in ("linux-hello", "linux-loop", "windows-hello", "bubble", "gcc-att"):
+            with self.subTest(sample_example=item_name):
+                self.assertEqual(match_text(EXAMPLES[item_name]["code"], self.rule_items), [])
 
-    def test_exemplo_suspeito_dispara_rede_e_impacto(self) -> None:
-        achados = match_text(EXAMPLES["suspicious"]["code"], self.regras)
-        ids = {m.rule_id for m in achados}
+    def test_suspicious_example_matches_network_and_impact(self) -> None:
+        found_matches = match_text(EXAMPLES["suspicious"]["code"], self.rule_items)
+        ids = {m.rule_id for m in found_matches}
         self.assertIn("NET001", ids)
         self.assertIn("NET002", ids)
-        severidades = {m.severity for m in achados}
-        self.assertIn("high", severidades)
+        severities = {m.severity for m in found_matches}
+        self.assertIn("high", severities)
 
-    def test_comentario_nao_conta_como_string(self) -> None:
-        codigo = "; socket connect /etc/passwd\nnop"
-        self.assertEqual(match_text(codigo, self.regras), [])
+    def test_comments_do_not_count_as_strings(self) -> None:
+        status_code = "; socket connect /etc/passwd\nnop"
+        self.assertEqual(match_text(status_code, self.rule_items), [])
 
-    def test_json_do_ruleset_tem_schema(self) -> None:
-        for caminho in rule_files():
-            with open(caminho, encoding="utf-8") as arquivo:
-                self.assertEqual(json.load(arquivo)["schema"], RULES_SCHEMA)
+    def test_rules_json_has_schema(self) -> None:
+        for file_path in rule_files():
+            with open(file_path, encoding="utf-8") as source_file:
+                self.assertEqual(json.load(source_file)["schema"], RULES_SCHEMA)
 
 
 if __name__ == "__main__":

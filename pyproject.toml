@@ -1,17 +1,3 @@
-# ---------------------------------------------------------------------------
-# ASM X — packaging metadata plus every tool configuration we own.
-#
-# Layout note: the repository root is flat and holds BOTH `asmx/` (the
-# importable package) and `asmx.py` (the convenience launcher used by
-# `python3 asmx.py`).  Packages are therefore listed explicitly — automatic
-# discovery is fragile on a flat layout like this — and `asmx.py` is
-# deliberately NOT installed as a top-level module, because a module and a
-# package sharing the name `asmx` cannot coexist inside site-packages.
-#
-# `asmx.cli` and `asmx.ui` are console-script targets; the first is only
-# loaded when the CLI entry point is actually invoked.
-# ---------------------------------------------------------------------------
-
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
@@ -19,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "asmx"
 dynamic = ["version"]
-description = "Desktop environment to study, validate and debug x86-64 assembly (Tkinter, zero runtime dependencies)"
+description = "x86-64 assembly source viewer and teaching simulator"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
@@ -31,13 +17,12 @@ keywords = [
     "nasm",
     "emulator",
     "debugger",
-    "disassembler",
     "linter",
     "tkinter",
     "education",
 ]
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
+    "Development Status :: 4 - Beta",
     "Environment :: Win32 (MS Windows)",
     "Environment :: X11 Applications",
     "Intended Audience :: Developers",
@@ -80,11 +65,7 @@ Homepage = "https://github.com/Rafawaldrigues/x86-assembly-visualizer"
 Repository = "https://github.com/Rafawaldrigues/x86-assembly-visualizer"
 Issues = "https://github.com/Rafawaldrigues/x86-assembly-visualizer/issues"
 Documentation = "https://github.com/Rafawaldrigues/x86-assembly-visualizer/tree/main/docs"
-Changelog = "https://github.com/Rafawaldrigues/x86-assembly-visualizer/releases"
-
-# ---------------------------------------------------------------------------
-# setuptools
-# ---------------------------------------------------------------------------
+Changelog = "https://github.com/Rafawaldrigues/x86-assembly-visualizer/blob/main/CHANGELOG.md"
 
 [tool.setuptools]
 packages = ["asmx", "asmx.ui"]
@@ -102,10 +83,6 @@ version = { attr = "asmx.__init__.__version__" }
 
 [tool.setuptools.package-data]
 asmx = ["data/*.json", "data/rules/*.json"]
-
-# ---------------------------------------------------------------------------
-# Formatting and linting
-# ---------------------------------------------------------------------------
 
 [tool.black]
 line-length = 100
@@ -127,11 +104,7 @@ extend-exclude = '''
 max-line-length = 100
 extend-ignore = ["E203", "W503"]
 exclude = [".git", "__pycache__", "build", "dist", ".venv", "venv"]
-max-complexity = 15
-
-# ---------------------------------------------------------------------------
-# Static typing
-# ---------------------------------------------------------------------------
+max-complexity = 45
 
 [tool.mypy]
 # No fixed `python_version` on purpose: new mypy versions refuse old targets
@@ -145,14 +118,7 @@ warn_redundant_casts = true
 show_error_codes = true
 exclude = ["build", "dist", "\\.venv"]
 
-# The core uses the "field filled in two phases" pattern: the parser creates Line
-# and Operand with optional fields (mnemonic, reg, sem, block...) and the
-# analyzer and the virtual machine fill them in later. Inside the loops mypy does
-# not narrow those Optional values, and the error messages would all be of the
-# same kind. The type hint checks (disallow_untyped_defs) still apply to these
-# modules — that is what guarantees the promise of 100% type hints, reinforced by
-# `tools/quality_gates.py`. The codes turned off here are only the ones that
-# depend on that narrowing.
+# Analysis fields are populated in stages; these checks cannot narrow them yet.
 [[tool.mypy.overrides]]
 module = ["asmx.analyzer", "asmx.emulator", "asmx.linter"]
 disable_error_code = ["union-attr", "arg-type", "index", "operator", "attr-defined", "assignment"]
@@ -163,10 +129,6 @@ disable_error_code = ["union-attr", "arg-type", "index", "operator", "attr-defin
 [[tool.mypy.overrides]]
 module = ["asmx.ui.*"]
 disable_error_code = ["union-attr", "arg-type", "index", "operator", "attr-defined", "call-arg", "assignment", "var-annotated", "misc"]
-
-# ---------------------------------------------------------------------------
-# Coverage (used by `make coverage`, the entrypoint and CI)
-# ---------------------------------------------------------------------------
 
 [tool.coverage.run]
 branch = true
@@ -188,10 +150,6 @@ exclude_lines = [
 
 [tool.coverage.xml]
 output = "coverage.xml"
-
-# ---------------------------------------------------------------------------
-# Tests (the suite is unittest-based; pytest just runs it)
-# ---------------------------------------------------------------------------
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

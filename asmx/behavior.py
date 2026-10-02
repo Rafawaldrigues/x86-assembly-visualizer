@@ -1164,17 +1164,17 @@ def _indexed_memory(instrs: Sequence[Line], tag: str) -> Optional[Line]:
     return None
 
 
-def _code_text(linha: Line) -> str:
+def _code_text(source_line: Line) -> str:
     """Returns the source line without the comment.
 
     Args:
-        linha: Source line.
+        source_line: Source line.
 
     Returns:
         The code stretch, already trimmed; an empty string when nothing is left.
     """
-    raw = linha.raw or ""
-    comment = linha.comment or ""
+    raw = source_line.raw or ""
+    comment = source_line.comment or ""
     code = raw[: len(raw) - len(comment)] if comment else raw
     return code.strip()
 
@@ -1617,13 +1617,13 @@ def _scan_text(ctx: _Context, collector: _Collector) -> None:
         ctx: Data derived from the analysis.
         collector: Collector where the evidence enters.
     """
-    for linha in ctx.analysis.program.lines:
-        code = _code_text(linha)
+    for source_line in ctx.analysis.program.lines:
+        code = _code_text(source_line)
         if not code:
             continue
-        _scan_text_network(code, linha.n, collector)
-        _scan_text_paths(code, linha.n, collector)
-        _scan_text_persistence(code, linha.n, collector)
+        _scan_text_network(code, source_line.n, collector)
+        _scan_text_paths(code, source_line.n, collector)
+        _scan_text_persistence(code, source_line.n, collector)
 
 
 def _scan_problems(ctx: _Context, problems: Sequence[Problem], collector: _Collector) -> None:

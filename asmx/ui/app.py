@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Tuple, Union
 
 from .. import __version__
 from ..analyzer import Analysis, analyze, callers_of
+from ..config import SandboxConfig
 from ..emulator import Machine, hexs, to_signed
 from ..examples import EXAMPLES
 from ..isa import CATEGORIES, FLAG_DOC, ISA, REGS64, REG_DOC, REG_INFO
@@ -36,13 +37,17 @@ SEV_ERROR = "error"
 class AsmXApp(tk.Tk):
     """Main window: editor, structure, problems, machine, docs and tests."""
 
-    def __init__(self, project: Optional[Project] = None) -> None:
+    def __init__(
+        self, project: Optional[Project] = None, config: Optional[SandboxConfig] = None
+    ) -> None:
         """Build the window, load the project and run the first analysis.
 
         Args:
             project: Project to open; None creates a new project with the
                 "linux-hello" sample.
+            config: Execution limits; omitted values load from files and environment.
         """
+        self.sandbox_config = config or SandboxConfig.load()
         super().__init__()
         self.title("ASM X")
         self.geometry("1360x820")
@@ -82,7 +87,7 @@ class AsmXApp(tk.Tk):
             bg=theme.PANEL,
             fg=theme.FG,
             activebackground=theme.SEL,
-            activeforeground=theme.WHITE,
+            activeforeground="#FFFFFF",
             borderwidth=0,
         )
 
@@ -98,7 +103,7 @@ class AsmXApp(tk.Tk):
                 bg=theme.PANEL,
                 fg=theme.FG,
                 activebackground=theme.SEL,
-                activeforeground=theme.WHITE,
+                activeforeground="#FFFFFF",
             )
 
         file_menu = menu()
@@ -177,7 +182,7 @@ class AsmXApp(tk.Tk):
         top = ttk.Frame(self, padding=(8, 5))
         top.pack(fill="x")
         self.branch_var: tk.StringVar = tk.StringVar(value=self.project.active)
-        ttk.Label(top, text="branch").pack(side="left")
+        ttk.Label(top, text="Branch:").pack(side="left")
         self.branch_box: ttk.Combobox = ttk.Combobox(
             top, textvariable=self.branch_var, width=22, state="readonly"
         )
@@ -202,17 +207,17 @@ class AsmXApp(tk.Tk):
         main_pane.pack(fill="both", expand=True)
 
         # ------------------------------------------------------- column 1 ----
-        left = ttk.Frame(main_pane, width=330)
+        left = ttk.Frame(main_pane, width=240)
         left.pack_propagate(False)
         main_pane.add(left, weight=0)
         ttk.Label(left, text="Code structure", style="Head.TLabel", padding=(8, 6)).pack(fill="x")
         self.tree: ttk.Treeview = ttk.Treeview(
             left, columns=("info",), show="tree headings", height=20
         )
-        self.tree.heading("#0", text="program")
-        self.tree.heading("info", text="what it does")
-        self.tree.column("#0", width=140, stretch=True, minwidth=90)
-        self.tree.column("info", width=175, stretch=True, minwidth=90)
+        self.tree.heading("#0", text="Symbol")
+        self.tree.heading("info", text="Description")
+        self.tree.column("#0", width=100, stretch=True, minwidth=90)
+        self.tree.column("info", width=120, stretch=True, minwidth=90)
         vs = ttk.Scrollbar(left, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=vs.set)
         vs.pack(side="right", fill="y")
@@ -275,7 +280,7 @@ class AsmXApp(tk.Tk):
         self.output_text: tk.Text = tk.Text(
             output_tab,
             bg=theme.BG,
-            fg=theme.LOGIC,
+            fg=theme.FG,
             height=7,
             font=theme.mono(10),
             borderwidth=0,
@@ -346,7 +351,7 @@ class AsmXApp(tk.Tk):
         self.trace_tree.pack(fill="both", expand=True)
 
         # ------------------------------------------------------- column 3 ----
-        right_box = ttk.Frame(main_pane, width=430)
+        right_box = ttk.Frame(main_pane, width=390)
         right_box.pack_propagate(False)
         main_pane.add(right_box, weight=0)
         right_notebook = ttk.Notebook(right_box)
@@ -354,11 +359,11 @@ class AsmXApp(tk.Tk):
         self.right: ttk.Notebook = right_notebook
 
         machine_tab = ttk.Frame(right_notebook)
-        right_notebook.add(machine_tab, text="Machine")
+        right_notebook.add(machine_tab, text="Registers")
         self._build_inspector(machine_tab)
 
         docs_tab = ttk.Frame(right_notebook)
-        right_notebook.add(docs_tab, text="Docs")
+        right_notebook.add(docs_tab, text="Reference")
         self._build_docs(docs_tab)
 
         notes_tab = ttk.Frame(right_notebook)
@@ -381,9 +386,9 @@ class AsmXApp(tk.Tk):
         self.reg_tree: ttk.Treeview = ttk.Treeview(
             parent, columns=("hex", "dec"), show="tree headings", height=16
         )
-        self.reg_tree.heading("#0", text="reg")
-        self.reg_tree.heading("hex", text="hexadecimal")
-        self.reg_tree.heading("dec", text="decimal")
+        self.reg_tree.heading("#0", text="Reg.")
+        self.reg_tree.heading("hex", text="Hexadecimal")
+        self.reg_tree.heading("dec", text="Decimal")
         self.reg_tree.column("#0", width=48)
         self.reg_tree.column("hex", width=150, anchor="e")
         self.reg_tree.column("dec", width=140, anchor="e")
@@ -397,15 +402,17 @@ class AsmXApp(tk.Tk):
         )
         self.flags_label.pack(fill="x")
 
-        ttk.Label(parent, text="Stack and variables", style="Head.TLabel", padding=(8, 2)).pack(
+        ttk.Label(parent, text="Data segment / Stack", style="Head.TLabel", padding=(8, 2)).pack(
             fill="x"
         )
+        self.memory_label = ttk.Label(parent, text="", style="Dim.TLabel", padding=(8, 2))
+        self.memory_label.pack(fill="x")
         self.mem_tree: ttk.Treeview = ttk.Treeview(
             parent, columns=("value", "note"), show="tree headings", height=10
         )
-        self.mem_tree.heading("#0", text="where")
-        self.mem_tree.heading("value", text="contents")
-        self.mem_tree.heading("note", text="note")
+        self.mem_tree.heading("#0", text="Location")
+        self.mem_tree.heading("value", text="Value")
+        self.mem_tree.heading("note", text="Text")
         self.mem_tree.column("#0", width=95)
         self.mem_tree.column("value", width=180)
         self.mem_tree.column("note", width=120)
@@ -446,7 +453,7 @@ class AsmXApp(tk.Tk):
             pady=6,
         )
         self.doc_text.pack(fill="both", expand=True, padx=6, pady=6)
-        self.doc_text.tag_configure("titulo", foreground=theme.WHITE, font=theme.ui(12, "bold"))
+        self.doc_text.tag_configure("title", foreground=theme.WHITE, font=theme.ui(12, "bold"))
         self.doc_text.tag_configure("sub", foreground=theme.ACCENT, font=theme.ui(10, "bold"))
         self.doc_text.tag_configure("code", foreground=theme.DATA, font=theme.mono(10))
         self.doc_text.tag_configure("dim", foreground=theme.DIM)
@@ -475,7 +482,7 @@ class AsmXApp(tk.Tk):
             parent, columns=("text",), show="tree headings", height=14
         )
         self.note_tree.heading("#0", text="line")
-        self.note_tree.heading("text", text="note")
+        self.note_tree.heading("text", text="Text")
         self.note_tree.column("#0", width=60)
         self.note_tree.column("text", width=300)
         self.note_tree.pack(fill="both", expand=True, padx=6)
@@ -695,7 +702,7 @@ class AsmXApp(tk.Tk):
         t.insert("end", line.text + "\n\n", "code")
         if line.kind == "label":
             callers = callers_of(self.analysis, line.label)
-            t.insert("end", "Label %s\n" % line.label, "titulo")
+            t.insert("end", "Label %s\n" % line.label, "title")
             t.insert(
                 "end",
                 "It is a name for this address. What leads here: %s.\n\n"
@@ -710,7 +717,7 @@ class AsmXApp(tk.Tk):
                 )
         elif line.kind == "data":
             if line.reserve:
-                t.insert("end", "Space reservation\n", "titulo")
+                t.insert("end", "Space reservation\n", "title")
                 t.insert(
                     "end",
                     "%s reserves %s slot(s) of %d byte(s) with no initial value. "
@@ -722,20 +729,20 @@ class AsmXApp(tk.Tk):
                     ),
                 )
             elif line.directive == "equ":
-                t.insert("end", "Assembler constant\n", "titulo")
+                t.insert("end", "Assembler constant\n", "title")
                 t.insert(
                     "end",
                     "It takes no memory: the value is substituted at assembly time.\n",
                 )
             else:
-                t.insert("end", "Initialized data\n", "titulo")
+                t.insert("end", "Initialized data\n", "title")
                 t.insert(
                     "end",
                     "%s writes the values straight into the executable, %d byte(s) per item.\n"
                     % (line.directive.upper(), line.unit),
                 )
         else:
-            t.insert("end", "Assembler directive\n", "titulo")
+            t.insert("end", "Assembler directive\n", "title")
             t.insert(
                 "end",
                 "It instructs the assembly tool; it does not become a CPU instruction.\n",
@@ -1026,10 +1033,10 @@ class AsmXApp(tk.Tk):
         """Create a new machine from the current analysis."""
         if not self.analysis:
             return
-        self.machine = Machine(self.analysis)
+        self.machine = Machine(self.analysis, max_memory=self.sandbox_config.max_memory)
         self.last_regs = {}
         self.refresh_machine()
-        self.set_status("machine reset")
+        self.set_status(self.machine.issues[-1] if self.machine.memory_fault else "machine reset")
 
     def _ensure_machine(self) -> Optional[Machine]:
         """Return the machine of the current analysis, resetting it if the code changed.
@@ -1058,10 +1065,16 @@ class AsmXApp(tk.Tk):
             self.reset_machine()
             m = self.machine
         self.last_regs = dict(m.regs)
-        m.run(breakpoints=set(self.editor.breakpoints))
+        m.run(
+            breakpoints=set(self.editor.breakpoints),
+            limit=self.sandbox_config.max_steps,
+            timeout=self.sandbox_config.timeout,
+        )
         self.refresh_machine()
         if m.halted:
-            self.set_status("run finished with code %s" % m.exit_code)
+            self.set_status(
+                m.issues[-1] if m.memory_fault else "run finished with code %s" % m.exit_code
+            )
         else:
             self.set_status(
                 "stopped at the breakpoint on line %s" % (m.current.n if m.current else "?")
@@ -1098,7 +1111,9 @@ class AsmXApp(tk.Tk):
         ).show()
         if not choice or choice.strip() not in self.analysis.label_at:
             return
-        self.machine = Machine(self.analysis, entry=choice.strip())
+        self.machine = Machine(
+            self.analysis, entry=choice.strip(), max_memory=self.sandbox_config.max_memory
+        )
         self.last_regs = {}
         self.refresh_machine()
         self.right.select(0)
@@ -1116,11 +1131,16 @@ class AsmXApp(tk.Tk):
                 text += " with code %d" % m.exit_code
             self.editor.set_exec_line(None)
         else:
-            text = "next: line %d — %s" % (current.n, current.text) if current else "no instruction"
+            instruction = (
+                (current.mnemonic + " " + ", ".join(op.text for op in current.operands))
+                if current
+                else ""
+            )
+            text = "Next: line %d - %s" % (current.n, instruction) if current else "No instruction"
             self.editor.set_exec_line(current.n if current else None)
         text += " · %d steps" % m.steps
         if m.issues:
-            text += "\n⚠ " + m.issues[-1]
+            text += "\n" + m.issues[-1]
         self.exec_label.configure(
             text=text, foreground=theme.SEV_COLOR["error"] if m.issues else theme.DIM
         )
@@ -1144,6 +1164,15 @@ class AsmXApp(tk.Tk):
             foreground=theme.CMP,
         )
 
+        usage = m.memory.snapshot()
+        self.memory_label.configure(
+            text="Memory: %s B / %s MiB   Peak: %s B"
+            % (
+                format(usage["allocated_bytes"], ","),
+                format(usage["limit_bytes"] // (1024 * 1024), ","),
+                format(usage["peak_bytes"], ","),
+            )
+        )
         self.mem_tree.delete(*self.mem_tree.get_children())
         stack_node = self.mem_tree.insert(
             "", "end", text="stack", values=("", "top first"), open=True
@@ -1155,7 +1184,9 @@ class AsmXApp(tk.Tk):
             if address + i * 8 >= STACK_TOP:
                 break
             addr = address + i * 8
-            v = m.read_mem(addr, 8)
+            if addr < m.stack.start:
+                break
+            v = sum(m.memory.peek(addr + j) << (8 * j) for j in range(8))
             note = "RSP" if i == 0 else ("RBP" if addr == m.regs["rbp"] else "")
             if RET_MAGIC <= v < RET_MAGIC + 1000000:
                 note = (note + " " if note else "") + "return address"
@@ -1176,10 +1207,11 @@ class AsmXApp(tk.Tk):
                         values=(str(s.equ), "assembler constant"),
                     )
                     continue
-                n = min(s.size or 8, 12)
-                raw = " ".join("%02x" % m.rd8(s.addr + i) for i in range(n))
+                n = min(s.size, 12)
+                raw = " ".join("%02x" % m.memory.peek(s.addr + i) for i in range(n))
                 ascii_text = "".join(
-                    chr(b) if 32 <= b < 127 else "." for b in (m.rd8(s.addr + i) for i in range(n))
+                    chr(b) if 32 <= b < 127 else "."
+                    for b in (m.memory.peek(s.addr + i) for i in range(n))
                 )
                 self.mem_tree.insert(data_node, "end", text=symbol_name, values=(raw, ascii_text))
 
@@ -1313,7 +1345,7 @@ class AsmXApp(tk.Tk):
             self.set_status("select a scenario in the list")
             return
         self.project.set_code(self.editor.get_code())
-        r = run_scenario(self.project.code, s)
+        r = run_scenario(self.project.code, s, max_memory=self.sandbox_config.max_memory)
         self.results = [x for x in self.results if x.scenario != s.name] + [r]
         self.refresh_scenarios()
         self.set_status("%s: %s" % (s.name, "passed" if r.passed else r.reason))
@@ -1326,7 +1358,9 @@ class AsmXApp(tk.Tk):
             self.set_status("no scenarios in this branch — create one in Tests › New scenario")
             return
         self.project.set_code(self.editor.get_code())
-        self.results = run_all_scenarios(self.project.code, scenarios)
+        self.results = run_all_scenarios(
+            self.project.code, scenarios, max_memory=self.sandbox_config.max_memory
+        )
         self.refresh_scenarios()
         self.bottom.select(2)
         passed = sum(1 for r in self.results if r.passed)
@@ -1420,7 +1454,7 @@ class AsmXApp(tk.Tk):
             t.insert("end", "No documentation for %s.\n" % mnemonic, "dim")
         else:
             cat = CATEGORIES.get(info["cat"], {"label": info["cat"]})
-            t.insert("end", (mnemonic or "").upper() + "\n", "titulo")
+            t.insert("end", (mnemonic or "").upper() + "\n", "title")
             t.insert("end", "%s · %s\n\n" % (info["name"], cat["label"]), "dim")
             t.insert("end", "Syntax\n", "sub")
             t.insert("end", info["syntax"] + "\n\n", "code")
@@ -1460,7 +1494,12 @@ class AsmXApp(tk.Tk):
             return
         try:
             data = collect(
-                self.project.code, emulate=True, command="asmx (interface) — %s" % self.project.name
+                self.project.code,
+                emulate=True,
+                max_memory=self.sandbox_config.max_memory,
+                limit=self.sandbox_config.max_steps,
+                timeout=self.sandbox_config.timeout,
+                command="asmx (interface) — %s" % self.project.name,
             )
             written = write_report(data, path)
         except Exception as exc:  # noqa: BLE001
@@ -1521,7 +1560,7 @@ class AsmXApp(tk.Tk):
         self.status.configure(text="   ·   ".join(parts))
 
 
-def main() -> None:
+def main(config: Optional[SandboxConfig] = None) -> None:
     """Open the main window and enter the Tkinter event loop."""
-    app = AsmXApp()
+    app = AsmXApp(config=config)
     app.mainloop()

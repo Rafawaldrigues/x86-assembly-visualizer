@@ -17,42 +17,42 @@ from asmx.emulator import (
 from asmx.errors import AnalysisTimeoutError
 
 
-class TestDesviosCondicionais(unittest.TestCase):
+class TestConditionalBranches(unittest.TestCase):
     """Signed comparisons must really compare (jl/jle regression)."""
 
-    def roda(self, fonte: str) -> object:
+    def execute_source(self, source_text: str) -> object:
         """Runs a source and returns the machine."""
-        maquina = Machine(analyze(fonte))
-        maquina.run(limit=200)
-        return maquina
+        machine_instance = Machine(analyze(source_text))
+        machine_instance.run(limit=200)
+        return machine_instance
 
-    def test_jl_desvia_quando_menor(self) -> None:
-        fonte = (
+    def test_jl_jumps_when_less(self) -> None:
+        source_text = (
             "mov rax, 5\nmov rbx, 9\ncmp rax, rbx\njl smaller\n"
             "mov rdi, 1\njmp done\nsmaller:\nmov rdi, 2\ndone:\nmov rax, 60\nsyscall"
         )
-        self.assertEqual(self.roda(fonte).regs["rdi"], 2)
+        self.assertEqual(self.execute_source(source_text).regs["rdi"], 2)
 
-    def test_jl_nao_desvia_quando_maior(self) -> None:
-        fonte = (
+    def test_jl_does_not_jump_when_greater(self) -> None:
+        source_text = (
             "mov rax, 9\nmov rbx, 5\ncmp rax, rbx\njl smaller\n"
             "mov rdi, 1\njmp done\nsmaller:\nmov rdi, 2\ndone:\nmov rax, 60\nsyscall"
         )
-        self.assertEqual(self.roda(fonte).regs["rdi"], 1)
+        self.assertEqual(self.execute_source(source_text).regs["rdi"], 1)
 
-    def test_jle_desvia_na_igualdade(self) -> None:
-        fonte = (
+    def test_jle_jumps_when_equal(self) -> None:
+        source_text = (
             "mov rax, 7\nmov rbx, 7\ncmp rax, rbx\njle smaller\n"
             "mov rdi, 1\njmp done\nsmaller:\nmov rdi, 2\ndone:\nmov rax, 60\nsyscall"
         )
-        self.assertEqual(self.roda(fonte).regs["rdi"], 2)
+        self.assertEqual(self.execute_source(source_text).regs["rdi"], 2)
 
-    def test_jg_e_jge_continuam_certos(self) -> None:
-        fonte = (
+    def test_jg_and_jge_conditions(self) -> None:
+        source_text = (
             "mov rax, 9\nmov rbx, 5\ncmp rax, rbx\njg bigger\n"
             "mov rdi, 1\njmp done\nbigger:\nmov rdi, 2\ndone:\nmov rax, 60\nsyscall"
         )
-        self.assertEqual(self.roda(fonte).regs["rdi"], 2)
+        self.assertEqual(self.execute_source(source_text).regs["rdi"], 2)
 
 
 class FakeClock:
@@ -337,12 +337,14 @@ class TestMemoryAndRegisters(unittest.TestCase):
 
     def test_write_and_read_8_bytes(self) -> None:
         machine = Machine(analyze("mov rax, 1"))
+        machine.memory.allocate(0x1000, 8, "test")
         machine.write_mem(0x1000, 8, 0x1122334455667788)
         self.assertEqual(machine.read_mem(0x1000, 8), 0x1122334455667788)
         self.assertEqual(machine.rd8(0x1000), 0x88)
 
     def test_zero_terminated_string(self) -> None:
         machine = Machine(analyze("mov rax, 1"))
+        machine.memory.allocate(0x2000, 4, "test")
         for i, letter in enumerate("abc\0"):
             machine.wr8(0x2000 + i, ord(letter))
         self.assertEqual(machine.read_cstring(0x2000), "abc")
@@ -357,7 +359,7 @@ class TestMemoryAndRegisters(unittest.TestCase):
         self.assertIsNotNone(run(code).halted)
 
     def test_read_of_a_pointer_never_written(self) -> None:
-        machine = run("mov rax, [rbx]")
+        machine = run("sub rsp, 8\nmov rax, [rsp]")
         self.assertTrue(any("never written" in issue for issue in machine.issues))
 
     def test_default_operand_size(self) -> None:

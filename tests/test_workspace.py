@@ -16,14 +16,14 @@ class TestProject(unittest.TestCase):
     def setUp(self) -> None:
         self.p = Project.new(code=HELLO, name="test")
 
-    def test_new_project_has_a_principal_branch(self) -> None:
-        self.assertEqual(self.p.active, "principal")
+    def test_new_project_has_a_main_branch(self) -> None:
+        self.assertEqual(self.p.active, "main")
         self.assertEqual(self.p.code, HELLO)
 
     def test_fork_copies_the_code(self) -> None:
         b = self.p.fork("experiment")
         self.assertEqual(b.code, HELLO)
-        self.assertEqual(b.parent, "principal")
+        self.assertEqual(b.parent, "main")
         self.assertIn("experiment", self.p.branches)
 
     def test_branches_are_independent(self) -> None:
@@ -31,7 +31,7 @@ class TestProject(unittest.TestCase):
         self.p.switch("experiment")
         self.p.set_code("mov rax, 1")
         self.assertEqual(self.p.code, "mov rax, 1")
-        self.p.switch("principal")
+        self.p.switch("main")
         self.assertEqual(self.p.code, HELLO)
 
     def test_fork_with_a_repeated_name_fails(self) -> None:
@@ -45,17 +45,17 @@ class TestProject(unittest.TestCase):
 
     def test_does_not_delete_the_last_branch(self) -> None:
         with self.assertRaises(ValueError):
-            self.p.delete_branch("principal")
+            self.p.delete_branch("main")
 
     def test_deleting_the_active_branch_switches_to_another_one(self) -> None:
         self.p.fork("b2")
         self.p.switch("b2")
         self.p.delete_branch("b2")
-        self.assertEqual(self.p.active, "principal")
+        self.assertEqual(self.p.active, "main")
 
     def test_renaming_a_branch_keeps_the_children(self) -> None:
         self.p.fork("child")
-        self.p.rename_branch("principal", "base")
+        self.p.rename_branch("main", "base")
         self.assertEqual(self.p.branches["child"].parent, "base")
         self.assertEqual(self.p.active, "base")
 
@@ -63,7 +63,7 @@ class TestProject(unittest.TestCase):
         self.p.fork("alt")
         self.p.switch("alt")
         self.p.set_code(HELLO.replace("Hello, world!", "Another text"))
-        d = self.p.diff("principal", "alt")
+        d = self.p.diff("main", "alt")
         self.assertIn("Another text", d)
         self.assertIn("-", d)
 
@@ -74,13 +74,13 @@ class TestProject(unittest.TestCase):
         self.assertEqual(self.p.note(3), "")
 
     def test_note_does_not_leak_to_a_new_branch_after_the_fork(self) -> None:
-        self.p.set_note(1, "note from principal")
+        self.p.set_note(1, "note from main")
         self.p.fork("b")
         self.p.switch("b")
-        self.assertEqual(self.p.note(1), "note from principal")
+        self.assertEqual(self.p.note(1), "note from main")
         self.p.set_note(1, "only from b")
-        self.p.switch("principal")
-        self.assertEqual(self.p.note(1), "note from principal")
+        self.p.switch("main")
+        self.assertEqual(self.p.note(1), "note from main")
 
     def test_breakpoints(self) -> None:
         self.assertTrue(self.p.toggle_breakpoint(10))
@@ -98,7 +98,7 @@ class TestProject(unittest.TestCase):
             self.p.save(path)
             self.assertTrue(os.path.exists(path))
             q = Project.load(path)
-        self.assertEqual(set(q.branches), {"principal", "other"})
+        self.assertEqual(set(q.branches), {"main", "other"})
         self.assertEqual(q.code, HELLO)
         self.assertEqual(q.note(2), "look at this")
         self.assertIn(4, q.branch.breakpoints)

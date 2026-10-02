@@ -4,9 +4,6 @@
 #   pre-commit install
 #   pre-commit run --all-files
 #
-# The versions below are the same ones CI installs, so a green local run is a
-# good predictor of a green build.
-
 default_language_version:
   python: python3
 
@@ -41,9 +38,6 @@ repos:
       - id: mypy
         files: ^asmx/
 
-  # The two gates behind the promise of "100% type hints and Google-style
-  # docstrings", plus the guarantee that examples/*.asm stays identical to the
-  # collection embedded in asmx/examples.py.
   - repo: local
     hooks:
       - id: asmx-quality-gates
@@ -58,3 +52,9 @@ repos:
         language: system
         pass_filenames: false
         files: ^(asmx/examples\.py|examples/.*\.asm)$
+      - id: asmx-reference-sync
+        name: generated instruction reference
+        entry: python tools/build_reference.py --check
+        language: system
+        pass_filenames: false
+        files: ^(asmx/data/isa\.json|docs/REFERENCE\.md|tools/build_reference\.py)$

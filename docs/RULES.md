@@ -1,169 +1,122 @@
 # Signature rules
 
-`asmx scan` matches a sample against a set of rules and reports what fired, with
-the line that made it fire. This is the same idea as a YARA rule or an antivirus
-signature, but the input is assembly source instead of a compiled binary.
+`asmx scan` matches patterns in assembly source. Each match includes a rule ID,
+severity and source-line evidence. Matches are static indicators; they do not
+establish what a compiled program will do or whether it is malicious.
 
-Two things to keep in mind before writing or trusting a rule:
-
-1. **A match is an indicator, not a verdict.** `NET001` firing means "this
-   program opens a socket", not "this program is malware". Read the evidence.
-2. **Rules are data, not code.** A rule file cannot execute anything; it can only
-   describe patterns. A broken rule fails loudly with the file and the field.
-
-## Quick start
-
-```bash
-asmx rules                        # list the rules that ship with the tool
-asmx rules --json                 # the same list, machine readable
-asmx scan examples/suspicious.asm # run the rule set over one file
-asmx scan samples/ --rules rules/ # run your own rule set over a folder
-asmx scan sample.asm --fail-on high   # exit 1 when a high rule fires
+```sh
+python3 -m asmx rules
+python3 -m asmx scan examples/suspicious.asm --json
+python3 -m asmx scan samples/ --rules custom-rules/ --fail-on high
 ```
 
-## Where the rules live
+Without `--rules`, the command loads `asmx/data/rules/`. A custom directory
+replaces the built-in set. Rule files can be JSON or, when PyYAML is installed,
+YAML. The format is specific to ASM X; it is not compatible with YARA syntax.
 
-The core rule set travels inside the package (`asmx/data/rules/*.json`), so a
-`pip install` gets it with no extra step and no dependency. Point `--rules DIR`
-at your own directory to use a different set — the two are never merged, which
-keeps a scan reproducible.
-
-Files are read as **JSON**, or as **YAML** when PyYAML happens to be installed
-(`.yaml` / `.yml`). JSON is the default because it needs nothing.
-
-## Anatomy of a rule
-
-```json
-{
-  "id": "NET001",
-  "name": "Socket opened or connected",
-  "severity": "high",
-  "description": "Why this matters, in one or two sentences.",
-  "tags": ["network", "c2"],
-  "mitre": ["T1095", "T1071"],
-  "match": {
-    "syscalls": ["socket", "connect"]
-  }
-}
-```
-
-| field | required | meaning |
-|---|---|---|
-| `id` | yes | stable identifier, shown in the report and used by `--fail-on` |
-| `name` | yes | short human name |
-| `severity` | no | `high`, `medium` or `low` (default `medium`) |
-| `description` | no | what the rule looks for and what it means |
-| `tags` | no | free labels for filtering |
-| `mitre` | no | ATT&CK technique ids the rule hints at, like `T1071.001` |
-| `match` | yes | the conditions; see below |
-
-The file itself carries a schema marker and, optionally, a description:
+## File format
 
 ```json
 {
   "schema": "asmx-rules/1",
-  "description": "Network and command-and-control indicators.",
-  "rules": [ ... ]
+  "description": "Example network rule",
+  "rules": [
+    {
+      "id": "NET001",
+      "name": "Socket opened or connected",
+      "severity": "high",
+      "description": "Source contains a resolved socket or connect syscall.",
+      "tags": ["network"],
+      "mitre": ["T1095"],
+      "match": {
+        "syscalls": ["socket", "connect"]
+      }
+    }
+  ]
 }
 ```
 
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `id` | Yes | Stable identifier |
+| `name` | Yes | Short display name |
+| `match` | Yes | Nonempty condition object |
+| `severity` | No | `low`, `medium` or `high`; default `medium` |
+| `description` | No | Explanation of the pattern |
+| `tags` | No | Labels for grouping |
+| `mitre` | No | ATT&CK technique identifiers |
+
+A bare list of rule objects is also accepted. Use unique IDs; when files contain
+duplicate IDs, the loader keeps the first rule and logs a warning.
+
 ## Conditions
 
-Every key you put in `match` must hold (a logical **AND**). Inside one key, any
-item matching is enough, unless you ask for all of them with `require_all`.
+Keys in a condition object are combined with AND. Within a list, one matching
+item is normally sufficient. `require_all` requires every requested item.
 
-| key | matches on | example |
-|---|---|---|
-| `strings` | regular expressions over the source **with comments removed** | `["https?://", "CurrentVersion\\\\\\\\Run"]` |
-| `syscalls` | syscalls the analyzer resolved (by name, from the syscall number) | `["socket", "connect"]` |
-| `apis` | calls whose target is not a label declared in the file | `["CreateProcessA"]` |
-| `behaviors` | behaviour categories from the classifier | `["network", "crypto"]` |
-| `sections` | sections declared in the file, with or without the dot | `[".data", "text"]` |
-| `mnemonics` | instructions that appear in the program | `["xor", "rol"]` |
-| `problems` | validator codes | `["DIV001"]` |
-| `min_instructions` | instruction count is at least N | `50` |
-| `min_blocks` | basic block count is at least N | `4` |
-| `min_syscalls` | distinct syscall count is at least N | `3` |
-| `min_strings` | data declarations that are not reservations | `2` |
+| Key | Matches |
+| --- | --- |
+| `strings` | Regular expressions over source with comments removed |
+| `syscalls` | Syscall names resolved from their numbers |
+| `apis` | Named calls to targets not defined in the source |
+| `behaviors` | Classifier category IDs, such as `network` |
+| `sections` | Section names, with or without the leading dot |
+| `mnemonics` | Instruction names |
+| `problems` | Static validation codes, such as `DIV001` |
+| `min_instructions` | Minimum instruction count |
+| `min_blocks` | Minimum basic-block count |
+| `min_syscalls` | Minimum distinct resolved syscall count |
+| `min_strings` | Minimum data declarations excluding reservations |
 
-Switches:
+Despite its name, `min_strings` counts data declarations; it does not require
+that every declaration contain a string literal.
 
-| key | default | meaning |
-|---|---|---|
-| `require_all` | `false` | every listed item must be present, not just one |
-| `case_sensitive` | `false` | make `strings` respect case |
-| `strings_min` | `1` (or all, with `require_all`) | how many patterns must match |
-| `any_of` | — | a list of condition objects; at least one of them must match |
+| Switch | Default | Meaning |
+| --- | --- | --- |
+| `require_all` | `false` | Require every requested item |
+| `case_sensitive` | `false` | Case-sensitive string regex matching |
+| `strings_min` | 1, or all with `require_all` | Minimum matching regex patterns |
+| `any_of` | Absent | At least one nested condition must match |
 
-`any_of` is how you write "either a Linux syscall or a Windows API":
+For example, a rule can match either Linux or Windows file-opening calls:
 
 ```json
 {
-  "id": "FILE001",
-  "name": "Writes a file",
+  "id": "CUSTOM001",
+  "name": "File-opening call",
   "severity": "medium",
   "match": {
     "any_of": [
       {"syscalls": ["open", "openat", "creat"]},
-      {"apis": ["CreateFileA", "CreateFileW", "WriteFile"]}
+      {"apis": ["CreateFileA", "CreateFileW"]}
     ]
   }
 }
 ```
 
-## What a match looks like
+## Built-in files
 
-```console
-$ asmx scan examples/suspicious.asm
-suspicious.asm — 8 rule(s) matched: 4 high, 2 medium, 2 low
-  NET001  high    Socket opened or connected
-          line 70: syscall socket
-          line 77: syscall connect
-  IMG001  high    Recursive file walk with writes
-          line 52: syscall open
-          ...
+| File | Patterns |
+| --- | --- |
+| `anti-analysis.json` | Debugger checks, timing and environment queries |
+| `crypto-impact.json` | Randomness, bit operations and file-impact patterns |
+| `evasion-pack.json` | Process execution, memory mapping and stream copies |
+| `filesystem.json` | File writes, deletion, permissions and autostart paths |
+| `network.json` | Sockets, host strings and protocol markers |
+
+Use `python3 -m asmx rules --json` to inspect the current definitions. Test new
+rules against both matching inputs and ordinary programs that should not match:
+
+```sh
+python3 -m asmx scan examples/ --rules custom-rules/ --json
+python3 -m unittest discover -s tests -p 'test_rules.py'
 ```
 
-Every match carries the rule, the severity, the tags, the ATT&CK techniques and
-one evidence line per signal — always with the line number in the source. The
-JSON output (`--json`) carries the same information for another tool to consume.
+## Limits
 
-## The rules that ship with ASM X
-
-| file | ids | theme |
-|---|---|---|
-| `anti-analysis.json` | `EVA00x` | debugger checks, timing, environment fingerprint, executable memory |
-| `crypto-impact.json` | `CRY00x`, `IMP00x` | randomness, cipher loops, encryptor shape, locker strings |
-| `evasion-pack.json` | `EXE00x` | spawning programs, shell strings, memory mapping, stream copies |
-| `filesystem.json` | `FILE00x`, `PER00x` | file writes, sensitive paths, deletion, autostart, permissions |
-| `network.json` | `NET00x` | sockets, embedded hosts, IPv4 literals, HTTP markers, DNS |
-
-None of them fire on the nine example programs that ship with the tool except
-`suspicious.asm` — a rule set that flags everything is a rule set nobody reads.
-There is a test that enforces exactly that.
-
-## Testing your rules
-
-```bash
-asmx scan samples/mine.asm --rules rules/ --json | jq '.matches[].id'
-python3 -m unittest tests.test_rules        # the engine's own suite
-```
-
-When a rule is wrong, the engine says which rule and which field:
-
-```console
-$ asmx scan sample.asm --rules broken.json
-[ERR_CONFIG] rule NET001 has unknown severity 'urgent' (use high, medium, low)
-```
-
-## Limits, stated plainly
-
-- The engine reads the **source**, not a running program: a rule can be evaded by
-  computing strings at runtime (which the emulator only partly follows).
-- `strings` sees the code with comments blanked out, but it does see string data
-  and labels — a rule can therefore fire on a comment-free literal that is never
-  used.
-- `apis` only knows calls whose target is not a label in the file; an indirect
-  call (`call [rbx]`) has no name to match.
-- There is no scoring across rules and no correlation: each rule is evaluated
-  alone. The report shows the list; judging the combination is your job.
+Rules operate on source patterns, without runtime data flow or general indirect
+call resolution. They may miss computed strings or match unused literals.
+Regular expressions come from the rule files and should be reviewed before
+loading third-party rules. Each rule is evaluated separately; there is no
+cross-file behavioral correlation. ATT&CK mappings are annotations to review,
+not verified classifications of the program.

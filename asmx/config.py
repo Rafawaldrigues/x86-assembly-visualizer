@@ -127,7 +127,7 @@ class SandboxConfig:
     Attributes:
         timeout: Maximum wall clock time, in seconds, for one run.
         max_steps: Instruction limit per run (protects against infinite loops).
-        max_memory: Memory reserved for the sandbox, in MB (informative).
+        max_memory: Maximum simulated allocation in MiB, enforced per machine.
         enable_network: Reserved for external integrations; the ASM X virtual
             machine never accesses the network.
         log_level: ``DEBUG``, ``INFO``, ``WARNING``, ``ERROR`` or ``CRITICAL``.
@@ -217,7 +217,8 @@ class SandboxConfig:
             )
         if self.max_memory < MIN_MEMORY_MB:
             raise ConfigError(
-                "max_memory needs to be at least %d MB (got %d)" % (MIN_MEMORY_MB, self.max_memory),
+                "max_memory needs to be at least %d MiB (got %d)"
+                % (MIN_MEMORY_MB, self.max_memory),
                 field="max_memory",
             )
         if self.log_level not in LOG_LEVELS:
@@ -250,9 +251,9 @@ class SandboxConfig:
 
         Example:
             >>> SandboxConfig(timeout=2, max_steps=10).describe()
-            'timeout=2s · max_steps=10 · memory=512MB · network=off · log=INFO · workers=4'
+            'timeout=2s · max_steps=10 · memory=512MiB · network=off · log=INFO · workers=4'
         """
-        return "timeout=%gs · max_steps=%d · memory=%dMB · network=%s · log=%s · workers=%d" % (
+        return "timeout=%gs · max_steps=%d · memory=%dMiB · network=%s · log=%s · workers=%d" % (
             self.timeout,
             self.max_steps,
             self.max_memory,

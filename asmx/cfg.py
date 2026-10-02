@@ -1148,7 +1148,7 @@ def to_svg(graph: Graph, *, theme: str = "dark") -> str:
     for edge in graph.edges:
         key = _EDGE_COLOR.get(edge.kind, "edge")
         color = colors.get(key, "#8296b0")
-        if all(color != existente for _, existente in arrows):
+        if all(color != existing_item for _, existing_item in arrows):
             arrows.append((key, color))
     if not arrows:
         arrows.append(("edge", colors.get("edge", "#8296b0")))

@@ -1,26 +1,4 @@
 #!/usr/bin/env bash
-#
-# ===========================================================================
-# ASM X — container entry point
-# ===========================================================================
-#
-# Dispatches the first argument to the right command inside the image:
-#
-#   check|run|explain|info|version|examples  ->  python -m asmx <args...>
-#   test      -> unittest suite (under xvfb-run when available)
-#   quality   -> coverage (>= 94%) + flake8 + mypy
-#   gui       -> python -m asmx (needs $DISPLAY and an X socket)
-#   shell     -> interactive bash
-#   help      -> this text
-#   anything else (including --help) -> forwarded to python -m asmx
-#
-# Examples:
-#   docker run --rm asmx check /app/samples/hello.asm
-#   docker run --rm -v "$PWD/samples:/app/samples:ro" asmx run /app/samples/hello.asm
-#   docker run --rm asmx test
-#   docker run --rm asmx quality
-#   docker run --rm -it -v /tmp/.X11-unix:/tmp/.X11-unix -e DISPLAY=$DISPLAY asmx gui
-# ===========================================================================
 
 set -euo pipefail
 
@@ -60,8 +38,6 @@ GUI mode (Linux hosts only):
 EOF
 }
 
-# Run a command under a virtual X server when xvfb-run is available, so the
-# Tkinter tests execute even without a real display.
 with_display() {
     if command -v xvfb-run >/dev/null 2>&1; then
         xvfb-run -a "$@"
@@ -95,6 +71,7 @@ main() {
             "${PYTHON}" -m mypy asmx/
             "${PYTHON}" tools/quality_gates.py
             "${PYTHON}" tools/export_examples.py --check
+            "${PYTHON}" tools/build_reference.py --check
             echo "== quality gate passed =="
             ;;
 

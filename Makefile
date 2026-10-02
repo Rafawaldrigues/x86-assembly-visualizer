@@ -44,7 +44,7 @@ test: ## Run the full unittest suite (GUI tests skip without a display)
 test-gui: ## Run the suite under xvfb-run so the GUI tests really execute
 	@if [ -n "$(XVFB)" ]; then \
 		echo "using $(XVFB)"; \
-		$(TESTS); \
+		$(XVFB_RUN)$(TESTS); \
 	else \
 		echo "xvfb-run not found — running without a virtual display"; \
 		echo "(install it with: sudo apt install xvfb)"; \
@@ -59,14 +59,14 @@ lint: ## Static style check with flake8
 	$(PYTHON) -m flake8 asmx/ tests/ tools/ asmx.py --max-line-length=100 --extend-ignore=E203,W503
 
 format: ## Auto-format the source with black
-	$(PYTHON) -m black asmx/ tests/ --line-length=100
+	$(PYTHON) -m black asmx/ tests/ tools/ asmx.py --line-length=100
 
 typecheck: ## Static type check with mypy
 	$(PYTHON) -m mypy asmx/
 
 quality: lint typecheck gates coverage ## lint + typecheck + gates + coverage
 
-gates: ## Check 100% type hints/docstrings plus generated files still in sync
+gates: ## Check annotations, docstrings and generated files
 	$(PYTHON) tools/quality_gates.py
 	$(PYTHON) tools/export_examples.py --check
 	$(PYTHON) tools/build_reference.py --check

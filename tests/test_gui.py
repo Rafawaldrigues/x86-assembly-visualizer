@@ -43,6 +43,24 @@ class TestGUI(unittest.TestCase):
         self.app.on_code_change()
         self.pump()
 
+    def test_memory_fault_and_usage_are_visible(self) -> None:
+        self.app.sandbox_config.max_memory = 16
+        self.set_code("buffer resb 16777217\nmov rax, 7")
+        self.app.reset_machine()
+        self.assertTrue(self.app.machine.out_of_memory)
+        self.assertIn("MEM_LIMIT", self.app.exec_label.cget("text"))
+        self.assertIn("16 MiB", self.app.memory_label.cget("text"))
+        self.assertEqual(self.app.machine.steps, 0)
+
+    def test_inspector_does_not_warn_on_uninitialized_stack(self) -> None:
+        self.set_code("sub rsp, 8\nhlt")
+        self.app.reset_machine()
+        self.app.step()
+        before = list(self.app.machine.issues)
+        self.app.refresh_machine()
+        self.assertEqual(self.app.machine.issues, before)
+        self.assertEqual(before, [])
+
     # ------------------------------------------------------------ basic ---
     def test_opens_with_sample_and_analyzes(self) -> None:
         self.assertIn("Hello, world!", self.app.editor.get_code())
@@ -105,7 +123,7 @@ class TestGUI(unittest.TestCase):
         self.pump()
         values = self.app.reg_tree.item("rax", "values")
         self.assertEqual(values[1], "1")
-        self.assertIn("next", self.app.exec_label.cget("text"))
+        self.assertIn("Next", self.app.exec_label.cget("text"))
 
     def test_run_shows_output(self) -> None:
         self.app.reset_machine()

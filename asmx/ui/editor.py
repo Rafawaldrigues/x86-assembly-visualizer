@@ -69,9 +69,9 @@ class CodeEditor(ttk.Frame):
             maxundo=-1,
             bg=theme.BG,
             fg=theme.FG,
-            insertbackground=theme.ACCENT,
+            insertbackground=theme.FG,
             selectbackground=theme.SEL,
-            selectforeground=theme.WHITE,
+            selectforeground="#FFFFFF",
             font=self.font,
             borderwidth=0,
             highlightthickness=0,
@@ -125,7 +125,7 @@ class CodeEditor(ttk.Frame):
         t.tag_configure("directive", foreground=theme.BRANCH)
         t.tag_configure("current", background=theme.CURSOR_LINE)
         t.tag_configure("exec", background=theme.EXEC_LINE)
-        t.tag_configure("errorline", background="#3A1E26")
+        t.tag_configure("errorline", background="#FFDDDD")
         t.tag_configure("found", background=theme.SEL)
         t.tag_raise("sel")
 

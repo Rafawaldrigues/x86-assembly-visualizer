@@ -122,17 +122,17 @@ class ScenarioDialog(ModalDialog):
                 ).grid(row=row, column=1, sticky="w")
                 row += 1
 
-        self.nome: ttk.Entry = ttk.Entry(fields)
-        self.nome.insert(0, s.name)
-        add("Name", self.nome)
+        self.item_name: ttk.Entry = ttk.Entry(fields)
+        self.item_name.insert(0, s.name)
+        add("Name", self.item_name)
 
-        self.entrada: ttk.Combobox = ttk.Combobox(
+        self.input_value: ttk.Combobox = ttk.Combobox(
             fields, values=[""] + list(labels), state="normal"
         )
-        self.entrada.set(s.entry)
+        self.input_value.set(s.entry)
         add(
             "Start at",
-            self.entrada,
+            self.input_value,
             "empty = entry point; or a function to test alone",
         )
 
@@ -144,7 +144,7 @@ class ScenarioDialog(ModalDialog):
         self.stdin.insert(0, s.stdin)
         add("Simulated input (syscall read)", self.stdin)
 
-        self.saida: tk.Text = tk.Text(
+        self.output_value: tk.Text = tk.Text(
             fields,
             height=3,
             bg=theme.BG,
@@ -156,19 +156,19 @@ class ScenarioDialog(ModalDialog):
             highlightbackground=theme.LINE,
         )
         if s.expect_output is not None:
-            self.saida.insert("1.0", s.expect_output)
-        add("Expected output", self.saida, "leave it empty to skip the output check")
+            self.output_value.insert("1.0", s.expect_output)
+        add("Expected output", self.output_value, "leave it empty to skip the output check")
 
         self.exit_code: ttk.Entry = ttk.Entry(fields)
         if s.expect_exit is not None:
             self.exit_code.insert(0, str(s.expect_exit))
         add("Expected exit code", self.exit_code, "empty = no check")
 
-        self.espera_problema: tk.BooleanVar = tk.BooleanVar(value=s.expect_issue)
+        self.expects_problem: tk.BooleanVar = tk.BooleanVar(value=s.expect_issue)
         ttk.Checkbutton(
             fields,
             text="Pass if the run reports a problem",
-            variable=self.espera_problema,
+            variable=self.expects_problem,
         ).grid(row=row, column=1, sticky="w", pady=(8, 0))
         row += 1
 
@@ -182,7 +182,7 @@ class ScenarioDialog(ModalDialog):
 
         self.error.pack(fill="x", pady=(8, 0))
         self.add_buttons("Save scenario")
-        self.nome.focus_set()
+        self.item_name.focus_set()
 
     def collect(self) -> Optional[Scenario]:
         """Validate the fields and build the typed scenario.
@@ -190,11 +190,11 @@ class ScenarioDialog(ModalDialog):
         Returns:
             The ready scenario, or None when some field is invalid.
         """
-        name = self.nome.get().strip()
+        name = self.item_name.get().strip()
         if not name:
             self.error.configure(text="give the scenario a name")
             return None
-        output_text = self.saida.get("1.0", "end-1c")
+        output_text = self.output_value.get("1.0", "end-1c")
         try:
             steps = int(self.max_steps.get() or 200000)
         except ValueError:
@@ -208,12 +208,12 @@ class ScenarioDialog(ModalDialog):
             return None
         return Scenario(
             name=name,
-            entry=self.entrada.get().strip(),
+            entry=self.input_value.get().strip(),
             regs={k: str(v) for k, v in parse_reg_values(self.regs.get()).items()},
             stdin=self.stdin.get(),
             expect_output=output_text if output_text else None,
             expect_exit=exit_code,
-            expect_issue=bool(self.espera_problema.get()),
+            expect_issue=bool(self.expects_problem.get()),
             max_steps=steps,
         )
 

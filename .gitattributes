@@ -1,17 +1,9 @@
-# Normalização de fim de linha e tipos de arquivo.
-#
-# O projeto roda em Linux, macOS e Windows, então o repositório guarda tudo com
-# LF e quem clona no Windows recebe LF também — o Python e os testes não se
-# importam, e assim o diff nunca aparece cheio de "linha inteira mudou".
+# Keep source line endings consistent across platforms.
 * text=auto eol=lf
-
-# Binários: o Git não deve tentar normalizar nem mostrar diff de texto.
 *.png binary
 *.jpg binary
 *.gif binary
 *.ico binary
-
-# Texto que precisa continuar legível no diff.
 *.svg text
 *.asm text
 *.asmproj text
@@ -20,7 +12,4 @@
 *.py text
 *.sh text
 
-# O acervo de documentação é dado gerado/estável: não polui a contagem de
-# linguagem do GitHub nem o diff de revisão.
-asmx/data/isa.json linguist-generated=true
-docs/REFERENCIA.md linguist-documentation=true
+docs/REFERENCE.md linguist-documentation=true

@@ -35,11 +35,11 @@ from asmx.isa import (
 #: Project root, used to run the reference generator as a real command.
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-#: Generator that owns docs/REFERENCIA.md.
+#: Generator that owns docs/REFERENCE.md.
 BUILD_REFERENCE = os.path.join(ROOT, "tools", "build_reference.py")
 
 #: Markdown reference generated from asmx/data/isa.json.
-REFERENCE = os.path.join(ROOT, "docs", "REFERENCIA.md")
+REFERENCE = os.path.join(ROOT, "docs", "REFERENCE.md")
 
 
 def load_build_reference() -> ModuleType:
@@ -206,7 +206,7 @@ class TestTables(unittest.TestCase):
 
 
 class TestBuildReference(unittest.TestCase):
-    """docs/REFERENCIA.md is generated, so it must never drift from the JSON.
+    """docs/REFERENCE.md is generated, so it must never drift from the JSON.
 
     The reference file only exists in a checkout (it is not installed with the
     package), so these tests skip — instead of failing — when they are run from
@@ -217,7 +217,7 @@ class TestBuildReference(unittest.TestCase):
     def setUpClass(cls) -> None:
         """Skips the whole class when the generated reference is not there."""
         if not os.path.isfile(REFERENCE):
-            raise unittest.SkipTest("docs/REFERENCIA.md is not in this checkout")
+            raise unittest.SkipTest("docs/REFERENCE.md is not in this checkout")
 
     def test_check_passes_on_generated_file(self) -> None:
         result = subprocess.run(

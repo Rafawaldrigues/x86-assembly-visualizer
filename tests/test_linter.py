@@ -25,7 +25,7 @@ class TestStrings(unittest.TestCase):
     """STR001, STR002, STR003, STR004 and STR005."""
 
     def test_non_ascii_character_in_the_string(self) -> None:
-        src = 'section .data\n  msg db "caf\xe9 invalido", 10\n  size equ $ - msg\n'
+        src = 'section .data\n  msg db "caf\xe9 invalid", 10\n  size equ $ - msg\n'
         found = problems(src, "STR001")
         self.assertTrue(found)
         self.assertIn("ASCII", found[0].message)

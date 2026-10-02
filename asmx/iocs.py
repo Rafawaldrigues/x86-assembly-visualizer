@@ -889,7 +889,7 @@ def _byte_reader(reader: Any) -> Optional[Callable[[int], int]]:
         Function ``address -> byte``, or ``None`` when the reader has neither of
         the two.
     """
-    rd8 = getattr(reader, "rd8", None)
+    rd8 = getattr(reader, "peek8", None) or getattr(reader, "rd8", None)
     if callable(rd8):
         return partial(_read_with_rd8, rd8)
     read_mem = getattr(reader, "read_mem", None)

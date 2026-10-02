@@ -6,36 +6,36 @@ import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import ttk
 
-BG = "#0F1826"
-PANEL = "#16202E"
-PANEL2 = "#1C2A3A"
-LINE = "#26394E"
-FG = "#DCE6F2"
-DIM = "#8AA0B8"
-WHITE = "#F2F7FF"
-SEL = "#27405C"
-CURSOR_LINE = "#17253A"
-EXEC_LINE = "#1E3A26"
-BREAK = "#E05561"
+BG = "#FFFFFF"
+PANEL = "#E8E8E8"
+PANEL2 = "#D8D8D8"
+LINE = "#A0A0A0"
+FG = "#202020"
+DIM = "#595959"
+WHITE = "#111111"
+SEL = "#316AC5"
+CURSOR_LINE = "#F3F3F3"
+EXEC_LINE = "#FFFFB0"
+BREAK = "#B02020"
 
-ACCENT = "#E3A44B"
-DATA = "#57C8D2"
-STACK = "#79A6E8"
-ARITH = "#E3A44B"
-LOGIC = "#BFD46B"
-CMP = "#EF7D9D"
-BRANCH = "#9C8CF0"
-CALL = "#5FD4A8"
-SYS = "#F08A5D"
-STRING = "#BFD46B"
-COMMENT = "#5A748C"
-MISC = "#8AA0B8"
+ACCENT = "#204A87"
+DATA = "#003399"
+STACK = "#333399"
+ARITH = "#204A87"
+LOGIC = "#7A3000"
+CMP = "#A00000"
+BRANCH = "#660099"
+CALL = "#006000"
+SYS = "#804000"
+STRING = "#7A3000"
+COMMENT = "#557755"
+MISC = "#595959"
 
-SEV_COLOR = {"error": "#EF7D9D", "warning": "#E3A44B", "info": "#79A6E8"}
+SEV_COLOR = {"error": "#A00000", "warning": "#204A87", "info": "#333399"}
 
 TAG_COLOR = {
     "store": DATA,
-    "load": "#41A5AE",
+    "load": "#003399",
     "set": DATA,
     "copy": DATA,
     "addr": DATA,
@@ -50,9 +50,9 @@ TAG_COLOR = {
     "call": CALL,
     "return": CALL,
     "syscall": SYS,
-    "string": "#B79AE8",
+    "string": "#660099",
     "misc": MISC,
-    "unknown": "#E08282",
+    "unknown": "#A00000",
 }
 
 
@@ -67,7 +67,6 @@ def mono(size: int = 11, weight: str = "normal") -> tkfont.Font:
         The created font; Courier is the last resort.
     """
     for family in (
-        "JetBrains Mono",
         "DejaVu Sans Mono",
         "Consolas",
         "Liberation Mono",
@@ -104,7 +103,7 @@ def ui(size: int = 10, weight: str = "normal") -> tkfont.Font:
 
 
 def apply_ttk_theme(root: tk.Misc) -> ttk.Style:
-    """Apply the ASM X dark theme to the ttk widgets.
+    """Apply the classic light theme to the ttk widgets.
 
     Args:
         root: Window that owns the style, usually the main window.
@@ -125,32 +124,32 @@ def apply_ttk_theme(root: tk.Misc) -> ttk.Style:
     style.configure("TLabel", background=PANEL, foreground=FG)
     style.configure("Dim.TLabel", foreground=DIM)
     style.configure("Head.TLabel", foreground=WHITE, font=ui(10, "bold"))
-    style.configure("TButton", background=PANEL2, foreground=FG, borderwidth=1, padding=(8, 3))
+    style.configure(
+        "TButton", background=PANEL2, foreground=FG, borderwidth=2, relief="raised", padding=(7, 2)
+    )
     style.map("TButton", background=[("active", LINE), ("pressed", LINE)])
-    style.configure("Accent.TButton", background=ACCENT, foreground="#0F1826", font=ui(10, "bold"))
-    style.map("Accent.TButton", background=[("active", "#F0B865")])
-    style.configure("TNotebook", background=PANEL, borderwidth=0)
+    style.configure("Accent.TButton", background=PANEL2, foreground=FG, font=ui(10, "bold"))
+    style.map("Accent.TButton", background=[("active", "#C8D7EB")])
+    style.configure("TNotebook", background=PANEL, borderwidth=1)
     style.configure("TNotebook.Tab", background=PANEL, foreground=DIM, padding=(10, 5))
-    style.map("TNotebook.Tab", background=[("selected", PANEL2)], foreground=[("selected", WHITE)])
+    style.map("TNotebook.Tab", background=[("selected", PANEL)], foreground=[("selected", FG)])
     style.configure(
         "Treeview",
         background=BG,
         fieldbackground=BG,
         foreground=FG,
         rowheight=20,
-        borderwidth=0,
-        font=ui(9),
+        borderwidth=1,
+        relief="sunken",
+        font=mono(9),
     )
     style.configure(
-        "Treeview.Heading", background=PANEL2, foreground=DIM, font=ui(9), relief="flat"
+        "Treeview.Heading", background=PANEL2, foreground=FG, font=ui(9), relief="raised"
     )
-    style.map("Treeview", background=[("selected", SEL)], foreground=[("selected", WHITE)])
+    style.map("Treeview", background=[("selected", SEL)], foreground=[("selected", "#FFFFFF")])
     style.configure("TPanedwindow", background=LINE)
     style.configure("TEntry", fieldbackground=BG, foreground=FG, insertcolor=FG)
     style.configure("TCombobox", fieldbackground=BG, foreground=FG, background=PANEL2)
-    # A read-only combobox draws its text through the "readonly" state map, not
-    # through the base style: without this the branch name is invisible on the
-    # dark field (and the selection would be dark on dark).
     style.map(
         "TCombobox",
         fieldbackground=[("readonly", BG)],
@@ -160,5 +159,5 @@ def apply_ttk_theme(root: tk.Misc) -> ttk.Style:
         arrowcolor=[("readonly", FG)],
     )
     style.configure("TCheckbutton", background=PANEL, foreground=FG)
-    style.configure("Status.TLabel", background=PANEL2, foreground=DIM, font=ui(9))
+    style.configure("Status.TLabel", background=PANEL, foreground=FG, font=ui(9), relief="sunken")
     return style

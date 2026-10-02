@@ -48,6 +48,16 @@ class BaseProject(unittest.TestCase):
 class TestBranches(BaseProject):
     """Error paths and branch operations."""
 
+    def test_existing_nonenglish_branch_name_is_preserved(self) -> None:
+        project = Project.new(code="nop")
+        project.rename_branch("main", "principal")
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "legacy.asmproj")
+            project.save(path)
+            loaded = Project.load(path)
+        self.assertEqual(loaded.active, "principal")
+        self.assertEqual(loaded.code, "nop")
+
     def test_fork_from_a_nonexistent_source(self) -> None:
         with self.assertRaises(BranchNotFoundError):
             self.project.fork("new", from_branch="does_not_exist")
@@ -71,11 +81,11 @@ class TestBranches(BaseProject):
 
     def test_delete_the_last_branch(self) -> None:
         with self.assertRaises(LastBranchError):
-            self.project.delete_branch("principal")
+            self.project.delete_branch("main")
 
     def test_delete_leaves_the_children_without_a_parent(self) -> None:
         self.project.fork("child")
-        self.project.delete_branch("principal")
+        self.project.delete_branch("main")
         self.assertIsNone(self.project.branches["child"].parent)
 
     def test_rename_a_nonexistent_branch(self) -> None:
@@ -85,15 +95,15 @@ class TestBranches(BaseProject):
     def test_rename_to_an_existing_name(self) -> None:
         self.project.fork("b")
         with self.assertRaises(BranchExistsError):
-            self.project.rename_branch("principal", "b")
+            self.project.rename_branch("main", "b")
 
     def test_diff_of_a_nonexistent_branch(self) -> None:
         with self.assertRaises(BranchNotFoundError):
-            self.project.diff("principal", "does_not_exist")
+            self.project.diff("main", "does_not_exist")
 
     def test_nonexistent_active_branch_falls_back_to_the_first_one(self) -> None:
         self.project.active = "vanished"
-        self.assertEqual(self.project.branch.name, "principal")
+        self.assertEqual(self.project.branch.name, "main")
 
     def test_fork_copies_notes_and_breakpoints(self) -> None:
         self.project.set_note(1, "note")
@@ -192,9 +202,9 @@ class TestPersistence(BaseProject):
     def test_to_dict(self) -> None:
         data = self.project.to_dict()
         self.assertEqual(data["format"], FORMAT)
-        self.assertEqual(data["active"], "principal")
+        self.assertEqual(data["active"], "main")
         self.assertIn("saved", data)
-        self.assertIn("principal", data["branches"])
+        self.assertIn("main", data["branches"])
 
     def test_save_without_a_path(self) -> None:
         with self.assertRaises(ProjectError):
@@ -236,19 +246,19 @@ class TestPersistence(BaseProject):
         with self.assertRaises(ProjectFormatError):
             Project.load(path)
 
-    def test_load_without_branches_creates_the_principal_one(self) -> None:
+    def test_load_without_branches_creates_the_main_one(self) -> None:
         path = self.path("empty.asmproj")
         with open(path, "w", encoding="utf-8") as file:
             json.dump({"name": "empty", "branches": {}}, file)
         project = Project.load(path)
-        self.assertEqual(list(project.branches), ["principal"])
+        self.assertEqual(list(project.branches), ["main"])
         self.assertFalse(project.dirty)
 
     def test_invalid_active_branch_in_the_file(self) -> None:
         path = self.path("active.asmproj")
         with open(path, "w", encoding="utf-8") as file:
-            json.dump({"active": "vanished", "branches": {"principal": {"code": "nop"}}}, file)
-        self.assertEqual(Project.load(path).active, "principal")
+            json.dump({"active": "vanished", "branches": {"main": {"code": "nop"}}}, file)
+        self.assertEqual(Project.load(path).active, "main")
 
     def test_import_asm(self) -> None:
         path = self.path("source.asm")

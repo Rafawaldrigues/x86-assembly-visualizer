@@ -413,7 +413,7 @@ class TestSerialization(unittest.TestCase):
         data = report_of(BROKEN, emulate=False)
         page = render_html(data)
         self.assertIn("RISK", page.upper())
-        self.assertIn("%s risk %s" % (data.risk["emoji"], data.risk["level"].upper()), page)
+        self.assertIn("Risk: %s" % data.risk["level"].upper(), page)
         self.assertIn(str(data.risk["score"]), page)
         self.assertIn("instructions", page)
         self.assertIn("DIV001", page)

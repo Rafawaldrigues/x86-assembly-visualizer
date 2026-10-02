@@ -82,12 +82,16 @@ TIMELINE_LIMIT = 400
 PROBLEM_WEIGHTS = {ERROR: 25, WARNING: 8, INFO: 2}
 BEHAVIOR_WEIGHTS = {"high": 18, "medium": 9, "low": 3}
 
-#: Color and emoji of each risk level.
+#: Risk colors and descriptions; the legacy emoji field is kept empty.
 RISK_STYLE = {
-    "low": ("#5FD4A8", "🟢", "Nothing here points to dangerous behavior."),
-    "medium": ("#E3A44B", "🟡", "There are signs that deserve a careful read before running."),
-    "high": ("#F08A5D", "🟠", "The signals together call for caution: review before assembling."),
-    "critical": ("#EF7D9D", "🔴", "Many strong signals at once: treat it as hostile."),
+    "low": ("#006000", "", "No significant static indicators found."),
+    "medium": ("#204A87", "", "Some static indicators matched; review the evidence."),
+    "high": ("#804000", "", "Several static indicators matched; review the evidence."),
+    "critical": (
+        "#A00000",
+        "",
+        "Many high-severity static indicators matched. This is not a malware verdict.",
+    ),
 }
 
 
@@ -325,7 +329,7 @@ def executive_summary(data: ReportData) -> str:
         parts.append("There are %d indicator(s) in the program text." % counts["iocs"])
     if data.execution is not None:
         output = (data.execution.get("output") or "").strip()
-        run_summary = "The simulated execution finished with exit code %s" % data.execution.get(
+        run_summary = "The simulated execution stopped with exit code %s" % data.execution.get(
             "exit_code"
         )
         if output:
@@ -437,6 +441,9 @@ def _execution_dict(machine: Machine) -> Dict[str, Any]:
         "steps": machine.steps,
         "halted": machine.halted,
         "timed_out": machine.timed_out,
+        "out_of_memory": machine.out_of_memory,
+        "memory_fault": machine.memory_fault,
+        "memory": machine.memory.snapshot(),
         "issues": list(machine.issues),
         "flags": dict(machine.flags),
         "registers": {key: hexs(value) for key, value in machine.regs.items() if value},
@@ -515,6 +522,7 @@ def collect(
     source: Optional[SourceFile] = None,
     emulate: bool = True,
     limit: int = 200000,
+    max_memory: int = 512,
     timeout: Optional[float] = None,
     stdin: str = "",
     entry: Optional[str] = None,
@@ -530,6 +538,7 @@ def collect(
         emulate: Whether to run the program on the virtual machine and include
             the execution section with the timeline.
         limit: Instruction limit of the simulated execution.
+        max_memory: Simulated allocation limit in MiB.
         timeout: Maximum wall time of the execution, in seconds.
         stdin: Simulated input delivered to the ``read`` syscall.
         entry: Label where the execution starts (``None`` = entry point).
@@ -610,13 +619,13 @@ def collect(
         blocks=_blocks_table(analysis),
         cfg={
             "graph": cfg_graph.to_dict(),
-            "svg": to_svg(cfg_graph),
+            "svg": to_svg(cfg_graph, theme="light"),
             "dot": to_dot(cfg_graph),
             "mermaid": to_mermaid(cfg_graph),
         },
         calls={
             "graph": calls_graph.to_dict(),
-            "svg": to_svg(calls_graph),
+            "svg": to_svg(calls_graph, theme="light"),
             "dot": to_dot(calls_graph),
             "mermaid": to_mermaid(calls_graph),
         },
@@ -626,7 +635,7 @@ def collect(
     data.risk = risk_assessment(problems, behaviors, analysis.stats)
 
     if emulate:
-        machine = Machine(analysis, stdin=stdin, entry=entry)
+        machine = Machine(analysis, stdin=stdin, entry=entry, max_memory=max_memory)
         steps = machine.run(limit=limit, timeout=timeout)
         data.execution = _execution_dict(machine)
         data.execution["limit"] = limit
@@ -708,9 +717,8 @@ def render_markdown(data: ReportData) -> str:
     parts.append("# ASM X — analysis of `%s`\n" % source.get("name", "program"))
     parts.append("> %s\n" % data.summary)
     parts.append(
-        "**Risk:** %s %s (%d/100) — %s\n"
+        "**Risk:** %s (%d/100) — %s\n"
         % (
-            data.risk.get("emoji", ""),
             str(data.risk.get("level", "")).upper(),
             int(data.risk.get("score", 0)),
             data.risk.get("description", ""),
@@ -838,6 +846,15 @@ def render_markdown(data: ReportData) -> str:
     if data.execution is not None:
         execution = data.execution
         parts.append("## Simulated execution\n")
+        memory = execution.get("memory", {})
+        parts.append(
+            "Memory: %s / %s bytes; peak %s bytes.\n"
+            % (
+                memory.get("allocated_bytes", 0),
+                memory.get("limit_bytes", 0),
+                memory.get("peak_bytes", 0),
+            )
+        )
         parts.append("```text\n%s\n```\n" % (execution.get("output") or "(no output)"))
         parts.append(
             _md_table(
@@ -873,39 +890,39 @@ def render_markdown(data: ReportData) -> str:
 # ------------------------------------------------------------------- html ----
 _CSS = """
 :root {
-  --bg: #0F1826; --panel: #16202E; --panel2: #1C2A3A; --line: #26394E;
-  --fg: #DCE6F2; --dim: #8AA0B8; --white: #F2F7FF; --accent: #E3A44B;
-  --cyan: #57C8D2; --green: #5FD4A8; --violet: #9C8CF0; --pink: #EF7D9D;
-  --orange: #F08A5D; --blue: #79A6E8;
+  --bg: #FFFFFF; --panel: #E8E8E8; --panel2: #D8D8D8; --line: #A0A0A0;
+  --fg: #202020; --dim: #595959; --white: #111111; --accent: #204A87;
+  --cyan: #003399; --green: #006000; --violet: #660099; --pink: #A00000;
+  --orange: #804000; --blue: #333399;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg);
   font: 15px/1.55 "Segoe UI", "DejaVu Sans", system-ui, sans-serif; }
 a { color: var(--cyan); }
 header { padding: 28px 32px 18px; border-bottom: 1px solid var(--line);
-  background: linear-gradient(180deg, #121B28, #0F1826); }
+  background: #E8E8E8; }
 h1 { margin: 0 0 6px; font-size: 26px; color: var(--white); }
 h2 { margin: 0 0 14px; font-size: 19px; color: var(--white); }
 h3 { margin: 22px 0 10px; font-size: 16px; color: var(--white); }
 .sub { color: var(--dim); font-size: 14px; }
 .wrap { max-width: 1180px; margin: 0 auto; padding: 0 32px 60px; }
-.mono { font-family: "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace; }
+.mono { font-family: "DejaVu Sans Mono", Consolas, monospace; }
 .risk { display: flex; gap: 16px; align-items: center; margin: 18px 0 0;
-  padding: 16px 20px; border-radius: 12px; border: 1px solid var(--line);
+  padding: 16px 20px; border-radius: 0; border: 1px solid var(--line);
   background: var(--panel); }
 .risk .score { font-size: 30px; font-weight: 700; }
 .risk .level { font-size: 20px; font-weight: 700; letter-spacing: .5px; }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 12px; margin: 22px 0 8px; }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 0;
   padding: 12px 14px; }
 .card b { display: block; font-size: 22px; color: var(--white); }
 .card span { color: var(--dim); font-size: 13px; }
 nav { display: flex; flex-wrap: wrap; gap: 6px; margin: 26px 0 18px;
   border-bottom: 1px solid var(--line); padding-bottom: 10px; }
 nav button { background: var(--panel2); color: var(--fg); border: 1px solid var(--line);
-  border-radius: 8px; padding: 7px 13px; cursor: pointer; font-size: 14px; }
-nav button.active { background: var(--accent); color: #0F1826; font-weight: 700;
+  border-radius: 0; padding: 7px 13px; cursor: pointer; font-size: 14px; }
+nav button.active { background: var(--accent); color: #FFFFFF; font-weight: 700;
   border-color: var(--accent); }
 section.tab { display: none; }
 section.tab.active { display: block; }
@@ -914,31 +931,31 @@ th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--line
   vertical-align: top; }
 th { color: var(--dim); font-weight: 600; font-size: 13px; text-transform: uppercase;
   letter-spacing: .4px; }
-tr:hover td { background: #17253A; }
-code, pre { font-family: "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace; }
-pre { background: #0B1220; border: 1px solid var(--line); border-radius: 10px;
+tr:hover td { background: #F3F3F3; }
+code, pre { font-family: "DejaVu Sans Mono", Consolas, monospace; }
+pre { background: #FFFFFF; border: 1px solid var(--line); border-radius: 0;
   padding: 12px 14px; overflow-x: auto; font-size: 13px; }
-.chip { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 12px;
+.chip { display: inline-block; padding: 2px 8px; border-radius: 0; font-size: 12px;
   border: 1px solid var(--line); color: var(--dim); margin: 0 4px 4px 0; }
 .sev-high, .sev-error { color: var(--pink); border-color: var(--pink); }
 .sev-medium, .sev-warning { color: var(--accent); border-color: var(--accent); }
 .sev-low, .sev-info { color: var(--blue); border-color: var(--blue); }
 .behavior { background: var(--panel); border: 1px solid var(--line); border-left-width: 4px;
-  border-radius: 10px; padding: 14px 16px; margin: 0 0 12px; }
+  border-radius: 0; padding: 14px 16px; margin: 0 0 12px; }
 .behavior.high { border-left-color: var(--pink); }
 .behavior.medium { border-left-color: var(--accent); }
 .behavior.low { border-left-color: var(--green); }
 .behavior h3 { margin: 0 0 4px; }
-.bar { height: 6px; border-radius: 4px; background: var(--panel2); margin: 8px 0 4px;
+.bar { height: 6px; border-radius: 0; background: var(--panel2); margin: 8px 0 4px;
   overflow: hidden; }
 .bar i { display: block; height: 100%; background: var(--cyan); }
 .muted { color: var(--dim); }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 18px; }
-.svgbox { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+.svgbox { background: var(--panel); border: 1px solid var(--line); border-radius: 0;
   padding: 10px; overflow: auto; }
 .svgbox svg { max-width: 100%; height: auto; }
-input.filter { width: 100%; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line);
+input.filter { width: 100%; padding: 9px 12px; border-radius: 0; border: 1px solid var(--line);
   background: var(--panel2); color: var(--fg); margin: 6px 0 12px; font-size: 14px; }
 footer { border-top: 1px solid var(--line); color: var(--dim); font-size: 13px;
   padding: 18px 32px 40px; text-align: center; }
@@ -1079,20 +1096,19 @@ def _risk_banner(data: ReportData) -> str:
         HTML of the banner, with the reason that weighed the most.
     """
     risk = data.risk
-    color = _esc(risk.get("color", "#8AA0B8"))
+    color = _esc(risk.get("color", "#595959"))
     reasons = risk.get("reasons") or []
     detail = " · ".join(reasons[:3]) if reasons else "no relevant signal"
     return (
         "<div class='risk' style='border-color:%s'>"
         "<div class='score' style='color:%s'>%d<small>/100</small></div>"
-        "<div><div class='level' style='color:%s'>%s risk %s</div>"
+        "<div><div class='level' style='color:%s'>Risk: %s</div>"
         "<div class='sub'>%s</div><div class='sub'>%s</div></div></div>"
         % (
             color,
             color,
             int(risk.get("score", 0)),
             color,
-            _esc(risk.get("emoji", "")),
             _esc(str(risk.get("level", "")).upper()),
             _esc(risk.get("description", "")),
             _esc(detail),
@@ -1348,6 +1364,15 @@ def _execution_section(data: ReportData) -> str:
                     "yes" if execution.get("timed_out") else "no",
                 ]
             ],
+        )
+    )
+    memory = execution.get("memory", {})
+    parts.append(
+        "<p>Memory: %s / %s bytes; peak %s bytes.</p>"
+        % (
+            _esc(memory.get("allocated_bytes", 0)),
+            _esc(memory.get("limit_bytes", 0)),
+            _esc(memory.get("peak_bytes", 0)),
         )
     )
     issues = execution.get("issues") or []

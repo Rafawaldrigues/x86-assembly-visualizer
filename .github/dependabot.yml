@@ -1,0 +1,46 @@
+# Dependabot — ASM X has no runtime dependencies, so this only watches the
+# development tooling and the actions used by the CI.
+#
+#   pip              requirements-dev.txt (flake8, mypy, coverage, black...)
+#   github-actions   the actions pinned in .github/workflows
+#   docker           the base image of the Dockerfile
+#
+# The goal is to be told when a tool goes stale or gets a security fix — never
+# to merge by itself: a dependency pull request goes through the same
+# `make quality` gate as any other change.
+
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      development-tools:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: "chore(ci)"
+
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: monthly
+    labels:
+      - dependencies
+      - docker
+    commit-message:
+      prefix: "chore(docker)"

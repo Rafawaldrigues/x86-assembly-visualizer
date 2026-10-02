@@ -106,60 +106,64 @@ def check_strings(analysis: Analysis) -> List[Problem]:
         The list of issues found, in line order.
     """
     out = []
-    for linha in analysis.program.lines:
-        if linha.kind != "data" or linha.reserve:
+    for source_line in analysis.program.lines:
+        if source_line.kind != "data" or source_line.reserve:
             continue
         # The parser already separated comment from code respecting the quotes,
         # so the code is the beginning of the raw line, without the trailing
         # comment. Cutting at ";" by hand would give a false positive on a
         # string that contains a semicolon (for example a User-Agent
         # "Mozilla/5.0 (compatible; ASMX/1.0)").
-        code = linha.raw[: len(linha.raw) - len(linha.comment)] if linha.comment else linha.raw
-        aspas = code.count('"')
-        simples = code.count("'")
-        if aspas % 2 or simples % 2:
+        code = (
+            source_line.raw[: len(source_line.raw) - len(source_line.comment)]
+            if source_line.comment
+            else source_line.raw
+        )
+        quotes = code.count('"')
+        simple = code.count("'")
+        if quotes % 2 or simple % 2:
             out.append(
                 Problem(
-                    linha.n,
+                    source_line.n,
                     ERROR,
                     "STR002",
                     "unterminated quotes on this data line",
                     "the assembler will swallow the rest of the line; close the string",
                 )
             )
-        for arg in linha.args:
+        for arg in source_line.args:
             m = re.fullmatch(r"(['\"])([\s\S]*)\1", arg.strip())
             if not m:
                 continue
-            texto = m.group(2)
-            fora = [c for c in texto if ord(c) > 127]
-            if fora:
+            source_text = m.group(2)
+            outside = [c for c in source_text if ord(c) > 127]
+            if outside:
                 out.append(
                     Problem(
-                        linha.n,
+                        source_line.n,
                         WARNING,
                         "STR001",
                         "the string has a non-ASCII character (%s) — each one becomes "
-                        "2 or more bytes in UTF-8" % " ".join(sorted(set(fora))),
+                        "2 or more bytes in UTF-8" % " ".join(sorted(set(outside))),
                         "the size computed with $ - label will not match the number of "
                         "letters; switch to ASCII or count the real bytes",
                     )
                 )
-            ctrl = [c for c in texto if ord(c) < 32 and c not in "\n\t"]
+            ctrl = [c for c in source_text if ord(c) < 32 and c not in "\n\t"]
             if ctrl:
                 out.append(
                     Problem(
-                        linha.n,
+                        source_line.n,
                         WARNING,
                         "STR004",
                         "the string has a literal control character",
                         'prefer writing the numeric code: db "text", 10',
                     )
                 )
-            if "\\" in texto and not re.search(r"\\[nt0\\]", texto):
+            if "\\" in source_text and not re.search(r"\\[nt0\\]", source_text):
                 out.append(
                     Problem(
-                        linha.n,
+                        source_line.n,
                         INFO,
                         "STR005",
                         "the backslash is not an escape in every assembler syntax",
@@ -183,29 +187,35 @@ def check_unterminated(analysis: Analysis) -> List[Problem]:
         The list of STR006 issues found.
     """
     out = []
-    tamanhos = set()
-    for linha in analysis.program.lines:
-        if linha.kind == "data" and linha.directive == "equ" and linha.args:
-            m = re.search(r"\$\s*-\s*([A-Za-z_.$][\w.$]*)", linha.args[0])
+    sizes = set()
+    for source_line in analysis.program.lines:
+        if source_line.kind == "data" and source_line.directive == "equ" and source_line.args:
+            m = re.search(r"\$\s*-\s*([A-Za-z_.$][\w.$]*)", source_line.args[0])
             if m:
-                tamanhos.add(m.group(1))
-    for linha in analysis.program.lines:
-        if linha.kind != "data" or linha.reserve or not linha.label or not linha.args:
+                sizes.add(m.group(1))
+    for source_line in analysis.program.lines:
+        if (
+            source_line.kind != "data"
+            or source_line.reserve
+            or not source_line.label
+            or not source_line.args
+        ):
             continue
-        tem_texto = any(re.fullmatch(r"(['\"])[\s\S]*\1", a.strip()) for a in linha.args)
-        if not tem_texto or linha.label in tamanhos:
+        has_text = any(re.fullmatch(r"(['\"])[\s\S]*\1", a.strip()) for a in source_line.args)
+        if not has_text or source_line.label in sizes:
             continue
-        ultimo = linha.args[-1].strip()
-        if re.fullmatch(r"-?0+", ultimo) or re.fullmatch(r"\d+", ultimo):
+        last_item = source_line.args[-1].strip()
+        if re.fullmatch(r"-?0+", last_item) or re.fullmatch(r"\d+", last_item):
             continue
         out.append(
             Problem(
-                linha.n,
+                source_line.n,
                 WARNING,
                 "STR006",
-                "the string %s does not end in 0 nor has a computed size" % linha.label,
+                "the string %s does not end in 0 nor has a computed size" % source_line.label,
                 "without a terminator and without '%s_len equ $ - %s' there is no way to know "
-                "where it ends; whoever prints it will guess the size" % (linha.label, linha.label),
+                "where it ends; whoever prints it will guess the size"
+                % (source_line.label, source_line.label),
             )
         )
     return out
@@ -226,10 +236,12 @@ def check_cstrings(analysis: Analysis) -> List[Problem]:
     """
     out = []
     machine_syms = {}
-    for linha in analysis.program.lines:
-        if linha.kind == "data" and linha.label and not linha.reserve:
-            ends_zero = bool(linha.args) and re.fullmatch(r"-?0+", linha.args[-1].strip())
-            machine_syms[linha.label] = (linha.n, ends_zero)
+    for source_line in analysis.program.lines:
+        if source_line.kind == "data" and source_line.label and not source_line.reserve:
+            ends_zero = bool(source_line.args) and re.fullmatch(
+                r"-?0+", source_line.args[-1].strip()
+            )
+            machine_syms[source_line.label] = (source_line.n, ends_zero)
 
     consumers = re.compile(
         r"printf|puts|strlen|strcpy|MessageBox|CreateFile|LoadLibrary|"
@@ -243,8 +255,8 @@ def check_cstrings(analysis: Analysis) -> List[Problem]:
             if sym in machine_syms:
                 pending[_base(ins.operands[0].reg)] = sym
         if ins.mnemonic == "call" and ins.operands:
-            alvo = ins.operands[0].symbol or ins.operands[0].text
-            if consumers.search(str(alvo)):
+            target_name = ins.operands[0].symbol or ins.operands[0].text
+            if consumers.search(str(target_name)):
                 for sym in set(pending.values()):
                     line, ends_zero = machine_syms[sym]
                     if not ends_zero:
@@ -253,7 +265,8 @@ def check_cstrings(analysis: Analysis) -> List[Problem]:
                                 line,
                                 ERROR,
                                 "STR003",
-                                "the string %s is passed to %s but does not end in 0" % (sym, alvo),
+                                "the string %s is passed to %s but does not end in 0"
+                                % (sym, target_name),
                                 'add the terminator: %s db "...", 0' % sym,
                             )
                         )
@@ -300,7 +313,7 @@ def check_division(analysis: Analysis) -> List[Problem]:
                 prepared = True
             if m in ("div", "idiv"):
                 if not prepared:
-                    correcao = "XOR RDX, RDX" if m == "div" else "CQO"
+                    correction = "XOR RDX, RDX" if m == "div" else "CQO"
                     out.append(
                         Problem(
                             ins.n,
@@ -308,7 +321,7 @@ def check_division(analysis: Analysis) -> List[Problem]:
                             "DIV001",
                             "%s without preparing RDX in this block" % m.upper(),
                             "the CPU divides RDX:RAX; with garbage in RDX the quotient overflows "
-                            "and raises an exception. Put %s before it." % correcao,
+                            "and raises an exception. Put %s before it." % correction,
                         )
                     )
                 op = ins.operands[0] if ins.operands else None
@@ -354,39 +367,39 @@ def check_stack(analysis: Analysis) -> List[Problem]:
     for name, instrs in _func_ranges(analysis).items():
         if not any(i.mnemonic.startswith("ret") for i in instrs):
             continue
-        saldo = 0
-        primeiro = instrs[0].n
+        balance = 0
+        first_item = instrs[0].n
         for ins in instrs:
             if ins.mnemonic == "push":
-                saldo += 1
+                balance += 1
             elif ins.mnemonic == "pop":
-                saldo -= 1
+                balance -= 1
             elif ins.mnemonic == "leave":
-                saldo = 0
+                balance = 0
             elif ins.mnemonic.startswith("ret"):
-                if saldo > 0:
+                if balance > 0:
                     out.append(
                         Problem(
                             ins.n,
                             ERROR,
                             "STK001",
-                            "%s returns with %d extra value(s) on the stack" % (name, saldo),
+                            "%s returns with %d extra value(s) on the stack" % (name, balance),
                             "every PUSH needs its matching POP before the RET, otherwise the RET "
                             "takes the wrong value and jumps to an invalid address",
                         )
                     )
-                elif saldo < 0:
+                elif balance < 0:
                     out.append(
                         Problem(
                             ins.n,
                             ERROR,
                             "STK002",
-                            "%s pops %d more value(s) than it pushed" % (name, -saldo),
+                            "%s pops %d more value(s) than it pushed" % (name, -balance),
                             "the function is consuming the caller stack",
                         )
                     )
-                saldo = 0
-        _ = primeiro
+                balance = 0
+        _ = first_item
     return out
 
 
@@ -403,16 +416,16 @@ def check_missing_ret(analysis: Analysis) -> List[Problem]:
         The list of STK003 issues found.
     """
     out = []
-    chamadas = {
+    called_functions = {
         (i.operands[0].symbol or i.operands[0].text)
         for i in analysis.instrs
         if i.mnemonic == "call" and i.operands
     }
     for name, instrs in _func_ranges(analysis).items():
-        if name not in chamadas:
+        if name not in called_functions:
             continue
-        tem_saida = any(i.mnemonic.startswith("ret") or i.mnemonic == "jmp" for i in instrs)
-        if not tem_saida:
+        has_exit = any(i.mnemonic.startswith("ret") or i.mnemonic == "jmp" for i in instrs)
+        if not has_exit:
             out.append(
                 Problem(
                     instrs[0].n,
@@ -444,7 +457,7 @@ def check_abi(analysis: Analysis) -> List[Problem]:
     for name, instrs in _func_ranges(analysis).items():
         if not any(i.mnemonic.startswith("ret") for i in instrs):
             continue
-        salvos = {
+        saved_regs = {
             _base(i.operands[0].reg)
             for i in instrs
             if i.mnemonic == "push" and i.operands and i.operands[0].type == "reg"
@@ -456,7 +469,7 @@ def check_abi(analysis: Analysis) -> List[Problem]:
                 and ins.operands[0].type == "reg"
             ):
                 base = _base(ins.operands[0].reg)
-                if base in preserved and base not in salvos and base != "rbp":
+                if base in preserved and base not in saved_regs and base != "rbp":
                     out.append(
                         Problem(
                             ins.n,
@@ -468,9 +481,9 @@ def check_abi(analysis: Analysis) -> List[Problem]:
                             % (base.upper(), analysis.platform.abi["name"]),
                         )
                     )
-                    salvos.add(base)  # warns only once per register
+                    saved_regs.add(base)  # warns only once per register
         if win:
-            reserva = any(
+            reservation = any(
                 i.mnemonic == "sub"
                 and i.operands
                 and _base(i.operands[0].reg) == "rsp"
@@ -479,11 +492,11 @@ def check_abi(analysis: Analysis) -> List[Problem]:
                 and i.operands[1].value >= 32
                 for i in instrs
             )
-            chama = [i for i in instrs if i.mnemonic == "call"]
-            if chama and not reserva:
+            call_ins = [i for i in instrs if i.mnemonic == "call"]
+            if call_ins and not reservation:
                 out.append(
                     Problem(
-                        chama[0].n,
+                        call_ins[0].n,
                         ERROR,
                         "ABI001",
                         "call without reserved shadow space",
@@ -552,10 +565,10 @@ def check_operands(analysis: Analysis) -> List[Problem]:
             )
         if len(ops) >= 2 and ops[0].type == "reg" and ops[1].type == "imm":
             size = REG_INFO[ops[0].reg]["size"]
-            limite_u = (1 << (size * 8)) - 1
-            limite_s = 1 << (size * 8 - 1)
+            unsigned_limit = (1 << (size * 8)) - 1
+            signed_limit = 1 << (size * 8 - 1)
             v = ops[1].value
-            if v > limite_u or v < -limite_s:
+            if v > unsigned_limit or v < -signed_limit:
                 out.append(
                     Problem(
                         ins.n,
@@ -613,17 +626,17 @@ def check_symbols(analysis: Analysis) -> List[Problem]:
         The list of issues found.
     """
     out = []
-    definidos = set(analysis.label_at) | {
+    defined_names = set(analysis.label_at) | {
         k for k, v in analysis.symbols.items() if v["type"] in ("data", "extern")
     }
-    usados = set()
+    used_names = set()
     for ins in analysis.instrs:
         for op in ins.operands:
             sym = op.symbol if op.type in ("sym", "mem") else None
             if not sym:
                 continue
-            usados.add(sym)
-            if sym not in definidos:
+            used_names.add(sym)
+            if sym not in defined_names:
                 out.append(
                     Problem(
                         ins.n,
@@ -636,24 +649,26 @@ def check_symbols(analysis: Analysis) -> List[Problem]:
                 )
         if ins.mnemonic in ("call", "jmp") or is_cond_jump(ins.mnemonic):
             if ins.operands:
-                alvo = ins.operands[0].symbol or ins.operands[0].text
-                usados.add(alvo)
-                if alvo not in definidos and not re.fullmatch(r"[\[\]\d+*x-]+", alvo):
+                target_name = ins.operands[0].symbol or ins.operands[0].text
+                used_names.add(target_name)
+                if target_name not in defined_names and not re.fullmatch(
+                    r"[\[\]\d+*x-]+", target_name
+                ):
                     out.append(
                         Problem(
                             ins.n,
                             ERROR,
                             "SYM001",
                             "%s points to %s, which does not exist in this file"
-                            % (ins.mnemonic.upper(), alvo),
-                            "define the label or declare EXTERN %s" % alvo,
+                            % (ins.mnemonic.upper(), target_name),
+                            "define the label or declare EXTERN %s" % target_name,
                         )
                     )
     for name, info in analysis.symbols.items():
         if (
             info["type"] == "label"
             and not info.get("global")
-            and name not in usados
+            and name not in used_names
             and name not in ("_start", "main", "start", "WinMain")
         ):
             out.append(
@@ -681,8 +696,8 @@ def check_entry(analysis: Analysis) -> List[Problem]:
         The list of issues found.
     """
     out = []
-    entradas = [n for n in ("_start", "main", "start", "WinMain") if n in analysis.label_at]
-    if not entradas and analysis.instrs:
+    entry_labels = [n for n in ("_start", "main", "start", "WinMain") if n in analysis.label_at]
+    if not entry_labels and analysis.instrs:
         out.append(
             Problem(
                 analysis.instrs[0].n,
@@ -692,7 +707,7 @@ def check_entry(analysis: Analysis) -> List[Problem]:
                 "the linker needs to know where to start",
             )
         )
-    for e in entradas:
+    for e in entry_labels:
         info = analysis.symbols.get(e, {})
         if not info.get("global"):
             out.append(
@@ -723,7 +738,7 @@ def check_exit(analysis: Analysis) -> List[Problem]:
     if not analysis.instrs:
         return []
     src = analysis.program.source
-    tem_saida = (
+    has_exit = (
         (re.search(r"\b(60|0x3c|231)\b", src) and "syscall" in src.lower())
         or re.search(r"ExitProcess", src, re.I)
         or any(
@@ -731,7 +746,7 @@ def check_exit(analysis: Analysis) -> List[Problem]:
             for i in analysis.instrs
         )
     )
-    if not tem_saida:
+    if not has_exit:
         return [
             Problem(
                 analysis.instrs[-1].n,
@@ -759,17 +774,17 @@ def check_flow(analysis: Analysis) -> List[Problem]:
         The list of issues found.
     """
     out = []
-    entradas = {"_start", "main", "start", "WinMain"}
-    alvos_de_call = {
+    entry_labels = {"_start", "main", "start", "WinMain"}
+    call_targets = {
         (i.operands[0].symbol or i.operands[0].text)
         for i in analysis.instrs
         if i.mnemonic == "call" and i.operands
     }
     for b in analysis.blocks:
-        externos = [e for e in b.pred if e.target != b.id]
-        if b.id == 0 or externos:
+        external_names = [e for e in b.pred if e.target != b.id]
+        if b.id == 0 or external_names:
             continue
-        if b.name in entradas or b.name in alvos_de_call or b.func in alvos_de_call:
+        if b.name in entry_labels or b.name in call_targets or b.func in call_targets:
             continue
         if analysis.symbols.get(b.name, {}).get("global"):
             continue
@@ -785,10 +800,10 @@ def check_flow(analysis: Analysis) -> List[Problem]:
 
     for b in analysis.blocks:
         last = b.instrs[-1]
-        volta = [e for e in b.succ if e.target <= b.id]
-        if not volta:
+        return_ins = [e for e in b.succ if e.target <= b.id]
+        if not return_ins:
             continue
-        muda = False
+        changes = False
         for ins in b.instrs:
             if ins.mnemonic in (
                 "inc",
@@ -812,9 +827,9 @@ def check_flow(analysis: Analysis) -> List[Problem]:
                 "movsx",
                 "pop",
             ):
-                muda = True
+                changes = True
                 break
-        if not muda:
+        if not changes:
             out.append(
                 Problem(
                     last.n,
@@ -842,16 +857,16 @@ def check_syscalls(analysis: Analysis) -> List[Problem]:
     """
     out = []
     for b in analysis.blocks:
-        rax_definido = False
+        rax_defined = False
         for ins in b.instrs:
             if (
                 ins.operands
                 and ins.operands[0].type == "reg"
                 and _base(ins.operands[0].reg) == "rax"
             ):
-                rax_definido = True
+                rax_defined = True
             if ins.mnemonic == "syscall":
-                if not rax_definido:
+                if not rax_defined:
                     out.append(
                         Problem(
                             ins.n,
@@ -862,14 +877,14 @@ def check_syscalls(analysis: Analysis) -> List[Problem]:
                             "a random request",
                         )
                     )
-                rax_definido = False
+                rax_defined = False
         # RCX and R11 are destroyed by the syscall
-        depois = False
+        following = False
         for ins in b.instrs:
             if ins.mnemonic == "syscall":
-                depois = True
+                following = True
                 continue
-            if not depois:
+            if not following:
                 continue
             for op in ins.operands[1:] if len(ins.operands) > 1 else []:
                 if op.type == "reg" and _base(op.reg) in ("rcx", "r11"):
@@ -883,7 +898,7 @@ def check_syscalls(analysis: Analysis) -> List[Problem]:
                             "the value",
                         )
                     )
-                    depois = False
+                    following = False
     return out
 
 
@@ -900,8 +915,15 @@ def check_sections(analysis: Analysis) -> List[Problem]:
         The list of issues found.
     """
     out = []
-    secoes = {linha.new_section for linha in analysis.program.lines if linha.new_section}
-    if analysis.instrs and "text" not in secoes and "code" not in secoes and secoes:
+    section_names = {
+        source_line.new_section for source_line in analysis.program.lines if source_line.new_section
+    }
+    if (
+        analysis.instrs
+        and "text" not in section_names
+        and "code" not in section_names
+        and section_names
+    ):
         out.append(
             Problem(
                 analysis.instrs[0].n,
@@ -944,25 +966,25 @@ def check_uninitialized(analysis: Analysis) -> List[Problem]:
     out = []
     plat_args = analysis.platform.abi["args"]
     for name, instrs in _func_ranges(analysis).items():
-        escritos = set(plat_args) | {"rsp", "rbp", "rip"}
+        written_regs = set(plat_args) | {"rsp", "rbp", "rip"}
         if name in ("_start", "start"):
-            escritos |= set()
+            written_regs |= set()
         for ins in instrs:
-            leituras = []
+            read_regs = []
             if ins.mnemonic in ("mov", "movzx", "movsx", "lea") and len(ins.operands) > 1:
-                leituras = ins.operands[1:]
+                read_regs = ins.operands[1:]
             elif ins.mnemonic in ("add", "sub", "cmp", "test", "and", "or", "xor", "imul"):
-                leituras = ins.operands
+                read_regs = ins.operands
             elif ins.mnemonic in ("push", "inc", "dec", "neg", "not", "div", "idiv", "mul"):
-                leituras = ins.operands
-            for op in leituras:
+                read_regs = ins.operands
+            for op in read_regs:
                 regs = []
                 if op.type == "reg":
                     regs = [_base(op.reg)]
                 elif op.type == "mem":
                     regs = [_base(r) for r in op.regs]
                 for r in regs:
-                    if r and r not in escritos:
+                    if r and r not in written_regs:
                         out.append(
                             Problem(
                                 ins.n,
@@ -972,17 +994,17 @@ def check_uninitialized(analysis: Analysis) -> List[Problem]:
                                 "the value is whatever was left over; initialize the register",
                             )
                         )
-                        escritos.add(r)
+                        written_regs.add(r)
             if (
                 ins.operands
                 and ins.operands[0].type == "reg"
                 and ins.mnemonic not in ("cmp", "test", "push", "div", "idiv", "mul")
             ):
-                escritos.add(_base(ins.operands[0].reg))
+                written_regs.add(_base(ins.operands[0].reg))
             if ins.mnemonic in ("syscall", "call"):
-                escritos |= {"rax", "rcx", "r11"}
+                written_regs |= {"rax", "rcx", "r11"}
             if ins.mnemonic in ("div", "idiv", "mul"):
-                escritos |= {"rax", "rdx"}
+                written_regs |= {"rax", "rdx"}
     return out
 
 

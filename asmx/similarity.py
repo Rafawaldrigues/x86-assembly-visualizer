@@ -75,15 +75,15 @@ def feature_names() -> List[str]:
     return list(FEATURE_WEIGHTS)
 
 
-def _add(alvo: Dict[str, float], chave: str, peso: float) -> None:
+def _add(target_name: Dict[str, float], key: str, feature_weight: float) -> None:
     """Adds weight to one feature, creating it when needed.
 
     Args:
-        alvo: Vector being built.
-        chave: Feature name.
-        peso: Value to add.
+        target_name: Vector being built.
+        key: Feature name.
+        feature_weight: Value to add.
     """
-    alvo[chave] = alvo.get(chave, 0.0) + peso
+    target_name[key] = target_name.get(key, 0.0) + feature_weight
 
 
 def feature_vector(
@@ -110,66 +110,72 @@ def feature_vector(
         ConfigError: Propagated from the behaviour classifier when a rule is
             malformed (never for well-formed analysis).
     """
-    fonte = analysis.program.source if text is None else text
-    vetor: Dict[str, float] = {}
+    source_text = analysis.program.source if text is None else text
+    vector: Dict[str, float] = {}
 
-    historico: Dict[str, int] = {}
+    history: Dict[str, int] = {}
     for ins in analysis.instrs:
         if not ins.mnemonic:
             continue
-        historico[ins.mnemonic] = historico.get(ins.mnemonic, 0) + 1
-    for mnemonic, contagem in historico.items():
+        history[ins.mnemonic] = history.get(ins.mnemonic, 0) + 1
+    for mnemonic, item_count in history.items():
         _add(
-            vetor,
+            vector,
             "instruction:%s" % mnemonic,
-            FEATURE_WEIGHTS["instruction"] * math.log1p(contagem),
+            FEATURE_WEIGHTS["instruction"] * math.log1p(item_count),
         )
 
     for ins in analysis.instrs:
         if ins.mnemonic == "syscall" and ins.sem and ins.sem.syscall_name:
-            _add(vetor, "syscall:%s" % ins.sem.syscall_name, FEATURE_WEIGHTS["syscall"])
+            _add(vector, "syscall:%s" % ins.sem.syscall_name, FEATURE_WEIGHTS["syscall"])
         if ins.mnemonic == "call" and ins.operands:
-            alvo = ins.operands[0].symbol or ins.operands[0].text
-            if alvo and alvo not in analysis.label_at:
-                _add(vetor, "api:%s" % alvo, FEATURE_WEIGHTS["api"])
+            target_name = ins.operands[0].symbol or ins.operands[0].text
+            if target_name and target_name not in analysis.label_at:
+                _add(vector, "api:%s" % target_name, FEATURE_WEIGHTS["api"])
 
-    lista_problemas = list(problems) if problems is not None else validate(analysis)
-    lista_comportamentos = (
-        list(behaviors) if behaviors is not None else classify(analysis, lista_problemas)
-    )
-    for comportamento in lista_comportamentos:
-        _add(vetor, "behavior:%s" % comportamento.category, FEATURE_WEIGHTS["behavior"])
-    for problema in lista_problemas:
-        _add(vetor, "problem:%s" % problema.code, FEATURE_WEIGHTS["indicator"] * 0.5)
+    problem_list = list(problems) if problems is not None else validate(analysis)
+    behavior_list = list(behaviors) if behaviors is not None else classify(analysis, problem_list)
+    for behavior_item in behavior_list:
+        _add(vector, "behavior:%s" % behavior_item.category, FEATURE_WEIGHTS["behavior"])
+    for problem_item in problem_list:
+        _add(vector, "problem:%s" % problem_item.code, FEATURE_WEIGHTS["indicator"] * 0.5)
 
-    contagens = {
+    feature_counts = {
         "instructions": len(analysis.instrs),
         "blocks": len(analysis.blocks),
         "calls": sum(1 for ins in analysis.instrs if ins.mnemonic == "call"),
         "sections": len(
-            {linha.new_section for linha in analysis.program.lines if linha.new_section}
+            {
+                source_line.new_section
+                for source_line in analysis.program.lines
+                if source_line.new_section
+            }
         ),
         "strings": sum(
-            1 for linha in analysis.program.lines if linha.kind == "data" and not linha.reserve
+            1
+            for source_line in analysis.program.lines
+            if source_line.kind == "data" and not source_line.reserve
         ),
     }
-    for chave in SHAPE_KEYS:
-        if contagens[chave]:
-            _add(vetor, "shape:%s" % chave, FEATURE_WEIGHTS["shape"] * math.log1p(contagens[chave]))
+    for key in SHAPE_KEYS:
+        if feature_counts[key]:
+            _add(
+                vector, "shape:%s" % key, FEATURE_WEIGHTS["shape"] * math.log1p(feature_counts[key])
+            )
 
-    escalar = math.sqrt(sum(valor * valor for valor in vetor.values()))
-    if escalar:
-        vetor = {chave: valor / escalar for chave, valor in vetor.items()}
-    log_event(logger, "vector_built", level=10, features=len(vetor), characters=len(fonte))
-    return vetor
+    scalar = math.sqrt(sum(numeric_value * numeric_value for numeric_value in vector.values()))
+    if scalar:
+        vector = {key: numeric_value / scalar for key, numeric_value in vector.items()}
+    log_event(logger, "vector_built", level=10, features=len(vector), characters=len(source_text))
+    return vector
 
 
-def cosine(primeiro: Dict[str, float], segundo: Dict[str, float]) -> float:
+def cosine(first_item: Dict[str, float], second_item: Dict[str, float]) -> float:
     """Cosine similarity between two vectors.
 
     Args:
-        primeiro: First vector.
-        segundo: Second vector.
+        first_item: First vector.
+        second_item: Second vector.
 
     Returns:
         ``0.0`` when either vector is empty (nothing in common, or nothing to
@@ -179,24 +185,26 @@ def cosine(primeiro: Dict[str, float], segundo: Dict[str, float]) -> float:
         >>> cosine({}, {"a": 1.0})
         0.0
     """
-    if not primeiro or not segundo:
+    if not first_item or not second_item:
         return 0.0
-    if len(segundo) < len(primeiro):
-        primeiro, segundo = segundo, primeiro
-    produto = sum(valor * segundo.get(chave, 0.0) for chave, valor in primeiro.items())
-    norma_a = math.sqrt(sum(valor * valor for valor in primeiro.values()))
-    norma_b = math.sqrt(sum(valor * valor for valor in segundo.values()))
-    if norma_a == 0.0 or norma_b == 0.0:
+    if len(second_item) < len(first_item):
+        first_item, second_item = second_item, first_item
+    product = sum(
+        numeric_value * second_item.get(key, 0.0) for key, numeric_value in first_item.items()
+    )
+    norm_a = math.sqrt(sum(numeric_value * numeric_value for numeric_value in first_item.values()))
+    norm_b = math.sqrt(sum(numeric_value * numeric_value for numeric_value in second_item.values()))
+    if norm_a == 0.0 or norm_b == 0.0:
         return 0.0
-    return max(0.0, min(1.0, produto / (norma_a * norma_b)))
+    return max(0.0, min(1.0, product / (norm_a * norm_b)))
 
 
-def jaccard(primeiro: Iterable[str], segundo: Iterable[str]) -> float:
+def jaccard(first_item: Iterable[str], second_item: Iterable[str]) -> float:
     """Jaccard similarity between two sets of names.
 
     Args:
-        primeiro: First collection of names.
-        segundo: Second collection of names.
+        first_item: First collection of names.
+        second_item: Second collection of names.
 
     Returns:
         Intersection over union, from ``0.0`` to ``1.0``; two empty sets are
@@ -206,11 +214,11 @@ def jaccard(primeiro: Iterable[str], segundo: Iterable[str]) -> float:
         >>> jaccard({"a", "b"}, {"b", "c"})
         0.3333333333333333
     """
-    conjunto_a = set(primeiro)
-    conjunto_b = set(segundo)
-    if not conjunto_a and not conjunto_b:
+    set_a = set(first_item)
+    set_b = set(second_item)
+    if not set_a and not set_b:
         return 1.0
-    return len(conjunto_a & conjunto_b) / len(conjunto_a | conjunto_b)
+    return len(set_a & set_b) / len(set_a | set_b)
 
 
 def similarity_matrix(vectors: Sequence[Dict[str, float]]) -> List[List[float]]:
@@ -228,13 +236,13 @@ def similarity_matrix(vectors: Sequence[Dict[str, float]]) -> List[List[float]]:
         [[1.0]]
     """
     total = len(vectors)
-    matriz = [[1.0] * total for _ in range(total)]
+    matrix = [[1.0] * total for _ in range(total)]
     for i in range(total):
         for j in range(i + 1, total):
-            valor = cosine(vectors[i], vectors[j])
-            matriz[i][j] = valor
-            matriz[j][i] = valor
-    return matriz
+            numeric_value = cosine(vectors[i], vectors[j])
+            matrix[i][j] = numeric_value
+            matrix[j][i] = numeric_value
+    return matrix
 
 
 @dataclass
@@ -297,59 +305,64 @@ def cluster(
         return []
     pai = list(range(total))
 
-    def raiz(indice: int) -> int:
+    def root_index(idx: int) -> int:
         """Finds the representative of a group, compressing the path.
 
         Args:
-            indice: Index whose group representative is wanted.
+            idx: Index whose group representative is wanted.
 
         Returns:
             Index of the representative of the group.
         """
-        while pai[indice] != indice:
-            pai[indice] = pai[pai[indice]]
-            indice = pai[indice]
-        return indice
+        while pai[idx] != idx:
+            pai[idx] = pai[pai[idx]]
+            idx = pai[idx]
+        return idx
 
-    matriz = similarity_matrix(vectors)
-    membros: Dict[int, List[int]] = {i: [i] for i in range(total)}
+    matrix = similarity_matrix(vectors)
+    member_indexes: Dict[int, List[int]] = {i: [i] for i in range(total)}
     for i in range(total):
         for j in range(i + 1, total):
-            if matriz[i][j] < threshold:
+            if matrix[i][j] < threshold:
                 continue
             if linkage == "complete":
-                raiz_i, raiz_j = raiz(i), raiz(j)
-                if raiz_i == raiz_j:
+                root_i, root_j = root_index(i), root_index(j)
+                if root_i == root_j:
                     continue
-                if min(matriz[a][b] for a in membros[raiz_i] for b in membros[raiz_j]) < threshold:
+                if (
+                    min(
+                        matrix[a][b] for a in member_indexes[root_i] for b in member_indexes[root_j]
+                    )
+                    < threshold
+                ):
                     continue
-            raiz_i, raiz_j = raiz(i), raiz(j)
-            if raiz_i == raiz_j:
+            root_i, root_j = root_index(i), root_index(j)
+            if root_i == root_j:
                 continue
-            pai[raiz_j] = raiz_i
-            membros[raiz_i] = sorted(membros[raiz_i] + membros.pop(raiz_j))
+            pai[root_j] = root_i
+            member_indexes[root_i] = sorted(member_indexes[root_i] + member_indexes.pop(root_j))
 
-    grupos: Dict[int, List[int]] = {}
-    for indice in range(total):
-        grupos.setdefault(raiz(indice), []).append(indice)
-    resultado = []
-    for indices in grupos.values():
-        coesao = min(
-            (matriz[a][b] for posicao, a in enumerate(indices) for b in indices[posicao + 1 :]),
+    group_items: Dict[int, List[int]] = {}
+    for idx in range(total):
+        group_items.setdefault(root_index(idx), []).append(idx)
+    result_value = []
+    for indices in group_items.values():
+        cohesion_value = min(
+            (matrix[a][b] for position, a in enumerate(indices) for b in indices[position + 1 :]),
             default=1.0,
         )
-        resultado.append(Cluster(members=indices, cohesion=coesao))
-    resultado.sort(key=lambda c: (-len(c.members), c.members[0]))
+        result_value.append(Cluster(members=indices, cohesion=cohesion_value))
+    result_value.sort(key=lambda c: (-len(c.members), c.members[0]))
     log_event(
         logger,
         "clusters_built",
         level=10,
         samples=total,
-        clusters=len(resultado),
+        clusters=len(result_value),
         threshold=threshold,
         linkage=linkage,
     )
-    return resultado
+    return result_value
 
 
 def similar_to(
@@ -370,9 +383,9 @@ def similar_to(
         >>> similar_to({"a": 1.0}, [{"b": 1.0}, {"a": 1.0}], top=1)
         [(1, 1.0)]
     """
-    pares = [(indice, cosine(reference, vetor)) for indice, vetor in enumerate(vectors)]
-    pares.sort(key=lambda par: (-par[1], par[0]))
-    return pares[: max(0, top)]
+    pairs = [(idx, cosine(reference, vector)) for idx, vector in enumerate(vectors)]
+    pairs.sort(key=lambda par: (-par[1], par[0]))
+    return pairs[: max(0, top)]
 
 
 def groups(
@@ -390,48 +403,50 @@ def groups(
         List of ``{"size", "cohesion", "label", "members": [names]}``, largest
         group first.
     """
-    vetores = [feature_vector(item["analysis"]) for item in samples]
-    nomes = [str(item.get("name") or "?") for item in samples]
-    saida = []
-    for grupo in cluster(vetores, threshold=threshold, linkage=linkage):
-        saida.append(
+    feature_vectors = [feature_vector(item["analysis"]) for item in samples]
+    item_names = [str(item.get("name") or "?") for item in samples]
+    output_value = []
+    for group_item in cluster(feature_vectors, threshold=threshold, linkage=linkage):
+        output_value.append(
             {
-                "size": len(grupo.members),
-                "cohesion": round(grupo.cohesion, 4),
-                "label": _group_label(vetores, grupo.members),
-                "members": [nomes[i] for i in grupo.members],
+                "size": len(group_item.members),
+                "cohesion": round(group_item.cohesion, 4),
+                "label": _group_label(feature_vectors, group_item.members),
+                "members": [item_names[i] for i in group_item.members],
             }
         )
-    return saida
+    return output_value
 
 
-def _group_label(vectors: Sequence[Dict[str, float]], membros: Sequence[int]) -> str:
+def _group_label(vectors: Sequence[Dict[str, float]], member_indexes: Sequence[int]) -> str:
     """Picks the most characteristic feature of a group.
 
     Args:
         vectors: All vectors.
-        membros: Indexes that belong to the group.
+        member_indexes: Indexes that belong to the group.
 
     Returns:
         Human-readable label like ``"syscall:connect"``; empty when there is
         nothing to show.
     """
-    if len(membros) < 2:
+    if len(member_indexes) < 2:
         return ""
-    frequencia: Dict[str, int] = {}
-    for indice in membros:
-        for chave in vectors[indice]:
-            frequencia[chave] = frequencia.get(chave, 0) + 1
-    candidatos = [
-        (chave, contagem)
-        for chave, contagem in frequencia.items()
-        if contagem == len(membros) and not chave.startswith("shape:")
+    frequency: Dict[str, int] = {}
+    for idx in member_indexes:
+        for key in vectors[idx]:
+            frequency[key] = frequency.get(key, 0) + 1
+    candidates = [
+        (key, item_count)
+        for key, item_count in frequency.items()
+        if item_count == len(member_indexes) and not key.startswith("shape:")
     ]
-    if not candidatos:
-        candidatos = [
-            (chave, contagem) for chave, contagem in frequencia.items() if contagem == len(membros)
+    if not candidates:
+        candidates = [
+            (key, item_count)
+            for key, item_count in frequency.items()
+            if item_count == len(member_indexes)
         ]
-    if not candidatos:
+    if not candidates:
         return ""
-    candidatos.sort(key=lambda par: (-par[1], par[0]))
-    return candidatos[0][0]
+    candidates.sort(key=lambda par: (-par[1], par[0]))
+    return candidates[0][0]

@@ -157,7 +157,7 @@ class TestProblemDetection(unittest.TestCase):
         self.assertTrue(any("overflowed" in issue for issue in machine.issues))
 
     def test_read_of_memory_never_written(self) -> None:
-        machine = run("mov rax, [0x500000]")
+        machine = run("sub rsp, 8\nmov rax, [rsp]")
         self.assertTrue(any("never written" in issue for issue in machine.issues))
 
     def test_unbalanced_stack_on_ret(self) -> None:

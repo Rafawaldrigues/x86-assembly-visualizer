@@ -48,7 +48,7 @@ samples/
 
 # --- Local notes and editor/OS junk ---
 # `docs/` stays in the context: the quality gate runs
-# `tools/build_reference.py --check`, which compares docs/REFERENCIA.md with the
+# `tools/build_reference.py --check`, which compares docs/REFERENCE.md with the
 # instruction catalogue, and its tests read that file.
 .idea/
 .vscode/

@@ -9,7 +9,7 @@ Example:
     >>> from asmx.workspace import Project, Scenario
     >>> project = Project.new(code="mov rax, 1", name="test")
     >>> project.fork("experiment").parent
-    'principal'
+    'main'
     >>> project.set_note(1, "it starts here")
     >>> project.note(1)
     'it starts here'
@@ -27,6 +27,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
 
 from .analyzer import analyze
+from .memory import MemoryFault
 from .emulator import Machine
 from .errors import (
     BranchExistsError,
@@ -184,7 +185,7 @@ class Branch:
             The corresponding :class:`Branch`, with normalized notes and breakpoints.
         """
         b = Branch(
-            name=d.get("name", "principal"),
+            name=d.get("name", "main"),
             code=d.get("code", ""),
             parent=d.get("parent"),
             created=d.get("created", _now()),
@@ -218,13 +219,13 @@ class Project:
         self.name = name
         self.path = path
         self.branches: Dict[str, Branch] = {}
-        self.active: str = "principal"
+        self.active: str = "main"
         self.dirty = False
 
     # -------------------------------------------------------------- basics --
     @classmethod
     def new(cls, code: str = "", name: str = "project") -> "Project":
-        """Creates a project with one ``principal`` branch.
+        """Creates a project with one ``main`` branch.
 
         Args:
             code: Initial code.
@@ -238,8 +239,8 @@ class Project:
             'mov rax, 1'
         """
         p = cls(name=name)
-        p.branches["principal"] = Branch(name="principal", code=code)
-        p.active = "principal"
+        p.branches["main"] = Branch(name="main", code=code)
+        p.active = "main"
         return p
 
     @property
@@ -401,7 +402,7 @@ class Project:
             >>> _ = project.fork("alt")
             >>> project.switch("alt")
             >>> project.set_code("mov rax, 2")
-            >>> "+mov rax, 2" in project.diff("principal", "alt")
+            >>> "+mov rax, 2" in project.diff("main", "alt")
             True
         """
         for name in (a, b):
@@ -580,7 +581,7 @@ class Project:
             bd.setdefault("name", key)
             p.branches[key] = Branch.from_dict(bd)
         if not p.branches:
-            p.branches["principal"] = Branch(name="principal")
+            p.branches["main"] = Branch(name="main")
         p.active = data.get("active") or next(iter(p.branches))
         if p.active not in p.branches:
             p.active = next(iter(p.branches))
@@ -596,7 +597,7 @@ class Project:
             path: Path of the source.
 
         Returns:
-            New project with one ``principal`` branch holding the code.
+            New project with one ``main`` branch holding the code.
 
         Raises:
             SourceNotFoundError: When the file does not exist.
@@ -656,12 +657,13 @@ def parse_reg_values(text: str) -> Dict[str, int]:
     return out
 
 
-def run_scenario(code: str, scenario: Scenario) -> ScenarioResult:
+def run_scenario(code: str, scenario: Scenario, *, max_memory: int = 512) -> ScenarioResult:
     """Runs a scenario over a piece of code and compares it with the expectation.
 
     Args:
         code: Source code to run.
         scenario: Scenario with initial state and expectations.
+        max_memory: Simulated allocation limit in MiB.
 
     Returns:
         The :class:`ScenarioResult` with what happened and why it failed.
@@ -682,9 +684,14 @@ def run_scenario(code: str, scenario: Scenario) -> ScenarioResult:
             % (scenario.name, scenario.entry),
             scenario=scenario.name,
         )
-    machine = Machine(analysis, stdin=scenario.stdin, entry=scenario.entry or None)
-    for reg, value in scenario.regs.items():
-        machine.set_reg(reg.lower(), parse_number(value) if isinstance(value, str) else value)
+    machine = Machine(
+        analysis, stdin=scenario.stdin, entry=scenario.entry or None, max_memory=max_memory
+    )
+    try:
+        for reg, value in scenario.regs.items():
+            machine.set_reg(reg.lower(), parse_number(value) if isinstance(value, str) else value)
+    except MemoryFault as fault:
+        machine._halt_memory_fault(fault, 0)
     machine.run(limit=scenario.max_steps, timeout=scenario.timeout)
 
     passed, reason = True, "state within expectations"
@@ -727,12 +734,15 @@ def run_scenario(code: str, scenario: Scenario) -> ScenarioResult:
     )
 
 
-def run_all_scenarios(code: str, scenarios: List[Scenario]) -> List[ScenarioResult]:
+def run_all_scenarios(
+    code: str, scenarios: List[Scenario], *, max_memory: int = 512
+) -> List[ScenarioResult]:
     """Runs a list of scenarios in order.
 
     Args:
         code: Source code to run.
         scenarios: Scenarios to run.
+        max_memory: Simulated allocation limit in MiB.
 
     Returns:
         The list of results, in the same order as the scenarios.
@@ -743,7 +753,7 @@ def run_all_scenarios(code: str, scenarios: List[Scenario]) -> List[ScenarioResu
         >>> run_all_scenarios(EXAMPLES["linux-hello"]["code"], scenarios)[0].passed
         True
     """
-    results = [run_scenario(code, s) for s in scenarios]
+    results = [run_scenario(code, s, max_memory=max_memory) for s in scenarios]
     log_event(
         logger,
         "scenarios_finished",

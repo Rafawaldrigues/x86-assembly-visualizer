@@ -174,7 +174,7 @@ class TestRepository(unittest.TestCase):
 
     def test_annotations_and_docstrings_of_the_code(self) -> None:
         """The package code passes both gates."""
-        violations = qg.check_paths(list(qg.PADRAO))
+        violations = qg.check_paths(list(qg.DEFAULT_PATHS))
         self.assertEqual(
             [str(v) for v in violations],
             [],
@@ -183,7 +183,7 @@ class TestRepository(unittest.TestCase):
 
     def test_annotations_of_the_tests(self) -> None:
         """The test files are fully annotated."""
-        violations = qg.check_paths(list(qg.TESTES), require_docstrings=False)
+        violations = qg.check_paths(list(qg.TEST_PATHS), require_docstrings=False)
         annotations = [str(v) for v in violations if v.kind == "annotation"]
         self.assertEqual(annotations, [], "the tests also need annotations")
 
@@ -213,7 +213,7 @@ class TestRepository(unittest.TestCase):
     def test_argument_parser(self) -> None:
         """The defaults are the standard paths and no --quiet."""
         args = qg.build_parser().parse_args([])
-        self.assertEqual(tuple(args.paths), qg.PADRAO)
+        self.assertEqual(tuple(args.paths), qg.DEFAULT_PATHS)
         self.assertFalse(args.quiet)
 
 

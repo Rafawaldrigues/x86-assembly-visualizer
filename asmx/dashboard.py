@@ -25,8 +25,8 @@ your disk.
 
 Example:
     >>> from asmx.dashboard import build_index, render_page
-    >>> pagina = render_page(build_index([]), title="ASM X")
-    >>> "no samples" in pagina
+    >>> page_html = render_page(build_index([]), title="ASM X")
+    >>> "no samples" in page_html
     True
 """
 
@@ -105,7 +105,7 @@ class Sample:
         Returns:
             Dictionary with the summary fields and the extras.
         """
-        dados = {
+        values_data = {
             "name": self.name,
             "risk": self.risk,
             "score": self.score,
@@ -117,8 +117,8 @@ class Sample:
             "report": self.report,
             "reason": self.reason,
         }
-        dados.update(self.extra)
-        return dados
+        values_data.update(self.extra)
+        return values_data
 
     @property
     def rank(self) -> int:
@@ -128,11 +128,11 @@ class Sample:
             ``0`` for critical, up to ``4`` for an unknown level, then the score
             in reverse so that within the same level the highest score leads.
         """
-        nivel = RISK_ORDER.index(self.risk) if self.risk in RISK_ORDER else len(RISK_ORDER)
-        return nivel * 1000 - self.score
+        level_name = RISK_ORDER.index(self.risk) if self.risk in RISK_ORDER else len(RISK_ORDER)
+        return level_name * 1000 - self.score
 
 
-def _risk_of(dados: Dict[str, Any]) -> Tuple[str, int, str]:
+def _risk_of(values_data: Dict[str, Any]) -> Tuple[str, int, str]:
     """Extracts the risk level, the score and a one-line reason from a report.
 
     The report schema (``asmx-report/1``) carries ``risk`` as a mapping with
@@ -141,73 +141,78 @@ def _risk_of(dados: Dict[str, Any]) -> Tuple[str, int, str]:
     accepted here, plus the degenerate one where an old report has neither.
 
     Args:
-        dados: Report dictionary (``asmx-report/1``) or manifest entry.
+        values_data: Report dictionary (``asmx-report/1``) or manifest entry.
 
     Returns:
         Tuple ``(level, score, reason)``, with empty values when the payload has
         no risk assessment at all.
     """
-    risco = dados.get("risk")
-    if isinstance(risco, dict):
-        motivos = risco.get("reasons") or []
-        primeiro = ""
-        if isinstance(motivos, (list, tuple)) and motivos:
-            primeiro = str(motivos[0])
-        elif isinstance(motivos, str):
-            primeiro = motivos
+    risk_data = values_data.get("risk")
+    if isinstance(risk_data, dict):
+        reason_list = risk_data.get("reasons") or []
+        first_item = ""
+        if isinstance(reason_list, (list, tuple)) and reason_list:
+            first_item = str(reason_list[0])
+        elif isinstance(reason_list, str):
+            first_item = reason_list
         return (
-            str(risco.get("level") or ""),
-            int(risco.get("score") or 0),
-            primeiro or str(risco.get("description") or ""),
+            str(risk_data.get("level") or ""),
+            int(risk_data.get("score") or 0),
+            first_item or str(risk_data.get("description") or ""),
         )
-    if isinstance(risco, str):
-        return risco, int(dados.get("score") or 0), str(dados.get("reason") or "")
+    if isinstance(risk_data, str):
+        return risk_data, int(values_data.get("score") or 0), str(values_data.get("reason") or "")
     return (
-        str(dados.get("level") or ""),
-        int(dados.get("score") or 0),
-        str(dados.get("reason") or ""),
+        str(values_data.get("level") or ""),
+        int(values_data.get("score") or 0),
+        str(values_data.get("reason") or ""),
     )
 
 
-def _sample_from_report(nome: str, dados: Dict[str, Any], caminho: str) -> Sample:
+def _sample_from_report(item_name: str, values_data: Dict[str, Any], file_path: str) -> Sample:
     """Builds a :class:`Sample` from a report payload.
 
     Args:
-        nome: File name to show.
-        dados: Report dictionary (``asmx-report/1``).
-        caminho: Relative path of the report file.
+        item_name: File name to show.
+        values_data: Report dictionary (``asmx-report/1``).
+        file_path: Relative path of the report file.
 
     Returns:
         The sample, with whatever the report had to offer. Counts come from
         ``stats`` and from the length of the ``problems``/``behaviors`` lists,
         which is how the report schema exposes them.
     """
-    nivel, pontos, motivo = _risk_of(dados)
-    estatisticas = dados.get("stats") or {}
-    fonte = dados.get("source") or {}
-    plataforma = dados.get("platform") or {}
-    indicadores = dados.get("iocs") or {}
-    total_indicadores = (
-        sum(len(valor) for valor in indicadores.values()) if isinstance(indicadores, dict) else 0
+    level_name, score_points, reason_text = _risk_of(values_data)
+    statistics = values_data.get("stats") or {}
+    source_text = values_data.get("source") or {}
+    platform_info = values_data.get("platform") or {}
+    indicator_count = values_data.get("iocs") or {}
+    indicator_total = (
+        sum(len(numeric_value) for numeric_value in indicator_count.values())
+        if isinstance(indicator_count, dict)
+        else 0
     )
-    bits = plataforma.get("bits")
-    rotulo_plataforma = " ".join(
-        parte
-        for parte in (str(plataforma.get("os") or ""), "%s-bit" % bits if bits else "")
-        if parte
+    bits = platform_info.get("bits")
+    platform_label = " ".join(
+        part_name
+        for part_name in (str(platform_info.get("os") or ""), "%s-bit" % bits if bits else "")
+        if part_name
     )
     return Sample(
-        name=nome,
-        risk=nivel,
-        score=pontos,
-        instructions=int(estatisticas.get("instructions") or 0),
-        behaviors=len(dados.get("behaviors") or []),
-        indicators=total_indicadores,
-        problems=len(dados.get("problems") or []),
-        platform=rotulo_plataforma,
-        report=caminho,
-        reason=motivo,
-        extra={"size": int(fonte.get("size") or 0), "lines": int(fonte.get("lines") or 0)},
+        name=item_name,
+        risk=level_name,
+        score=score_points,
+        instructions=int(statistics.get("instructions") or 0),
+        behaviors=len(values_data.get("behaviors") or []),
+        indicators=indicator_total,
+        problems=len(values_data.get("problems") or []),
+        platform=platform_label,
+        report=file_path,
+        reason=reason_text,
+        extra={
+            "size": int(source_text.get("size") or 0),
+            "lines": int(source_text.get("lines") or 0),
+        },
     )
 
 
@@ -220,8 +225,8 @@ def find_manifest(directory: str) -> Optional[str]:
     Returns:
         Path of ``index.json`` when it exists, otherwise ``None``.
     """
-    candidato = os.path.join(directory, "index.json")
-    return candidato if os.path.isfile(candidato) else None
+    candidate_path = os.path.join(directory, "index.json")
+    return candidate_path if os.path.isfile(candidate_path) else None
 
 
 def _load_json(path: str) -> Dict[str, Any]:
@@ -239,17 +244,17 @@ def _load_json(path: str) -> Dict[str, Any]:
     """
     if not os.path.isfile(path):
         raise SourceReadError(path, "file not found")
-    tamanho = os.path.getsize(path)
-    if tamanho > MAX_REPORT_BYTES:
+    byte_count = os.path.getsize(path)
+    if byte_count > MAX_REPORT_BYTES:
         raise SourceReadError(path, "is larger than the limit of %d bytes" % MAX_REPORT_BYTES)
     try:
-        with open(path, encoding="utf-8") as arquivo:
-            dados = json.load(arquivo)
-    except OSError as erro:
-        raise SourceReadError(path, str(erro)) from erro
-    except ValueError as erro:
-        raise SourceReadError(path, "invalid JSON: %s" % erro) from erro
-    return dados if isinstance(dados, dict) else {}
+        with open(path, encoding="utf-8") as source_file:
+            values_data = json.load(source_file)
+    except OSError as caught_error:
+        raise SourceReadError(path, str(caught_error)) from caught_error
+    except ValueError as caught_error:
+        raise SourceReadError(path, "invalid JSON: %s" % caught_error) from caught_error
+    return values_data if isinstance(values_data, dict) else {}
 
 
 def load_samples(directory: str) -> List[Sample]:
@@ -271,18 +276,18 @@ def load_samples(directory: str) -> List[Sample]:
     """
     if not os.path.isdir(directory):
         raise ProjectError("dashboard directory not found: %s" % directory, path=directory)
-    amostras: List[Sample] = []
-    manifesto = find_manifest(directory)
-    if manifesto:
-        dados = _load_json(manifesto)
-        for item in dados.get("files") or []:
+    sample_list: List[Sample] = []
+    manifest_data = find_manifest(directory)
+    if manifest_data:
+        values_data = _load_json(manifest_data)
+        for item in values_data.get("files") or []:
             if not isinstance(item, dict):
                 continue
-            nome = str(item.get("name") or item.get("source") or "?")
-            relatorio = str(item.get("report") or "")
-            amostras.append(
+            item_name = str(item.get("name") or item.get("source") or "?")
+            report_data = str(item.get("report") or "")
+            sample_list.append(
                 Sample(
-                    name=nome,
+                    name=item_name,
                     risk=str(item.get("risk") or ""),
                     score=int(item.get("score") or 0),
                     instructions=int(item.get("instructions") or 0),
@@ -290,28 +295,32 @@ def load_samples(directory: str) -> List[Sample]:
                     indicators=int(item.get("indicators") or 0),
                     problems=int(item.get("problems") or 0),
                     platform=str(item.get("platform") or ""),
-                    report=relatorio,
+                    report=report_data,
                     reason=str(item.get("reason") or ""),
                 )
             )
-        log_event(logger, "dashboard_manifest", level=10, path=manifesto, samples=len(amostras))
-        return sorted(amostras, key=lambda s: (s.rank, s.name))
+        log_event(
+            logger, "dashboard_manifest", level=10, path=manifest_data, samples=len(sample_list)
+        )
+        return sorted(sample_list, key=lambda s: (s.rank, s.name))
 
-    for nome in sorted(os.listdir(directory)):
-        caminho = os.path.join(directory, nome)
-        if not os.path.isfile(caminho):
+    for item_name in sorted(os.listdir(directory)):
+        file_path = os.path.join(directory, item_name)
+        if not os.path.isfile(file_path):
             continue
-        if nome.endswith(".report.json"):
+        if item_name.endswith(".report.json"):
             try:
-                dados = _load_json(caminho)
-            except SourceReadError as erro:
-                logger.warning("skipping %s: %s", nome, erro)
+                values_data = _load_json(file_path)
+            except SourceReadError as caught_error:
+                logger.warning("skipping %s: %s", item_name, caught_error)
                 continue
-            amostras.append(_sample_from_report(nome[: -len(".report.json")], dados, nome))
-        elif nome.endswith(".report.html"):
-            amostras.append(Sample(name=nome[: -len(".report.html")], report=nome))
-    log_event(logger, "dashboard_scan", level=10, path=directory, samples=len(amostras))
-    return sorted(amostras, key=lambda s: (s.rank, s.name))
+            sample_list.append(
+                _sample_from_report(item_name[: -len(".report.json")], values_data, item_name)
+            )
+        elif item_name.endswith(".report.html"):
+            sample_list.append(Sample(name=item_name[: -len(".report.html")], report=item_name))
+    log_event(logger, "dashboard_scan", level=10, path=directory, samples=len(sample_list))
+    return sorted(sample_list, key=lambda s: (s.rank, s.name))
 
 
 def build_index(samples: Sequence[Sample], *, title: str = "ASM X") -> Dict[str, Any]:
@@ -328,20 +337,22 @@ def build_index(samples: Sequence[Sample], *, title: str = "ASM X") -> Dict[str,
         >>> build_index([])["total"]
         0
     """
-    por_nivel = {nivel: sum(1 for s in samples if s.risk == nivel) for nivel in RISK_ORDER}
+    by_level = {
+        level_name: sum(1 for s in samples if s.risk == level_name) for level_name in RISK_ORDER
+    }
     return {
         "schema": DASHBOARD_SCHEMA,
         "title": title,
         "total": len(samples),
-        "by_risk": por_nivel,
+        "by_risk": by_level,
         "worst": max((s.score for s in samples), default=0),
         "samples": [s.to_dict() for s in samples],
     }
 
 
 _CSS = """
-:root{--bg:#0f1115;--panel:#161a21;--line:#262c36;--fg:#e6e9ef;--dim:#98a2b3;
---low:#3fb950;--medium:#d29922;--high:#db6d28;--critical:#f85149;--accent:#58a6ff}
+:root{--bg:#eeeeee;--panel:#ffffff;--line:#aaaaaa;--fg:#202020;--dim:#595959;
+--low:#006000;--medium:#775500;--high:#994400;--critical:#a00000;--accent:#003399}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 -apple-system,
 BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
@@ -351,21 +362,21 @@ h1{margin:0;font-size:20px;letter-spacing:.2px}
 .sub{color:var(--dim);font-size:13px}
 main{padding:20px 28px 60px}
 .cards{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:20px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+.card{background:var(--panel);border:1px solid var(--line);border-radius:0;
 padding:12px 16px;min-width:120px}
 .card b{display:block;font-size:22px}
 .card span{color:var(--dim);font-size:12px;text-transform:uppercase;letter-spacing:.6px}
 input[type=search]{background:var(--panel);border:1px solid var(--line);color:var(--fg);
-padding:9px 12px;border-radius:8px;min-width:260px;font-size:14px}
+padding:9px 12px;border-radius:0;min-width:260px;font-size:14px}
 table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);
-border-radius:10px;overflow:hidden}
+border-radius:0;overflow:hidden}
 th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line);font-size:14px}
-th{background:#1b2029;color:var(--dim);font-weight:600;cursor:pointer;user-select:none;
+th{background:#dddddd;color:var(--dim);font-weight:600;cursor:pointer;user-select:none;
 white-space:nowrap}
 th:hover{color:var(--fg)}
 tr:last-child td{border-bottom:0}
 td.num{text-align:right;font-variant-numeric:tabular-nums}
-.chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;
+.chip{display:inline-block;padding:2px 9px;border-radius:0;font-size:12px;
 font-weight:600;border:1px solid transparent}
 .low{color:var(--low);border-color:var(--low)}
 .medium{color:var(--medium);border-color:var(--medium)}
@@ -378,21 +389,22 @@ footer{color:var(--dim);font-size:12px;padding:18px 28px;border-top:1px solid va
 """
 
 _JS = """
-function filtro(){var q=document.getElementById('busca').value.toLowerCase();
-var linhas=document.querySelectorAll('tbody tr');var vistos=0;
-linhas.forEach(function(tr){var ok=tr.dataset.name.indexOf(q)>=0;
-tr.style.display=ok?'':'none';if(ok)vistos++;});
-document.getElementById('vazio').style.display=vistos?'none':'';}
-function ordenar(coluna){var tb=document.querySelector('tbody');
-var linhas=Array.prototype.slice.call(tb.querySelectorAll('tr'));
-var desc=tb.dataset.col===coluna&&tb.dataset.dir!=='desc';
-linhas.sort(function(a,b){var x=a.children[coluna].dataset.val||a.children[coluna].innerText;
-var y=b.children[coluna].dataset.val||b.children[coluna].innerText;
+function filterRows(){var q=document.getElementById('search_box').value.toLowerCase();
+var source_lines=document.querySelectorAll('tbody tr');var seen_items=0;
+source_lines.forEach(function(tr){var ok=(tr.dataset.name||'').indexOf(q)>=0;
+tr.style.display=ok?'':'none';if(ok)seen_items++;});
+document.getElementById('empty_state').style.display=seen_items?'none':'';}
+function sortRows(column_index){var tb=document.querySelector('tbody');
+var source_lines=Array.prototype.slice.call(tb.querySelectorAll('tr'));
+var desc=tb.dataset.col===String(column_index)&&tb.dataset.dir!=='desc';
+source_lines.sort(function(a,b){
+var x=a.children[column_index].dataset.val||a.children[column_index].innerText;
+var y=b.children[column_index].dataset.val||b.children[column_index].innerText;
 var nx=parseFloat(x),ny=parseFloat(y);
 if(!isNaN(nx)&&!isNaN(ny)){return desc?ny-nx:nx-ny;}
 return desc?String(y).localeCompare(String(x)):String(x).localeCompare(String(y));});
-linhas.forEach(function(tr){tb.appendChild(tr);});
-tb.dataset.col=coluna;tb.dataset.dir=desc?'desc':'asc';}
+source_lines.forEach(function(tr){tb.appendChild(tr);});
+tb.dataset.col=column_index;tb.dataset.dir=desc?'desc':'asc';}
 """
 
 
@@ -409,24 +421,27 @@ def render_page(index: Dict[str, Any], *, title: str = "ASM X", live: bool = Tru
     Returns:
         The whole HTML document, with no external resource.
     """
-    amostras = list(index.get("samples") or [])
-    por_nivel = index.get("by_risk") or {}
+    sample_list = list(index.get("samples") or [])
+    by_level = index.get("by_risk") or {}
     total = int(index.get("total") or 0)
-    pior = int(index.get("worst") or 0)
-    linhas = []
-    for amostra in amostras:
-        nome = html.escape(str(amostra.get("name") or "?"))
-        risco = str(amostra.get("risk") or "")
+    worst = int(index.get("worst") or 0)
+    source_lines = []
+    for sample in sample_list:
+        item_name = html.escape(str(sample.get("name") or "?"))
+        risk_data = str(sample.get("risk") or "")
         chip = (
-            '<span class="chip %s">%s</span>' % (html.escape(risco), html.escape(risco.upper()))
-            if risco
+            '<span class="chip %s">%s</span>'
+            % (html.escape(risk_data), html.escape(risk_data.upper()))
+            if risk_data
             else '<span class="sub">-</span>'
         )
-        relatorio = str(amostra.get("report") or "")
-        celula_nome = (
-            '<a href="report/%s">%s</a>' % (html.escape(relatorio), nome) if relatorio else nome
+        report_data = str(sample.get("report") or "")
+        name_cell = (
+            '<a href="report/%s">%s</a>' % (html.escape(report_data), item_name)
+            if report_data
+            else item_name
         )
-        linhas.append(
+        source_lines.append(
             '<tr data-name="%s">'
             "<td>%s</td>"
             '<td data-val="%d">%s</td>'
@@ -438,42 +453,43 @@ def render_page(index: Dict[str, Any], *, title: str = "ASM X", live: bool = Tru
             '<td class="sub">%s</td>'
             "</tr>"
             % (
-                html.escape(str(amostra.get("name") or "?").lower()),
-                celula_nome,
-                RISK_ORDER.index(risco) if risco in RISK_ORDER else len(RISK_ORDER),
+                html.escape(str(sample.get("name") or "?").lower()),
+                name_cell,
+                RISK_ORDER.index(risk_data) if risk_data in RISK_ORDER else len(RISK_ORDER),
                 chip,
-                int(amostra.get("score") or 0),
-                int(amostra.get("score") or 0),
-                int(amostra.get("instructions") or 0),
-                int(amostra.get("instructions") or 0),
-                int(amostra.get("behaviors") or 0),
-                int(amostra.get("behaviors") or 0),
-                int(amostra.get("indicators") or 0),
-                int(amostra.get("indicators") or 0),
-                int(amostra.get("problems") or 0),
-                int(amostra.get("problems") or 0),
-                html.escape(str(amostra.get("reason") or amostra.get("platform") or "")),
+                int(sample.get("score") or 0),
+                int(sample.get("score") or 0),
+                int(sample.get("instructions") or 0),
+                int(sample.get("instructions") or 0),
+                int(sample.get("behaviors") or 0),
+                int(sample.get("behaviors") or 0),
+                int(sample.get("indicators") or 0),
+                int(sample.get("indicators") or 0),
+                int(sample.get("problems") or 0),
+                int(sample.get("problems") or 0),
+                html.escape(str(sample.get("reason") or sample.get("platform") or "")),
             )
         )
-    cartoes = [
+    cards = [
         ("samples", total),
-        ("critical", int(por_nivel.get("critical") or 0)),
-        ("high", int(por_nivel.get("high") or 0)),
-        ("medium", int(por_nivel.get("medium") or 0)),
-        ("low", int(por_nivel.get("low") or 0)),
-        ("worst score", pior),
+        ("critical", int(by_level.get("critical") or 0)),
+        ("high", int(by_level.get("high") or 0)),
+        ("medium", int(by_level.get("medium") or 0)),
+        ("low", int(by_level.get("low") or 0)),
+        ("worst score", worst),
     ]
-    html_cartoes = "".join(
-        '<div class="card"><b>%s</b><span>%s</span></div>' % (valor, rotulo)
-        for rotulo, valor in cartoes
+    cards_html = "".join(
+        '<div class="card"><b>%s</b><span>%s</span></div>' % (numeric_value, label_text)
+        for label_text, numeric_value in cards
     )
-    corpo = (
-        "".join(linhas)
-        if linhas
+    body = (
+        "".join(source_lines)
+        if source_lines
         else '<tr><td colspan="8" class="empty">no samples in this folder</td></tr>'
     )
-    ferramentas = (
-        '<input type="search" id="busca" placeholder="filter by file name…" ' 'oninput="filtro()">'
+    controls = (
+        '<input type="search" id="search_box" placeholder="filter by file name…" '
+        'oninput="filterRows()">'
         if live
         else ""
     )
@@ -483,32 +499,32 @@ def render_page(index: Dict[str, Any], *, title: str = "ASM X", live: bool = Tru
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>%(titulo)s — dashboard</title>
+<title>%(title)s — dashboard</title>
 <style>%(css)s</style>
 </head>
 <body>
 <header>
-<h1>%(titulo)s</h1>
+<h1>%(title)s</h1>
 <span class="sub">%(total)d sample(s) · generated by <code>asmx dashboard</code> ·
 read-only, served from this machine</span>
-%(ferramentas)s
+%(controls)s
 </header>
 <main>
-<div class="cards">%(cartoes)s</div>
+<div class="cards">%(cards)s</div>
 <table>
 <thead><tr>
-<th onclick="ordenar(0)">sample</th>
-<th onclick="ordenar(1)">risk</th>
-<th onclick="ordenar(2)">score</th>
-<th onclick="ordenar(3)">instructions</th>
-<th onclick="ordenar(4)">behaviors</th>
-<th onclick="ordenar(5)">indicators</th>
-<th onclick="ordenar(6)">problems</th>
+<th onclick="sortRows(0)">sample</th>
+<th onclick="sortRows(1)">risk</th>
+<th onclick="sortRows(2)">score</th>
+<th onclick="sortRows(3)">instructions</th>
+<th onclick="sortRows(4)">behaviors</th>
+<th onclick="sortRows(5)">indicators</th>
+<th onclick="sortRows(6)">problems</th>
 <th>note</th>
 </tr></thead>
-<tbody>%(corpo)s</tbody>
+<tbody>%(body)s</tbody>
 </table>
-<div id="vazio" class="empty" style="display:none">nothing matches that filter</div>
+<div id="empty_state" class="empty" style="display:none">nothing matches that filter</div>
 </main>
 <footer>ASM X · this page is generated locally and needs no network ·
 <code>asmx analyze DIR --out DIR</code> to produce the reports</footer>
@@ -516,12 +532,12 @@ read-only, served from this machine</span>
 </body>
 </html>
 """ % {
-        "titulo": html.escape(title),
+        "title": html.escape(title),
         "css": _CSS,
         "total": total,
-        "ferramentas": ferramentas,
-        "cartoes": html_cartoes,
-        "corpo": corpo,
+        "controls": controls,
+        "cards": cards_html,
+        "body": body,
         "script": script,
     }
 
@@ -534,17 +550,17 @@ class _Handler(BaseHTTPRequestHandler):
     title = "ASM X"
     token: Optional[str] = None
 
-    def log_message(self, formato: str, *args: Any) -> None:
+    def log_message(self, format_name: str, *args: Any) -> None:
         """Routes the HTTP log through the project logger instead of stderr.
 
         Args:
-            formato: printf-style format used by :mod:`http.server`.
+            format_name: printf-style format used by :mod:`http.server`.
             *args: Values for the format.
         """
-        logger.debug("dashboard %s - %s", self.address_string(), formato % args)
+        logger.debug("dashboard %s - %s", self.address_string(), format_name % args)
 
     # -- helpers ------------------------------------------------------------
-    def _autorizado(self) -> bool:
+    def _authorized(self) -> bool:
         """Checks the optional token.
 
         Returns:
@@ -553,135 +569,137 @@ class _Handler(BaseHTTPRequestHandler):
         """
         if not self.token:
             return True
-        enviado = self.headers.get("X-ASMX-Token")
-        if enviado == self.token:
+        sent = self.headers.get("X-ASMX-Token")
+        if sent == self.token:
             return True
-        consulta = urlparse(self.path).query
-        for parte in consulta.split("&"):
-            chave, _, valor = parte.partition("=")
-            if chave == "token" and unquote(valor) == self.token:
+        query_string = urlparse(self.path).query
+        for part_name in query_string.split("&"):
+            key, _, numeric_value = part_name.partition("=")
+            if key == "token" and unquote(numeric_value) == self.token:
                 return True
         return False
 
-    def _responder(
-        self, corpo: bytes, tipo: str = "text/html; charset=utf-8", codigo: int = 200
+    def _respond(
+        self, body: bytes, item_type: str = "text/html; charset=utf-8", status_code: int = 200
     ) -> None:
         """Sends a complete response.
 
         Args:
-            corpo: Body bytes.
-            tipo: Content type.
-            codigo: HTTP status code.
+            body: Body bytes.
+            item_type: Content type.
+            status_code: HTTP status code.
         """
-        self.send_response(codigo)
-        self.send_header("Content-Type", tipo)
-        self.send_header("Content-Length", str(len(corpo)))
+        self.send_response(status_code)
+        self.send_header("Content-Type", item_type)
+        self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         if self.command != "HEAD":
-            self.wfile.write(corpo)
+            self.wfile.write(body)
 
-    def _json(self, dados: Dict[str, Any], codigo: int = 200) -> None:
+    def _json(self, values_data: Dict[str, Any], status_code: int = 200) -> None:
         """Sends a JSON response.
 
         Args:
-            dados: Payload to serialise.
-            codigo: HTTP status code.
+            values_data: Payload to serialise.
+            status_code: HTTP status code.
         """
-        self._responder(
-            json.dumps(dados, ensure_ascii=False, indent=2).encode("utf-8"),
+        self._respond(
+            json.dumps(values_data, ensure_ascii=False, indent=2).encode("utf-8"),
             "application/json; charset=utf-8",
-            codigo,
+            status_code,
         )
 
-    def _erro(self, codigo: int, mensagem: str) -> None:
+    def _error(self, status_code: int, message_text: str) -> None:
         """Sends a plain text error.
 
         Args:
-            codigo: HTTP status code.
-            mensagem: Text shown to the user.
+            status_code: HTTP status code.
+            message_text: Text shown to the user.
         """
-        self._responder((mensagem + "\n").encode("utf-8"), "text/plain; charset=utf-8", codigo)
+        self._respond(
+            (message_text + "\n").encode("utf-8"), "text/plain; charset=utf-8", status_code
+        )
 
-    def _caminho_seguro(self, relativo: str) -> Optional[str]:
+    def _safe_path(self, relative_path: str) -> Optional[str]:
         """Resolves a request path inside the served directory.
 
         Args:
-            relativo: Path taken from the URL, already unquoted.
+            relative_path: Path taken from the URL, already unquoted.
 
         Returns:
             Absolute path when it stays inside the directory and points at a
             file, otherwise ``None``.
         """
         base = os.path.abspath(self.directory)
-        alvo = os.path.abspath(os.path.join(base, relativo))
-        if alvo != base and not alvo.startswith(base + os.sep):
+        target_name = os.path.abspath(os.path.join(base, relative_path))
+        if target_name != base and not target_name.startswith(base + os.sep):
             return None
-        return alvo if os.path.isfile(alvo) else None
+        return target_name if os.path.isfile(target_name) else None
 
     # -- routes -------------------------------------------------------------
     def do_GET(self) -> None:  # noqa: N802 - inherited naming
         """Handles a GET request."""
-        self._rota()
+        self._route()
 
     def do_HEAD(self) -> None:  # noqa: N802 - inherited naming
         """Handles a HEAD request (same routes, no body)."""
-        self._rota()
+        self._route()
 
-    def _rota(self) -> None:
+    def _route(self) -> None:
         """Dispatches the request to the right view."""
-        if not self._autorizado():
-            self._erro(403, "missing or wrong token")
+        if not self._authorized():
+            self._error(403, "missing or wrong token")
             return
-        caminho = unquote(urlparse(self.path).path)
+        file_path = unquote(urlparse(self.path).path)
         try:
-            amostras = load_samples(self.directory)
-        except ProjectError as erro:
-            self._erro(500, str(erro))
+            sample_list = load_samples(self.directory)
+        except ProjectError as caught_error:
+            self._error(500, str(caught_error))
             return
-        indice = build_index(amostras, title=self.title)
-        if caminho in ("/", "/index.html"):
-            self._responder(render_page(indice, title=self.title).encode("utf-8"))
-        elif caminho == "/api/samples":
-            self._json(indice)
-        elif caminho == "/api/summary":
+        idx = build_index(sample_list, title=self.title)
+        if file_path in ("/", "/index.html"):
+            self._respond(render_page(idx, title=self.title).encode("utf-8"))
+        elif file_path == "/api/samples":
+            self._json(idx)
+        elif file_path == "/api/summary":
             self._json(
                 {
-                    "schema": indice["schema"],
-                    "title": indice["title"],
-                    "total": indice["total"],
-                    "by_risk": indice["by_risk"],
-                    "worst": indice["worst"],
+                    "schema": idx["schema"],
+                    "title": idx["title"],
+                    "total": idx["total"],
+                    "by_risk": idx["by_risk"],
+                    "worst": idx["worst"],
                 }
             )
-        elif caminho.startswith("/report/"):
-            self._relatorio(caminho[len("/report/") :])
+        elif file_path.startswith("/report/"):
+            self._report(file_path[len("/report/") :])
         else:
-            self._erro(404, "not found: %s" % caminho)
+            self._error(404, "not found: %s" % file_path)
 
-    def _relatorio(self, relativo: str) -> None:
+    def _report(self, relative_path: str) -> None:
         """Serves one report file from inside the directory.
 
         Args:
-            relativo: File name requested under ``/report/``.
+            relative_path: File name requested under ``/report/``.
         """
-        alvo = self._caminho_seguro(relativo)
-        if alvo is None:
-            self._erro(404, "report not found: %s" % relativo)
+        target_name = self._safe_path(relative_path)
+        if target_name is None:
+            self._error(404, "report not found: %s" % relative_path)
             return
         try:
-            with open(alvo, "rb") as arquivo:
-                corpo = arquivo.read()
-        except OSError as erro:
-            self._erro(500, "could not read %s: %s" % (relativo, erro))
+            with open(target_name, "rb") as source_file:
+                body = source_file.read()
+        except OSError as caught_error:
+            self._error(500, "could not read %s: %s" % (relative_path, caught_error))
             return
-        tipo = (
+        item_type = (
             "application/json; charset=utf-8"
-            if alvo.endswith(".json")
+            if target_name.endswith(".json")
             else "text/html; charset=utf-8"
         )
-        self._responder(corpo, tipo)
+        self._respond(body, item_type)
 
 
 def _free_port(host: str) -> int:
@@ -693,9 +711,9 @@ def _free_port(host: str) -> int:
     Returns:
         A port number that can be bound right away.
     """
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as soquete:
-        soquete.bind((host, 0))
-        return int(soquete.getsockname()[1])
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
+        server_socket.bind((host, 0))
+        return int(server_socket.getsockname()[1])
 
 
 def serve(
@@ -731,35 +749,37 @@ def serve(
     if not os.path.isdir(directory):
         raise ProjectError("dashboard directory not found: %s" % directory, path=directory)
     local = host in ("127.0.0.1", "localhost", "::1")
-    segredo = token
-    if not local and not segredo:
-        segredo = secrets.token_urlsafe(12)
-        logger.warning("dashboard exposed on %s: a token was generated (%s)", host, segredo)
-    porta = int(port) or _free_port(host)
+    secret_token = token
+    if not local and not secret_token:
+        secret_token = secrets.token_urlsafe(12)
+        logger.warning("dashboard exposed on %s: a token was generated (%s)", host, secret_token)
+    server_port = int(port) or _free_port(host)
     handler = type(
         "_AsmxDashboard",
         (_Handler,),
         {
             "directory": os.path.abspath(directory),
             "title": title,
-            "token": segredo,
+            "token": secret_token,
         },
     )
-    servidor = ThreadingHTTPServer((host, porta), handler)
-    url = "http://%s:%d/" % ("127.0.0.1" if local else host, porta)
-    if segredo:
-        url += "?token=%s" % segredo
+    server_instance = ThreadingHTTPServer((host, server_port), handler)
+    url = "http://%s:%d/" % ("127.0.0.1" if local else host, server_port)
+    if secret_token:
+        url += "?token=%s" % secret_token
     log_event(
         logger,
         "dashboard_started",
         host=host,
-        port=porta,
+        port=server_port,
         directory=directory,
         samples=len(load_samples(directory)),
     )
     if background:
-        thread = threading.Thread(target=servidor.serve_forever, name="asmx-dashboard", daemon=True)
+        thread = threading.Thread(
+            target=server_instance.serve_forever, name="asmx-dashboard", daemon=True
+        )
         thread.start()
     if open_browser:
         webbrowser.open(url)
-    return servidor, url
+    return server_instance, url

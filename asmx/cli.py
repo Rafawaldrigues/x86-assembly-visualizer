@@ -221,6 +221,13 @@ def _add_global_options(parser: argparse.ArgumentParser, suppress: bool = False)
         help="configuration file (.json, .yaml or .yml)",
     )
     parser.add_argument(
+        "--max-memory",
+        type=int,
+        metavar="MIB",
+        default=argparse.SUPPRESS if suppress else None,
+        help="simulated memory limit in MiB (minimum 16, default 512)",
+    )
+    parser.add_argument(
         "--no-color", action="store_true", default=default, help="does not use color in the output"
     )
 
@@ -633,6 +640,7 @@ def load_config(args: argparse.Namespace) -> SandboxConfig:
         log_json=True if getattr(args, "log_json", False) else None,
         timeout=getattr(args, "timeout", None),
         max_steps=getattr(args, "limit", None),
+        max_memory=getattr(args, "max_memory", None),
     )
 
 
@@ -843,10 +851,10 @@ def cmd_run(args: argparse.Namespace, config: SandboxConfig, palette: Palette) -
     analysis = analyze(source.text)
     if args.entry and args.entry not in analysis.label_at:
         raise EmulationError("label not found: %s" % args.entry)
-    machine = Machine(analysis, stdin=args.stdin, entry=args.entry)
+    machine = Machine(analysis, stdin=args.stdin, entry=args.entry, max_memory=config.max_memory)
     steps = machine.run(
         limit=args.limit or config.max_steps,
-        timeout=args.timeout,
+        timeout=config.timeout,
         raise_on_timeout=args.timeout is not None,
     )
     problems = list(machine.issues)
@@ -872,6 +880,9 @@ def cmd_run(args: argparse.Namespace, config: SandboxConfig, palette: Palette) -
             "steps": steps,
             "halted": machine.halted,
             "timed_out": machine.timed_out,
+            "out_of_memory": machine.out_of_memory,
+            "memory_fault": machine.memory_fault,
+            "memory": machine.memory.snapshot(),
             "issues": problems,
             "registers": {key: hexs(value) for key, value in machine.regs.items() if value},
             "flags": dict(machine.flags),
@@ -889,6 +900,11 @@ def cmd_run(args: argparse.Namespace, config: SandboxConfig, palette: Palette) -
                 palette.paint(source.name, "bold"),
                 palette.paint("· entry: %s" % (args.entry or "program entry point"), "dim"),
             )
+        )
+        usage = machine.memory.snapshot()
+        _write(
+            "  memory: %d / %d bytes (peak %d)"
+            % (usage["allocated_bytes"], usage["limit_bytes"], usage["peak_bytes"])
         )
         if machine.output:
             _write("  output:")
@@ -1306,10 +1322,11 @@ def cmd_report(args: argparse.Namespace, config: SandboxConfig, palette: Palette
         source=source,
         emulate=not args.no_emulate,
         limit=args.limit or config.max_steps,
-        timeout=args.timeout,
+        timeout=config.timeout,
         stdin=args.stdin,
         entry=args.entry,
         command="asmx report %s" % source.name,
+        max_memory=config.max_memory,
     )
 
     # `--json` is script mode: it prints the summary and writes nothing without `--out`.
@@ -1501,7 +1518,8 @@ def _analysis_jobs(
     options = {
         "emulate": not args.no_emulate,
         "limit": args.limit or config.max_steps,
-        "timeout": args.timeout,
+        "timeout": config.timeout,
+        "max_memory": config.max_memory,
         "command": "asmx analyze %s" % " ".join(args.paths),
         "extension": extension,
     }
@@ -1561,6 +1579,7 @@ def _analyze_file(path: str, options: Dict[str, Any]) -> Tuple[str, Any, Any, st
         emulate=bool(options.get("emulate", True)),
         limit=int(options.get("limit") or 200000),
         timeout=options.get("timeout"),
+        max_memory=int(options.get("max_memory", 512)),
         command=str(options.get("command") or "asmx analyze"),
     )
     base_name = os.path.splitext(source.name)[0]
@@ -1835,7 +1854,7 @@ COMMANDS: Dict[str, Callable[[argparse.Namespace, SandboxConfig, Palette], int]]
 }
 
 
-def launch_gui() -> int:
+def launch_gui(config: Optional[SandboxConfig] = None) -> int:
     """Opens the graphical interface, if Tkinter and a display exist.
 
     Returns:
@@ -1854,7 +1873,7 @@ def launch_gui() -> int:
         )
         return EXIT_INPUT
     try:
-        ui_main()
+        ui_main(config=config)
     except Exception as error:  # pragma: no cover - depends on a real display
         sys.stderr.write("could not open the window: %s\n" % error)
         return EXIT_INPUT
@@ -1879,7 +1898,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     if getattr(args, "gui", False) or (real_call and not args.command):
-        return launch_gui()
+        try:
+            return launch_gui(load_config(args))
+        except AsmxError as error:
+            sys.stderr.write("%s\n" % error)
+            return EXIT_INPUT
     if not args.command:
         parser.print_help()
         return EXIT_USAGE
