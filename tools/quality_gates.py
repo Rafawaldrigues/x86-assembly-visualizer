@@ -64,12 +64,12 @@ class Violation:
     detail: str
 
     def __str__(self) -> str:
-        """Formats the violation as ``file:line: kind name — detail``.
+        """Formats the violation as ``file:line: kind name - detail``.
 
         Returns:
             The line ready to print.
         """
-        return "%s:%d: %s %s — %s" % (self.path, self.line, self.kind, self.name, self.detail)
+        return "%s:%d: %s %s - %s" % (self.path, self.line, self.kind, self.name, self.detail)
 
 
 def iter_python_files(paths: Sequence[str]) -> List[str]:

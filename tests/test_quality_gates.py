@@ -164,9 +164,9 @@ class TestDetection(unittest.TestCase):
         self.assertEqual(count, {"args": 2, "docstring": 1})
 
     def test_violation_str(self) -> None:
-        """The text of a violation follows file:line: kind name — detail."""
+        """The text of a violation follows file:line: kind name - detail."""
         text = str(qg.Violation("a.py", 7, "f", "args", "missing b"))
-        self.assertEqual(text, "a.py:7: args f — missing b")
+        self.assertEqual(text, "a.py:7: args f - missing b")
 
 
 class TestRepository(unittest.TestCase):

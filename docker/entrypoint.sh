@@ -42,7 +42,7 @@ with_display() {
     if command -v xvfb-run >/dev/null 2>&1; then
         xvfb-run -a "$@"
     else
-        echo "entrypoint: xvfb-run not found — GUI tests will be skipped" >&2
+        echo "entrypoint: xvfb-run not found - GUI tests will be skipped" >&2
         "$@"
     fi
 }

@@ -1,4 +1,4 @@
-# ASM X — pre-commit hooks.
+# ASM X - pre-commit hooks.
 #
 #   pip install -r requirements-dev.txt
 #   pre-commit install

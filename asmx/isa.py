@@ -1,6 +1,6 @@
 """x86-64 knowledge base: instructions, registers, flags, syscalls.
 
-The catalogue itself lives in ``asmx/data/isa.json`` and is loaded only once, at
+The catalog itself lives in ``asmx/data/isa.json`` and is loaded only once, at
 import time. This module just gives it shape: tables ready for lookup
 (:data:`ISA`, :data:`REG_INFO`, :data:`LINUX_SYSCALLS`) and the short functions
 the rest of the program uses to ask "does this instruction exist?", "which
@@ -32,7 +32,7 @@ with open(_DATA, encoding="utf-8") as _f:
 #: Instruction categories (key -> label and explanation).
 CATEGORIES: Dict[str, Dict[str, Any]] = _RAW["CATEGORIES"]
 
-#: Catalogue of documented mnemonics: lowercase key -> full record.
+#: Catalog of documented mnemonics: lowercase key -> full record.
 ISA: Dict[str, Dict[str, Any]] = _RAW["ISA"]
 
 #: Branch conditions: suffix (``e``, ``ne``...) -> name and explanation.
@@ -272,7 +272,7 @@ def doc_for(mnemonic: str) -> Optional[Dict[str, Any]]:
         mnemonic: Mnemonic in any case; ``None`` is also accepted.
 
     Returns:
-        The catalogue record (name, syntax, description, examples, flags) or
+        The catalog record (name, syntax, description, examples, flags) or
         ``None`` when the instruction is not documented.
 
     Example:
@@ -290,7 +290,7 @@ def category_of(mnemonic: str) -> str:
 
     Returns:
         The category key (``data``, ``branch``, ``sys``...) or ``"misc"`` when
-        the instruction is not in the catalogue.
+        the instruction is not in the catalog.
 
     Example:
         >>> category_of("syscall")

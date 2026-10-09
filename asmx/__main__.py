@@ -1,9 +1,8 @@
 """Entry point of the package.
 
 ``python3 -m asmx`` opens the graphical interface; any argument is handed to the
-command line (``python3 -m asmx check prog.asm``). The import of the interface
-is lazy on purpose: that way the command line keeps working on machines without
-Tkinter, such as a minimal container.
+command line (``python3 -m asmx check prog.asm``). The interface is imported lazily so
+the command line works on machines without Tkinter, such as a minimal container.
 """
 
 from __future__ import annotations

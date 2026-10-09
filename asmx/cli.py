@@ -1,15 +1,15 @@
-"""Command line of ASM X — the same analysis as the interface, without the interface.
+"""Command line of ASM X - the same analysis as the interface, without the interface.
 
 Commands:
 
-* ``check``    — analyzes and validates, showing the problems by line;
-* ``run``      — runs the program in the virtual machine and shows the output;
-* ``explain``  — explains one instruction of the catalog or one line of the file;
-* ``report``   — generates the report (HTML, Markdown, JSON, DOT, SVG);
-* ``analyze``  — analyzes several files and builds a comparative index;
-* ``info``     — version, instruction catalog and configuration in effect;
-* ``examples`` — lists, shows or writes the sample programs;
-* ``version``  — only the version.
+* ``check``    - analyzes and validates, showing the problems by line;
+* ``run``      - runs the program in the virtual machine and shows the output;
+* ``explain``  - explains one instruction of the catalog or one line of the file;
+* ``report``   - generates the report (HTML, Markdown, JSON, DOT, SVG);
+* ``analyze``  - analyzes several files and builds a comparative index;
+* ``info``     - version, instruction catalog and configuration in effect;
+* ``examples`` - lists, shows or writes the sample programs;
+* ``version``  - only the version.
 
 Exit codes (stable contract for CI)::
 
@@ -173,7 +173,6 @@ class Palette:
         return self.paint(text, severity)
 
 
-# ------------------------------------------------------------------ parser --
 def _add_global_options(parser: argparse.ArgumentParser, suppress: bool = False) -> None:
     """Registers the options that are valid for any command.
 
@@ -246,7 +245,7 @@ def build_parser() -> argparse.ArgumentParser:
     """
     parser = argparse.ArgumentParser(
         prog="asmx",
-        description="ASM X — study and debugging environment for x86-64 assembly.",
+        description="ASM X - study and debugging environment for x86-64 assembly.",
         epilog="with no argument it opens the graphical interface. The global "
         "options (--config, -v, --log-json) come before the command. "
         "Examples: asmx check prog.asm · asmx run prog.asm · "
@@ -527,7 +526,6 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-# -------------------------------------------------------------- utilities --
 def _palette(args: argparse.Namespace) -> Palette:
     """Decides whether the output uses color, according to the options and the terminal.
 
@@ -676,7 +674,6 @@ def build_payload(args: argparse.Namespace) -> Dict[str, Any]:
     return data
 
 
-# --------------------------------------------------------------- commands --
 def cmd_check(args: argparse.Namespace, config: SandboxConfig, palette: Palette) -> int:
     """Runs the ``check`` command.
 
@@ -1075,7 +1072,7 @@ def _print_instruction(record: Dict[str, Any], palette: Palette) -> None:
         )
     )
     _write("  %s" % record["text"])
-    _write("  %s — %s" % (palette.paint(record["label"], "good"), record["detail"]))
+    _write("  %s - %s" % (palette.paint(record["label"], "good"), record["detail"]))
     doc = record.get("documentation")
     if doc:
         _write("  syntax   %s" % doc["syntax"])
@@ -1420,7 +1417,7 @@ def cmd_analyze(args: argparse.Namespace, config: SandboxConfig, palette: Palett
             _write("  %s" % _report_summary(name, data))
 
     # The manifest is what the dashboard reads and what another tool consumes,
-    # so it is written in every format — `analyze --format md` stays useful.
+    # so it is written in every format - `analyze --format md` stays useful.
     found: List[Dict[str, Any]] = []
     if getattr(args, "cluster", False):
         from .similarity import groups
@@ -1504,7 +1501,7 @@ def _analysis_jobs(
     batch down: the error is reported and the file is skipped.
 
     Args:
-        paths: Files to analyse.
+        paths: Files to analyze.
         args: Namespace of the ``analyze`` command.
         config: Configuration in effect.
         folder: Directory where the reports are written.
@@ -1553,11 +1550,11 @@ def _analyze_file(path: str, options: Dict[str, Any]) -> Tuple[str, Any, Any, st
     """Analyzes one file; safe to call in another process.
 
     The function lives at module level and takes plain data, because a closure
-    cannot be pickled — and a worker that cannot be pickled silently turns
+    cannot be pickled - and a worker that cannot be pickled silently turns
     ``--jobs N`` into a crash.
 
     Args:
-        path: File to analyse.
+        path: File to analyze.
         options: ``emulate``, ``limit``, ``timeout``, ``command`` and
             ``extension``, all plain values.
 
@@ -1820,7 +1817,7 @@ def cmd_dashboard(args: argparse.Namespace, config: SandboxConfig, palette: Pale
         folder,
         host=args.host,
         port=args.port,
-        title="ASM X — %s" % os.path.basename(os.path.abspath(folder)),
+        title="ASM X - %s" % os.path.basename(os.path.abspath(folder)),
         token=args.token,
         open_browser=args.open_browser,
     )
@@ -1884,7 +1881,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     """Entry point of the command line.
 
     With no arguments (a real system call) it opens the graphical interface;
-    with an explicit ``argv`` it requires a command — which keeps the tests
+    with an explicit ``argv`` it requires a command - which keeps the tests
     predictable.
 
     Args:

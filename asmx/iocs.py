@@ -3,7 +3,7 @@
 The behavior analysis says what the program *does*; this module answers another
 question: what is *written* inside it. URLs, IP addresses, domains, paths,
 registry keys, commands and keywords are looked for in the data literals
-(``db``, ``dq``...) and in the comments of the source — and also in memory,
+(``db``, ``dq``...) and in the comments of the source - and also in memory,
 after the program runs, with :func:`from_memory`.
 
 The starting point is :func:`strings_of`, which returns the strings of each
@@ -743,7 +743,7 @@ def extract(text: str, *, min_length: int = 4, include_comments: bool = True) ->
 
     It runs every kind over :func:`strings_of` and, as a reinforcement, looks
     for paths and registry keys in the raw text of the data lines and of the
-    comments — that is what saves the case of a string broken into pieces. The
+    comments - that is what saves the case of a string broken into pieces. The
     same ``(kind, value)`` pair appears only once, at the first line where it
     showed up, and a string that already fell into some kind does not come back
     as ``string``. If a path of the same line is only a piece of another one,

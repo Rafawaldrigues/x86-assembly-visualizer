@@ -28,7 +28,7 @@ source. GAS/AT&T reverses the order and prefixes registers with `%`.
 
 Copies values between registers, memory and immediates.
 
-### MOV — copies a value
+### MOV - copies a value
 
 **Syntax:** `MOV destination, source`
 
@@ -42,7 +42,7 @@ MOV [counter], EAX ; writes EAX to the variable counter
 
 **Flags:** Does not change flags.
 
-### MOVZX — copies filling with zeros
+### MOVZX - copies filling with zeros
 
 **Syntax:** `MOVZX larger_destination, smaller_source`
 
@@ -54,7 +54,7 @@ MOVZX EAX, BYTE [buf]  ; 1 byte -> 32 bits, rest zeroed
 
 **Flags:** Does not change flags.
 
-### MOVSX — copies preserving the sign
+### MOVSX - copies preserving the sign
 
 **Syntax:** `MOVSX larger_destination, smaller_source`
 
@@ -66,7 +66,7 @@ MOVSX RAX, AL      ; -1 stays -1
 
 **Flags:** Does not change flags.
 
-### MOVSXD — 32 to 64 bits with sign
+### MOVSXD - 32 to 64 bits with sign
 
 **Syntax:** `MOVSXD destination64, source32`
 
@@ -78,7 +78,7 @@ MOVSXD RCX, EDI
 
 **Flags:** Does not change flags.
 
-### LEA — computes an address
+### LEA - computes an address
 
 **Syntax:** `LEA destination, [expression]`
 
@@ -93,7 +93,7 @@ LEA RAX, [RBX+RCX*4+8]    ; RAX = RBX + RCX*4 + 8, without touching memory
 
 > **Note:** MOV RSI, [msg] would read the contents. LEA takes the address.
 
-### XCHG — swaps two values
+### XCHG - swaps two values
 
 **Syntax:** `XCHG a, b`
 
@@ -105,7 +105,7 @@ XCHG RAX, RBX
 
 **Flags:** Does not change flags.
 
-### CMOV — copies only when the condition is true
+### CMOV - copies only when the condition is true
 
 **Syntax:** `CMOVcc destination, source`
 
@@ -118,7 +118,7 @@ CMOVL RAX, RBX   ; RAX = min(RAX, RBX)
 
 **Flags:** Reads the flags, does not change them.
 
-### CMOVE — Conditional Move if E
+### CMOVE - Conditional Move if E
 
 **Syntax:** `CMOVE destination, source`
 
@@ -131,7 +131,7 @@ CMOVE RAX, RBX
 
 **Flags:** Reads the flags, does not change them.
 
-### CMOVZ — Conditional Move if Z
+### CMOVZ - Conditional Move if Z
 
 **Syntax:** `CMOVZ destination, source`
 
@@ -144,7 +144,7 @@ CMOVZ RAX, RBX
 
 **Flags:** Reads the flags, does not change them.
 
-### CMOVNE — Conditional Move if NE
+### CMOVNE - Conditional Move if NE
 
 **Syntax:** `CMOVNE destination, source`
 
@@ -157,7 +157,7 @@ CMOVNE RAX, RBX
 
 **Flags:** Reads the flags, does not change them.
 
-### CMOVNZ — Conditional Move if NZ
+### CMOVNZ - Conditional Move if NZ
 
 **Syntax:** `CMOVNZ destination, source`
 
@@ -170,7 +170,7 @@ CMOVNZ RAX, RBX
 
 **Flags:** Reads the flags, does not change them.
 
-### CMOVG — Conditional Move if G
+### CMOVG - Conditional Move if G
 
 **Syntax:** `CMOVG destination, source`
 
@@ -183,7 +183,7 @@ CMOVG RAX, RBX
 
 **Flags:** Reads the flags, does not change them.
 
-### CMOVGE — Conditional Move if GE
+### CMOVGE - Conditional Move if GE
 
 **Syntax:** `CMOVGE destination, source`
 
@@ -196,7 +196,7 @@ CMOVGE RAX, RBX
 
 **Flags:** Reads the flags, does not change them.
 
-### CMOVL — Conditional Move if L
+### CMOVL - Conditional Move if L
 
 **Syntax:** `CMOVL destination, source`
 
@@ -209,7 +209,7 @@ CMOVL RAX, RBX
 
 **Flags:** Reads the flags, does not change them.
 
-### CMOVLE — Conditional Move if LE
+### CMOVLE - Conditional Move if LE
 
 **Syntax:** `CMOVLE destination, source`
 
@@ -222,7 +222,7 @@ CMOVLE RAX, RBX
 
 **Flags:** Reads the flags, does not change them.
 
-### CMOVA — Conditional Move if A
+### CMOVA - Conditional Move if A
 
 **Syntax:** `CMOVA destination, source`
 
@@ -235,7 +235,7 @@ CMOVA RAX, RBX
 
 **Flags:** Reads the flags, does not change them.
 
-### CMOVAE — Conditional Move if AE
+### CMOVAE - Conditional Move if AE
 
 **Syntax:** `CMOVAE destination, source`
 
@@ -248,7 +248,7 @@ CMOVAE RAX, RBX
 
 **Flags:** Reads the flags, does not change them.
 
-### CMOVB — Conditional Move if B
+### CMOVB - Conditional Move if B
 
 **Syntax:** `CMOVB destination, source`
 
@@ -261,7 +261,7 @@ CMOVB RAX, RBX
 
 **Flags:** Reads the flags, does not change them.
 
-### CMOVBE — Conditional Move if BE
+### CMOVBE - Conditional Move if BE
 
 **Syntax:** `CMOVBE destination, source`
 
@@ -274,7 +274,7 @@ CMOVBE RAX, RBX
 
 **Flags:** Reads the flags, does not change them.
 
-### CMOVS — Conditional Move if S
+### CMOVS - Conditional Move if S
 
 **Syntax:** `CMOVS destination, source`
 
@@ -287,7 +287,7 @@ CMOVS RAX, RBX
 
 **Flags:** Reads the flags, does not change them.
 
-### CMOVNS — Conditional Move if NS
+### CMOVNS - Conditional Move if NS
 
 **Syntax:** `CMOVNS destination, source`
 
@@ -300,7 +300,7 @@ CMOVNS RAX, RBX
 
 **Flags:** Reads the flags, does not change them.
 
-### CMOVC — Conditional Move if C
+### CMOVC - Conditional Move if C
 
 **Syntax:** `CMOVC destination, source`
 
@@ -313,7 +313,7 @@ CMOVC RAX, RBX
 
 **Flags:** Reads the flags, does not change them.
 
-### CMOVNC — Conditional Move if NC
+### CMOVNC - Conditional Move if NC
 
 **Syntax:** `CMOVNC destination, source`
 
@@ -326,7 +326,7 @@ CMOVNC RAX, RBX
 
 **Flags:** Reads the flags, does not change them.
 
-### CMOVO — Conditional Move if O
+### CMOVO - Conditional Move if O
 
 **Syntax:** `CMOVO destination, source`
 
@@ -339,7 +339,7 @@ CMOVO RAX, RBX
 
 **Flags:** Reads the flags, does not change them.
 
-### CMOVNO — Conditional Move if NO
+### CMOVNO - Conditional Move if NO
 
 **Syntax:** `CMOVNO destination, source`
 
@@ -352,7 +352,7 @@ CMOVNO RAX, RBX
 
 **Flags:** Reads the flags, does not change them.
 
-### CMOVP — Conditional Move if P
+### CMOVP - Conditional Move if P
 
 **Syntax:** `CMOVP destination, source`
 
@@ -365,7 +365,7 @@ CMOVP RAX, RBX
 
 **Flags:** Reads the flags, does not change them.
 
-### CMOVNP — Conditional Move if NP
+### CMOVNP - Conditional Move if NP
 
 **Syntax:** `CMOVNP destination, source`
 
@@ -383,7 +383,7 @@ CMOVNP RAX, RBX
 
 Pushes/pops values and maintains the function frame.
 
-### PUSH — pushes a value onto the stack
+### PUSH - pushes a value onto the stack
 
 **Syntax:** `PUSH source`
 
@@ -396,7 +396,7 @@ PUSH QWORD 42
 
 **Flags:** Does not change flags.
 
-### POP — pops a value off the stack
+### POP - pops a value off the stack
 
 **Syntax:** `POP destination`
 
@@ -408,7 +408,7 @@ POP RBX
 
 **Flags:** Does not change flags.
 
-### ENTER — builds the stack frame
+### ENTER - builds the stack frame
 
 **Syntax:** `ENTER size, level`
 
@@ -420,7 +420,7 @@ ENTER 32, 0
 
 **Flags:** Does not change flags.
 
-### LEAVE — tears down the stack frame
+### LEAVE - tears down the stack frame
 
 **Syntax:** `LEAVE`
 
@@ -438,7 +438,7 @@ RET
 
 Adds, subtracts, multiplies, divides.
 
-### ADD — adds
+### ADD - adds
 
 **Syntax:** `ADD destination, source`
 
@@ -451,7 +451,7 @@ ADD RAX, RBX
 
 **Flags:** Changes CF, OF, SF, ZF, AF, PF.
 
-### ADC — adds with the carry-in
+### ADC - adds with the carry-in
 
 **Syntax:** `ADC destination, source`
 
@@ -464,7 +464,7 @@ ADC RDX, RBX
 
 **Flags:** Changes CF, OF, SF, ZF, AF, PF.
 
-### SUB — subtracts
+### SUB - subtracts
 
 **Syntax:** `SUB destination, source`
 
@@ -477,7 +477,7 @@ SUB RSP, 32   ; opens 32 bytes of local space
 
 **Flags:** Changes CF, OF, SF, ZF, AF, PF.
 
-### SBB — subtracts with the borrow
+### SBB - subtracts with the borrow
 
 **Syntax:** `SBB destination, source`
 
@@ -489,7 +489,7 @@ SBB RDX, RBX
 
 **Flags:** Changes CF, OF, SF, ZF, AF, PF.
 
-### INC — adds 1
+### INC - adds 1
 
 **Syntax:** `INC destination`
 
@@ -501,7 +501,7 @@ INC RCX
 
 **Flags:** Changes OF, SF, ZF, AF, PF. Preserves CF.
 
-### DEC — subtracts 1
+### DEC - subtracts 1
 
 **Syntax:** `DEC destination`
 
@@ -514,7 +514,7 @@ JNZ loop
 
 **Flags:** Changes OF, SF, ZF, AF, PF. Preserves CF.
 
-### NEG — flips the sign
+### NEG - flips the sign
 
 **Syntax:** `NEG destination`
 
@@ -526,7 +526,7 @@ NEG RAX
 
 **Flags:** Changes CF, OF, SF, ZF, AF, PF.
 
-### MUL — Multiply (unsigned)
+### MUL - Multiply (unsigned)
 
 **Syntax:** `MUL source`
 
@@ -540,7 +540,7 @@ MUL RBX      ; RAX = 42
 
 **Flags:** Changes CF and OF (they tell whether the high part is nonzero).
 
-### IMUL — Integer Multiply (signed)
+### IMUL - Integer Multiply (signed)
 
 **Syntax:** `IMUL source  |  IMUL dest, source  |  IMUL dest, source, immediate`
 
@@ -553,7 +553,7 @@ IMUL RAX, RBX, 4
 
 **Flags:** Changes CF and OF.
 
-### DIV — Divide (unsigned)
+### DIV - Divide (unsigned)
 
 **Syntax:** `DIV divisor`
 
@@ -568,7 +568,7 @@ DIV RBX      ; RAX=14, RDX=2
 
 **Flags:** Flags are undefined.
 
-### IDIV — Integer Divide (signed)
+### IDIV - Integer Divide (signed)
 
 **Syntax:** `IDIV divisor`
 
@@ -587,7 +587,7 @@ IDIV RBX
 
 AND/OR/XOR/NOT and shifts.
 
-### AND — bitwise AND
+### AND - bitwise AND
 
 **Syntax:** `AND destination, source`
 
@@ -599,7 +599,7 @@ AND RAX, 0x0F     ; keeps only the low 4 bits
 
 **Flags:** Clears CF and OF; changes SF, ZF, PF.
 
-### OR — bitwise OR
+### OR - bitwise OR
 
 **Syntax:** `OR destination, source`
 
@@ -611,7 +611,7 @@ OR RAX, 1         ; sets bit 0
 
 **Flags:** Clears CF and OF; changes SF, ZF, PF.
 
-### XOR — exclusive OR
+### XOR - exclusive OR
 
 **Syntax:** `XOR destination, source`
 
@@ -623,7 +623,7 @@ XOR RAX, RAX      ; RAX = 0
 
 **Flags:** Clears CF and OF; changes SF, ZF, PF.
 
-### NOT — inverts every bit
+### NOT - inverts every bit
 
 **Syntax:** `NOT destination`
 
@@ -635,7 +635,7 @@ NOT RAX
 
 **Flags:** Does not change flags.
 
-### SHL — shifts bits to the left
+### SHL - shifts bits to the left
 
 **Syntax:** `SHL destination, count`
 
@@ -647,7 +647,7 @@ SHL RAX, 3        ; RAX = RAX * 8
 
 **Flags:** Changes CF (the last bit shifted out), OF, SF, ZF, PF.
 
-### SAL — identical to SHL
+### SAL - identical to SHL
 
 **Syntax:** `SAL destination, count`
 
@@ -659,7 +659,7 @@ SAL RAX, 1
 
 **Flags:** Same as SHL.
 
-### SHR — Shift Right (unsigned)
+### SHR - Shift Right (unsigned)
 
 **Syntax:** `SHR destination, count`
 
@@ -671,7 +671,7 @@ SHR RAX, 1        ; RAX = RAX / 2 (unsigned)
 
 **Flags:** Changes CF, OF, SF, ZF, PF.
 
-### SAR — Shift Arithmetic Right (signed)
+### SAR - Shift Arithmetic Right (signed)
 
 **Syntax:** `SAR destination, count`
 
@@ -683,7 +683,7 @@ SAR RAX, 2
 
 **Flags:** Changes CF, OF, SF, ZF, PF.
 
-### ROL — rotates to the left
+### ROL - rotates to the left
 
 **Syntax:** `ROL destination, count`
 
@@ -695,7 +695,7 @@ ROL AL, 4
 
 **Flags:** Changes CF and OF.
 
-### ROR — rotates to the right
+### ROR - rotates to the right
 
 **Syntax:** `ROR destination, count`
 
@@ -707,7 +707,7 @@ ROR AL, 4
 
 **Flags:** Changes CF and OF.
 
-### BT — tests a bit
+### BT - tests a bit
 
 **Syntax:** `BT value, index`
 
@@ -725,7 +725,7 @@ JC enabled
 
 Computes and discards the result, keeping only the flags.
 
-### CMP — compares two values
+### CMP - compares two values
 
 **Syntax:** `CMP a, b`
 
@@ -738,11 +738,11 @@ JG bigger
 
 **Flags:** Changes CF, OF, SF, ZF, AF, PF.
 
-### TEST — an AND that only produces flags
+### TEST - an AND that only produces flags
 
 **Syntax:** `TEST a, b`
 
-Computes a AND b and keeps only the flags. TEST RAX, RAX is the idiomatic way to ask "is RAX zero?" — shorter than CMP RAX, 0.
+Computes a AND b and keeps only the flags. TEST RAX, RAX is the idiomatic way to ask "is RAX zero?" - shorter than CMP RAX, 0.
 
 ```asm
 TEST RAX, RAX
@@ -751,7 +751,7 @@ JZ was_zero
 
 **Flags:** Clears CF and OF; changes SF, ZF, PF.
 
-### SET — becomes 0 or 1 according to the condition
+### SET - becomes 0 or 1 according to the condition
 
 **Syntax:** `SETcc destination8`
 
@@ -764,7 +764,7 @@ SETE AL     ; AL = (RAX == RBX)
 
 **Flags:** Reads the flags, does not change them.
 
-### SETE — 1 when equal
+### SETE - 1 when equal
 
 **Syntax:** `SETE destination8`
 
@@ -777,7 +777,7 @@ SETE AL
 
 **Flags:** Reads the flags, does not change them.
 
-### SETZ — 1 when zero
+### SETZ - 1 when zero
 
 **Syntax:** `SETZ destination8`
 
@@ -790,7 +790,7 @@ SETZ AL
 
 **Flags:** Reads the flags, does not change them.
 
-### SETNE — 1 when not equal
+### SETNE - 1 when not equal
 
 **Syntax:** `SETNE destination8`
 
@@ -803,7 +803,7 @@ SETNE AL
 
 **Flags:** Reads the flags, does not change them.
 
-### SETNZ — 1 when not zero
+### SETNZ - 1 when not zero
 
 **Syntax:** `SETNZ destination8`
 
@@ -816,7 +816,7 @@ SETNZ AL
 
 **Flags:** Reads the flags, does not change them.
 
-### SETG — 1 when greater (signed)
+### SETG - 1 when greater (signed)
 
 **Syntax:** `SETG destination8`
 
@@ -829,7 +829,7 @@ SETG AL
 
 **Flags:** Reads the flags, does not change them.
 
-### SETGE — 1 when greater or equal (signed)
+### SETGE - 1 when greater or equal (signed)
 
 **Syntax:** `SETGE destination8`
 
@@ -842,7 +842,7 @@ SETGE AL
 
 **Flags:** Reads the flags, does not change them.
 
-### SETL — 1 when less (signed)
+### SETL - 1 when less (signed)
 
 **Syntax:** `SETL destination8`
 
@@ -855,7 +855,7 @@ SETL AL
 
 **Flags:** Reads the flags, does not change them.
 
-### SETLE — 1 when less or equal (signed)
+### SETLE - 1 when less or equal (signed)
 
 **Syntax:** `SETLE destination8`
 
@@ -868,7 +868,7 @@ SETLE AL
 
 **Flags:** Reads the flags, does not change them.
 
-### SETA — 1 when above (unsigned)
+### SETA - 1 when above (unsigned)
 
 **Syntax:** `SETA destination8`
 
@@ -881,7 +881,7 @@ SETA AL
 
 **Flags:** Reads the flags, does not change them.
 
-### SETAE — 1 when above or equal (unsigned)
+### SETAE - 1 when above or equal (unsigned)
 
 **Syntax:** `SETAE destination8`
 
@@ -894,7 +894,7 @@ SETAE AL
 
 **Flags:** Reads the flags, does not change them.
 
-### SETB — 1 when below (unsigned)
+### SETB - 1 when below (unsigned)
 
 **Syntax:** `SETB destination8`
 
@@ -907,7 +907,7 @@ SETB AL
 
 **Flags:** Reads the flags, does not change them.
 
-### SETBE — 1 when below or equal (unsigned)
+### SETBE - 1 when below or equal (unsigned)
 
 **Syntax:** `SETBE destination8`
 
@@ -920,7 +920,7 @@ SETBE AL
 
 **Flags:** Reads the flags, does not change them.
 
-### SETS — 1 when negative
+### SETS - 1 when negative
 
 **Syntax:** `SETS destination8`
 
@@ -933,7 +933,7 @@ SETS AL
 
 **Flags:** Reads the flags, does not change them.
 
-### SETNS — 1 when non-negative
+### SETNS - 1 when non-negative
 
 **Syntax:** `SETNS destination8`
 
@@ -946,7 +946,7 @@ SETNS AL
 
 **Flags:** Reads the flags, does not change them.
 
-### SETC — 1 when carry set
+### SETC - 1 when carry set
 
 **Syntax:** `SETC destination8`
 
@@ -959,7 +959,7 @@ SETC AL
 
 **Flags:** Reads the flags, does not change them.
 
-### SETNC — 1 when carry clear
+### SETNC - 1 when carry clear
 
 **Syntax:** `SETNC destination8`
 
@@ -972,7 +972,7 @@ SETNC AL
 
 **Flags:** Reads the flags, does not change them.
 
-### SETO — 1 when overflow set
+### SETO - 1 when overflow set
 
 **Syntax:** `SETO destination8`
 
@@ -985,7 +985,7 @@ SETO AL
 
 **Flags:** Reads the flags, does not change them.
 
-### SETNO — 1 when overflow clear
+### SETNO - 1 when overflow clear
 
 **Syntax:** `SETNO destination8`
 
@@ -998,7 +998,7 @@ SETNO AL
 
 **Flags:** Reads the flags, does not change them.
 
-### SETP — 1 when parity even
+### SETP - 1 when parity even
 
 **Syntax:** `SETP destination8`
 
@@ -1011,7 +1011,7 @@ SETP AL
 
 **Flags:** Reads the flags, does not change them.
 
-### SETNP — 1 when parity odd
+### SETNP - 1 when parity odd
 
 **Syntax:** `SETNP destination8`
 
@@ -1029,7 +1029,7 @@ SETNP AL
 
 Changes the flow of execution.
 
-### JMP — unconditional branch
+### JMP - unconditional branch
 
 **Syntax:** `JMP destination`
 
@@ -1041,7 +1041,7 @@ JMP done
 
 **Flags:** Does not change flags.
 
-### LOOP — repeats using RCX as the counter
+### LOOP - repeats using RCX as the counter
 
 **Syntax:** `LOOP label`
 
@@ -1055,7 +1055,7 @@ body:
 
 **Flags:** Does not change flags.
 
-### JE — branches when equal
+### JE - branches when equal
 
 **Syntax:** `JE label`
 
@@ -1068,7 +1068,7 @@ JE target
 
 **Flags:** Reads the flags, does not change them.
 
-### JZ — branches when zero
+### JZ - branches when zero
 
 **Syntax:** `JZ label`
 
@@ -1081,7 +1081,7 @@ JZ target
 
 **Flags:** Reads the flags, does not change them.
 
-### JNE — branches when not equal
+### JNE - branches when not equal
 
 **Syntax:** `JNE label`
 
@@ -1094,7 +1094,7 @@ JNE target
 
 **Flags:** Reads the flags, does not change them.
 
-### JNZ — branches when not zero
+### JNZ - branches when not zero
 
 **Syntax:** `JNZ label`
 
@@ -1107,7 +1107,7 @@ JNZ target
 
 **Flags:** Reads the flags, does not change them.
 
-### JG — branches when greater (signed)
+### JG - branches when greater (signed)
 
 **Syntax:** `JG label`
 
@@ -1120,7 +1120,7 @@ JG target
 
 **Flags:** Reads the flags, does not change them.
 
-### JGE — branches when greater or equal (signed)
+### JGE - branches when greater or equal (signed)
 
 **Syntax:** `JGE label`
 
@@ -1133,7 +1133,7 @@ JGE target
 
 **Flags:** Reads the flags, does not change them.
 
-### JL — branches when less (signed)
+### JL - branches when less (signed)
 
 **Syntax:** `JL label`
 
@@ -1146,7 +1146,7 @@ JL target
 
 **Flags:** Reads the flags, does not change them.
 
-### JLE — branches when less or equal (signed)
+### JLE - branches when less or equal (signed)
 
 **Syntax:** `JLE label`
 
@@ -1159,7 +1159,7 @@ JLE target
 
 **Flags:** Reads the flags, does not change them.
 
-### JA — branches when above (unsigned)
+### JA - branches when above (unsigned)
 
 **Syntax:** `JA label`
 
@@ -1172,7 +1172,7 @@ JA target
 
 **Flags:** Reads the flags, does not change them.
 
-### JAE — branches when above or equal (unsigned)
+### JAE - branches when above or equal (unsigned)
 
 **Syntax:** `JAE label`
 
@@ -1185,7 +1185,7 @@ JAE target
 
 **Flags:** Reads the flags, does not change them.
 
-### JB — branches when below (unsigned)
+### JB - branches when below (unsigned)
 
 **Syntax:** `JB label`
 
@@ -1198,7 +1198,7 @@ JB target
 
 **Flags:** Reads the flags, does not change them.
 
-### JBE — branches when below or equal (unsigned)
+### JBE - branches when below or equal (unsigned)
 
 **Syntax:** `JBE label`
 
@@ -1211,7 +1211,7 @@ JBE target
 
 **Flags:** Reads the flags, does not change them.
 
-### JS — branches when negative
+### JS - branches when negative
 
 **Syntax:** `JS label`
 
@@ -1224,7 +1224,7 @@ JS target
 
 **Flags:** Reads the flags, does not change them.
 
-### JNS — branches when non-negative
+### JNS - branches when non-negative
 
 **Syntax:** `JNS label`
 
@@ -1237,7 +1237,7 @@ JNS target
 
 **Flags:** Reads the flags, does not change them.
 
-### JC — branches when carry set
+### JC - branches when carry set
 
 **Syntax:** `JC label`
 
@@ -1250,7 +1250,7 @@ JC target
 
 **Flags:** Reads the flags, does not change them.
 
-### JNC — branches when carry clear
+### JNC - branches when carry clear
 
 **Syntax:** `JNC label`
 
@@ -1263,7 +1263,7 @@ JNC target
 
 **Flags:** Reads the flags, does not change them.
 
-### JO — branches when overflow set
+### JO - branches when overflow set
 
 **Syntax:** `JO label`
 
@@ -1276,7 +1276,7 @@ JO target
 
 **Flags:** Reads the flags, does not change them.
 
-### JNO — branches when overflow clear
+### JNO - branches when overflow clear
 
 **Syntax:** `JNO label`
 
@@ -1289,7 +1289,7 @@ JNO target
 
 **Flags:** Reads the flags, does not change them.
 
-### JP — branches when parity even
+### JP - branches when parity even
 
 **Syntax:** `JP label`
 
@@ -1302,7 +1302,7 @@ JP target
 
 **Flags:** Reads the flags, does not change them.
 
-### JNP — branches when parity odd
+### JNP - branches when parity odd
 
 **Syntax:** `JNP label`
 
@@ -1320,7 +1320,7 @@ JNP target
 
 Enters and leaves functions.
 
-### CALL — calls a function
+### CALL - calls a function
 
 **Syntax:** `CALL destination`
 
@@ -1333,7 +1333,7 @@ CALL printf
 
 **Flags:** Does not change flags.
 
-### RET — returns from the function
+### RET - returns from the function
 
 **Syntax:** `RET  |  RET n`
 
@@ -1350,7 +1350,7 @@ RET
 
 Talks to the kernel or to the hardware.
 
-### SYSCALL — calls the kernel (Linux x86-64)
+### SYSCALL - calls the kernel (Linux x86-64)
 
 **Syntax:** `SYSCALL`
 
@@ -1366,11 +1366,11 @@ SYSCALL
 
 **Flags:** Does not change flags (RCX and R11 are overwritten).
 
-### INT — raises a software interrupt
+### INT - raises a software interrupt
 
 **Syntax:** `INT number`
 
-INT 0x80 is the old 32-bit Linux system call — in 64-bit code the normal choice is SYSCALL. INT 3 is the breakpoint used by debuggers.
+INT 0x80 is the old 32-bit Linux system call - in 64-bit code the normal choice is SYSCALL. INT 3 is the breakpoint used by debuggers.
 
 ```asm
 INT 0x80
@@ -1379,7 +1379,7 @@ INT 3
 
 **Flags:** Depends on the handler.
 
-### SYSENTER — fast kernel entry (32 bits)
+### SYSENTER - fast kernel entry (32 bits)
 
 **Syntax:** `SYSENTER`
 
@@ -1389,9 +1389,9 @@ Kernel entry mechanism on 32-bit systems. On x86-64 it was replaced by SYSCALL.
 SYSENTER
 ```
 
-**Flags:** —
+**Flags:** -
 
-### CPUID — identifies the processor
+### CPUID - identifies the processor
 
 **Syntax:** `CPUID`
 
@@ -1404,7 +1404,7 @@ CPUID
 
 **Flags:** Does not change flags.
 
-### RDTSC — reads the cycle counter
+### RDTSC - reads the cycle counter
 
 **Syntax:** `RDTSC`
 
@@ -1416,7 +1416,7 @@ RDTSC
 
 **Flags:** Does not change flags.
 
-### HLT — stops the processor
+### HLT - stops the processor
 
 **Syntax:** `HLT`
 
@@ -1426,14 +1426,14 @@ Only makes sense in kernel/bare-metal code. In a user program it causes a protec
 HLT
 ```
 
-**Flags:** —
+**Flags:** -
 ---
 
 ## Category: Memory blocks
 
 Copies, compares and fills whole regions.
 
-### MOVSB — Move String byte
+### MOVSB - Move String byte
 
 **Syntax:** `MOVSB  (usually REP MOVSB)`
 
@@ -1446,7 +1446,7 @@ REP MOVSB
 
 **Flags:** Does not change flags. Direction controlled by DF (CLD/STD).
 
-### STOSB — fills memory with AL
+### STOSB - fills memory with AL
 
 **Syntax:** `STOSB  (usually REP STOSB)`
 
@@ -1460,7 +1460,7 @@ REP STOSB
 
 **Flags:** Does not change flags.
 
-### LODSB — loads a byte from [RSI] into AL
+### LODSB - loads a byte from [RSI] into AL
 
 **Syntax:** `LODSB`
 
@@ -1474,7 +1474,7 @@ JZ done
 
 **Flags:** Does not change flags.
 
-### SCASB — searches for a byte
+### SCASB - searches for a byte
 
 **Syntax:** `SCASB  (usually REPNE SCASB)`
 
@@ -1486,7 +1486,7 @@ REPNE SCASB
 
 **Flags:** Changes the comparison flags.
 
-### CMPSB — compares two regions
+### CMPSB - compares two regions
 
 **Syntax:** `CMPSB  (usually REPE CMPSB)`
 
@@ -1498,7 +1498,7 @@ REPE CMPSB
 
 **Flags:** Changes the comparison flags.
 
-### REP — repetition prefix
+### REP - repetition prefix
 
 **Syntax:** `REP / REPE / REPNE instruction`
 
@@ -1510,7 +1510,7 @@ REP MOVSB
 
 **Flags:** Depends on the repeated instruction.
 
-### CLD — walk forward
+### CLD - walk forward
 
 **Syntax:** `CLD`
 
@@ -1522,7 +1522,7 @@ CLD
 
 **Flags:** Clears DF.
 
-### STD — walk backward
+### STD - walk backward
 
 **Syntax:** `STD`
 
@@ -1534,11 +1534,11 @@ STD
 
 **Flags:** Sets DF.
 
-### MOVSW — Move String word
+### MOVSW - Move String word
 
 **Syntax:** `MOVSW  (usually REP MOVSW)`
 
-Copies one word (2 bytes) from the address in RSI to the address in RDI, then advances both registers by 2 (backwards when the direction flag is set). With the REP prefix it copies RCX words in one instruction — the fastest way to move a buffer, and the usual shape of a memory-copy payload.
+Copies one word (2 bytes) from the address in RSI to the address in RDI, then advances both registers by 2 (backwards when the direction flag is set). With the REP prefix it copies RCX words in one instruction - the fastest way to move a buffer, and the usual shape of a memory-copy payload.
 
 ```asm
 MOV RCX, 100
@@ -1547,11 +1547,11 @@ REP MOVSB
 
 **Flags:** Does not change flags. Direction controlled by DF (CLD/STD).
 
-### MOVSD — Move String dword
+### MOVSD - Move String dword
 
 **Syntax:** `MOVSD  (usually REP MOVSD)`
 
-Copies one dword (4 bytes) from the address in RSI to the address in RDI, then advances both registers by 4 (backwards when the direction flag is set). With the REP prefix it copies RCX dwords in one instruction — the fastest way to move a buffer, and the usual shape of a memory-copy payload.
+Copies one dword (4 bytes) from the address in RSI to the address in RDI, then advances both registers by 4 (backwards when the direction flag is set). With the REP prefix it copies RCX dwords in one instruction - the fastest way to move a buffer, and the usual shape of a memory-copy payload.
 
 ```asm
 MOV RCX, 100
@@ -1560,11 +1560,11 @@ REP MOVSB
 
 **Flags:** Does not change flags. Direction controlled by DF (CLD/STD).
 
-### MOVSQ — Move String qword
+### MOVSQ - Move String qword
 
 **Syntax:** `MOVSQ  (usually REP MOVSQ)`
 
-Copies one qword (8 bytes) from the address in RSI to the address in RDI, then advances both registers by 8 (backwards when the direction flag is set). With the REP prefix it copies RCX qwords in one instruction — the fastest way to move a buffer, and the usual shape of a memory-copy payload.
+Copies one qword (8 bytes) from the address in RSI to the address in RDI, then advances both registers by 8 (backwards when the direction flag is set). With the REP prefix it copies RCX qwords in one instruction - the fastest way to move a buffer, and the usual shape of a memory-copy payload.
 
 ```asm
 MOV RCX, 100
@@ -1573,11 +1573,11 @@ REP MOVSB
 
 **Flags:** Does not change flags. Direction controlled by DF (CLD/STD).
 
-### STOSW — Store String word
+### STOSW - Store String word
 
 **Syntax:** `STOSW  (usually REP STOSW)`
 
-Stores AX at the address in RDI and advances RDI by 2 (backwards when the direction flag is set). With REP it fills RCX words — how a buffer gets zeroed or filled in one go.
+Stores AX at the address in RDI and advances RDI by 2 (backwards when the direction flag is set). With REP it fills RCX words - how a buffer gets zeroed or filled in one go.
 
 ```asm
 XOR AL, AL
@@ -1587,11 +1587,11 @@ REP STOSB
 
 **Flags:** Does not change flags.
 
-### STOSD — Store String dword
+### STOSD - Store String dword
 
 **Syntax:** `STOSD  (usually REP STOSD)`
 
-Stores EAX at the address in RDI and advances RDI by 4 (backwards when the direction flag is set). With REP it fills RCX dwords — how a buffer gets zeroed or filled in one go.
+Stores EAX at the address in RDI and advances RDI by 4 (backwards when the direction flag is set). With REP it fills RCX dwords - how a buffer gets zeroed or filled in one go.
 
 ```asm
 XOR AL, AL
@@ -1601,11 +1601,11 @@ REP STOSB
 
 **Flags:** Does not change flags.
 
-### STOSQ — Store String qword
+### STOSQ - Store String qword
 
 **Syntax:** `STOSQ  (usually REP STOSQ)`
 
-Stores RAX at the address in RDI and advances RDI by 8 (backwards when the direction flag is set). With REP it fills RCX qwords — how a buffer gets zeroed or filled in one go.
+Stores RAX at the address in RDI and advances RDI by 8 (backwards when the direction flag is set). With REP it fills RCX qwords - how a buffer gets zeroed or filled in one go.
 
 ```asm
 XOR AL, AL
@@ -1615,7 +1615,7 @@ REP STOSB
 
 **Flags:** Does not change flags.
 
-### LODSW — Load String word
+### LODSW - Load String word
 
 **Syntax:** `LODSW`
 
@@ -1629,7 +1629,7 @@ JZ done
 
 **Flags:** Does not change flags.
 
-### LODSD — Load String dword
+### LODSD - Load String dword
 
 **Syntax:** `LODSD`
 
@@ -1643,7 +1643,7 @@ JZ done
 
 **Flags:** Does not change flags.
 
-### LODSQ — Load String qword
+### LODSQ - Load String qword
 
 **Syntax:** `LODSQ`
 
@@ -1657,7 +1657,7 @@ JZ done
 
 **Flags:** Does not change flags.
 
-### SCASW — Scan String word
+### SCASW - Scan String word
 
 **Syntax:** `SCASW  (usually REPNE SCASW)`
 
@@ -1669,7 +1669,7 @@ REPNE SCASB
 
 **Flags:** Changes the comparison flags.
 
-### SCASD — Scan String dword
+### SCASD - Scan String dword
 
 **Syntax:** `SCASD  (usually REPNE SCASD)`
 
@@ -1681,7 +1681,7 @@ REPNE SCASB
 
 **Flags:** Changes the comparison flags.
 
-### SCASQ — Scan String qword
+### SCASQ - Scan String qword
 
 **Syntax:** `SCASQ  (usually REPNE SCASQ)`
 
@@ -1693,11 +1693,11 @@ REPNE SCASB
 
 **Flags:** Changes the comparison flags.
 
-### CMPSW — Compare String word
+### CMPSW - Compare String word
 
 **Syntax:** `CMPSW  (usually REPE CMPSW)`
 
-Compares the word at [RSI] with the word at [RDI], sets the flags and advances both registers by 2 (backwards when the direction flag is set). With REPE it compares RCX words — memcmp in one instruction.
+Compares the word at [RSI] with the word at [RDI], sets the flags and advances both registers by 2 (backwards when the direction flag is set). With REPE it compares RCX words - memcmp in one instruction.
 
 ```asm
 REPE CMPSB
@@ -1705,11 +1705,11 @@ REPE CMPSB
 
 **Flags:** Changes the comparison flags.
 
-### CMPSD — Compare String dword
+### CMPSD - Compare String dword
 
 **Syntax:** `CMPSD  (usually REPE CMPSD)`
 
-Compares the dword at [RSI] with the dword at [RDI], sets the flags and advances both registers by 4 (backwards when the direction flag is set). With REPE it compares RCX dwords — memcmp in one instruction.
+Compares the dword at [RSI] with the dword at [RDI], sets the flags and advances both registers by 4 (backwards when the direction flag is set). With REPE it compares RCX dwords - memcmp in one instruction.
 
 ```asm
 REPE CMPSB
@@ -1717,11 +1717,11 @@ REPE CMPSB
 
 **Flags:** Changes the comparison flags.
 
-### CMPSQ — Compare String qword
+### CMPSQ - Compare String qword
 
 **Syntax:** `CMPSQ  (usually REPE CMPSQ)`
 
-Compares the qword at [RSI] with the qword at [RDI], sets the flags and advances both registers by 8 (backwards when the direction flag is set). With REPE it compares RCX qwords — memcmp in one instruction.
+Compares the qword at [RSI] with the qword at [RDI], sets the flags and advances both registers by 8 (backwards when the direction flag is set). With REPE it compares RCX qwords - memcmp in one instruction.
 
 ```asm
 REPE CMPSB
@@ -1729,7 +1729,7 @@ REPE CMPSB
 
 **Flags:** Changes the comparison flags.
 
-### REPNZ — repetition prefix
+### REPNZ - repetition prefix
 
 **Syntax:** `REP / REPE / REPNE instruction`
 
@@ -1741,7 +1741,7 @@ REP MOVSB
 
 **Flags:** Depends on the repeated instruction.
 
-### REPZ — repetition prefix
+### REPZ - repetition prefix
 
 **Syntax:** `REP / REPE / REPNE instruction`
 
@@ -1753,7 +1753,7 @@ REP MOVSB
 
 **Flags:** Depends on the repeated instruction.
 
-### REPNE — repetition prefix
+### REPNE - repetition prefix
 
 **Syntax:** `REP / REPE / REPNE instruction`
 
@@ -1765,7 +1765,7 @@ REP MOVSB
 
 **Flags:** Depends on the repeated instruction.
 
-### REPE — repetition prefix
+### REPE - repetition prefix
 
 **Syntax:** `REP / REPE / REPNE instruction`
 
@@ -1782,7 +1782,7 @@ REP MOVSB
 
 Real numbers and XMM registers.
 
-### MOVSS — 32-bit float
+### MOVSS - 32-bit float
 
 **Syntax:** `MOVSS xmm, source`
 
@@ -1794,11 +1794,11 @@ MOVSS XMM0, [value]
 
 **Flags:** Does not change flags.
 
-### MOVSD_SSE — 64-bit double
+### MOVSD_SSE - 64-bit double
 
 **Syntax:** `MOVSD xmm, source`
 
-Moves a double. Careful: the same MOVSD mnemonic also exists as a string instruction — the assembler decides from the operand.
+Moves a double. Careful: the same MOVSD mnemonic also exists as a string instruction - the assembler decides from the operand.
 
 ```asm
 MOVSD XMM0, [value]
@@ -1806,7 +1806,7 @@ MOVSD XMM0, [value]
 
 **Flags:** Does not change flags.
 
-### ADDSD — double addition
+### ADDSD - double addition
 
 **Syntax:** `ADDSD xmm, source`
 
@@ -1818,7 +1818,7 @@ ADDSD XMM0, XMM1
 
 **Flags:** Does not change the integer flags.
 
-### MULSD — Multiply Scalar Double
+### MULSD - Multiply Scalar Double
 
 **Syntax:** `MULSD xmm, source`
 
@@ -1828,9 +1828,9 @@ Multiplies two doubles.
 MULSD XMM0, XMM1
 ```
 
-**Flags:** —
+**Flags:** -
 
-### CVTSI2SD — Convert Integer to Double
+### CVTSI2SD - Convert Integer to Double
 
 **Syntax:** `CVTSI2SD xmm, reg/mem`
 
@@ -1840,14 +1840,14 @@ Converts an integer to a double.
 CVTSI2SD XMM0, RAX
 ```
 
-**Flags:** —
+**Flags:** -
 ---
 
 ## Category: Miscellaneous
 
 Conversions, synchronization, no-ops.
 
-### NOP — does nothing
+### NOP - does nothing
 
 **Syntax:** `NOP`
 
@@ -1859,7 +1859,7 @@ NOP
 
 **Flags:** Does not change flags.
 
-### CDQ — extends EAX into EDX
+### CDQ - extends EAX into EDX
 
 **Syntax:** `CDQ`
 
@@ -1872,7 +1872,7 @@ IDIV EBX
 
 **Flags:** Does not change flags.
 
-### CQO — extends RAX into RDX
+### CQO - extends RAX into RDX
 
 **Syntax:** `CQO`
 
@@ -1885,7 +1885,7 @@ IDIV RBX
 
 **Flags:** Does not change flags.
 
-### CWDE — Convert Word to Doubleword
+### CWDE - Convert Word to Doubleword
 
 **Syntax:** `CWDE`
 
@@ -1897,7 +1897,7 @@ CWDE
 
 **Flags:** Does not change flags.
 
-### BSWAP — reverses the byte order
+### BSWAP - reverses the byte order
 
 **Syntax:** `BSWAP register`
 
@@ -1909,7 +1909,7 @@ BSWAP EAX
 
 **Flags:** Does not change flags.
 
-### XADD — swaps and adds (atomic with LOCK)
+### XADD - swaps and adds (atomic with LOCK)
 
 **Syntax:** `XADD destination, source`
 
@@ -1921,7 +1921,7 @@ LOCK XADD [counter], RAX
 
 **Flags:** Changes the arithmetic flags.
 
-### CMPXCHG — the x86 CAS
+### CMPXCHG - the x86 CAS
 
 **Syntax:** `CMPXCHG destination, source`
 
@@ -1933,7 +1933,7 @@ LOCK CMPXCHG [ptr], RBX
 
 **Flags:** Changes ZF and the other arithmetic flags.
 
-### LOCK — atomicity prefix
+### LOCK - atomicity prefix
 
 **Syntax:** `LOCK instruction`
 
@@ -1945,7 +1945,7 @@ LOCK INC [counter]
 
 **Flags:** Depends on the instruction.
 
-### ENDBR64 — marks a valid indirect branch target
+### ENDBR64 - marks a valid indirect branch target
 
 **Syntax:** `ENDBR64`
 
@@ -1957,7 +1957,7 @@ ENDBR64
 
 **Flags:** Does not change flags.
 
-### UD2 — deliberate invalid instruction
+### UD2 - deliberate invalid instruction
 
 **Syntax:** `UD2`
 
@@ -1967,7 +1967,7 @@ Raises an invalid opcode exception. Compilers use it to mark unreachable code.
 UD2
 ```
 
-**Flags:** —
+**Flags:** -
 
 ---
 
@@ -1999,12 +1999,12 @@ UD2
 
 | Flag | Description |
 | --- | --- |
-| `ZF` | Zero — the result was exactly zero (or the compared values were equal). |
-| `SF` | Sign — the highest bit of the result is 1 (negative number in signed interpretation). |
-| `CF` | Carry — a carry-out or borrow happened. It is the flag used by unsigned branches (JA/JB). |
-| `OF` | Overflow — the result went past the signed range. It is the flag used by signed branches (JG/JL). |
-| `PF` | Parity — the low byte of the result has an even number of 1 bits. |
-| `DF` | Direction — defines whether string instructions walk forward (0) or backward (1). |
+| `ZF` | Zero - the result was exactly zero (or the compared values were equal). |
+| `SF` | Sign - the highest bit of the result is 1 (negative number in signed interpretation). |
+| `CF` | Carry - a carry-out or borrow happened. It is the flag used by unsigned branches (JA/JB). |
+| `OF` | Overflow - the result went past the signed range. It is the flag used by signed branches (JG/JL). |
+| `PF` | Parity - the low byte of the result has an even number of 1 bits. |
+| `DF` | Direction - defines whether string instructions walk forward (0) or backward (1). |
 
 ---
 
@@ -2028,9 +2028,9 @@ UD2
 | 22 | `pipe` | creates a pair of descriptors | pipefd |
 | 32 | `dup` | duplicates a descriptor | fd |
 | 33 | `dup2` | duplicates into a specific number | old, new |
-| 34 | `pause` | waits for a signal | — |
+| 34 | `pause` | waits for a signal | - |
 | 35 | `nanosleep` | sleeps | req, rem |
-| 39 | `getpid` | PID of the process | — |
+| 39 | `getpid` | PID of the process | - |
 | 41 | `socket` | creates a socket | domain, type, protocol |
 | 42 | `connect` | connects a socket | fd, addr, addrlen |
 | 43 | `accept` | accepts a connection | fd, addr, addrlen |
@@ -2038,7 +2038,7 @@ UD2
 | 45 | `recvfrom` | receives data | fd, buf, len, flags, addr, alen |
 | 49 | `bind` | binds an address to the socket | fd, addr, addrlen |
 | 50 | `listen` | puts the socket in listening mode | fd, backlog |
-| 57 | `fork` | duplicates the process | — |
+| 57 | `fork` | duplicates the process | - |
 | 59 | `execve` | replaces the current program | path, argv, envp |
 | 60 | `exit` | terminates the thread | code |
 | 61 | `wait4` | waits for a child process | pid, status, options, rusage |
@@ -2049,7 +2049,7 @@ UD2
 | 89 | `readlink` | reads a symbolic link | path, buf, size |
 | 96 | `gettimeofday` | current time | tv, tz |
 | 101 | `ptrace` | process debugging | request, pid, addr, data |
-| 186 | `gettid` | thread ID | — |
+| 186 | `gettid` | thread ID | - |
 | 201 | `time` | time in seconds | tloc |
 | 202 | `futex` | waits for/wakes a thread | uaddr, op, val, ... |
 | 231 | `exit_group` | terminates the whole process | code |
@@ -2076,7 +2076,7 @@ UD2
 | `LoadLibraryA` | loads a DLL | name |
 | `VirtualAlloc` | reserves memory | addr, size, type, protection |
 | `VirtualProtect` | changes memory protection | addr, size, new, old |
-| `GetLastError` | code of the last error | — |
+| `GetLastError` | code of the last error | - |
 | `Sleep` | pauses the thread | milliseconds |
 | `CreateProcessA` | creates a process | ... |
 | `GetModuleHandleA` | handle of the loaded module | name |

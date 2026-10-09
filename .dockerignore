@@ -1,20 +1,16 @@
-# ---------------------------------------------------------------------------
-# ASM X — docker build context filter.
+# ASM X - docker build context filter.
 #
 # Keep this file in sync with the Dockerfile: `asmx/`, `tests/`, `tools/`,
 # `examples/`, `docs/`, `requirements-dev.txt`, `pyproject.toml`, `README.md`,
 # `CITATION.cff` and `asmx.py` MUST stay in the context (the image installs the
-# package and runs the whole gate — tests, docstrings and the generated
-# reference — inside it).
-# ---------------------------------------------------------------------------
+# package and runs the whole gate - tests, docstrings and the generated
+# reference - inside it).
 
-# --- Version control and CI metadata ---
 .git/
 .gitignore
 .gitattributes
 .github/
 
-# --- Python bytecode, caches and build artefacts ---
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -23,13 +19,11 @@ build/
 dist/
 pip-wheel-metadata/
 
-# --- Virtual environments ---
 .venv/
 venv/
 env/
 ENV/
 
-# --- Tooling caches and coverage output ---
 .mypy_cache/
 .pytest_cache/
 .tox/
@@ -40,16 +34,14 @@ ENV/
 coverage.xml
 htmlcov/
 
-# --- ASM X user artifacts (never baked into the image) ---
 *.asmproj
 *.asmproj.bak
 results/
 samples/
 
-# --- Local notes and editor/OS junk ---
 # `docs/` stays in the context: the quality gate runs
 # `tools/build_reference.py --check`, which compares docs/REFERENCE.md with the
-# instruction catalogue, and its tests read that file.
+# instruction catalog, and its tests read that file.
 .idea/
 .vscode/
 *.swp

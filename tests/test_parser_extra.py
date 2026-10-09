@@ -296,7 +296,7 @@ class TestStructure(unittest.TestCase):
         self.assertEqual([line.kind for line in program.lines], ["label", "instruction"])
 
     def test_unknown_instruction(self) -> None:
-        """A mnemonic outside the catalogue is marked as unknown."""
+        """A mnemonic outside the catalog is marked as unknown."""
         self.assertFalse(parse("strange_instruction rax").instructions[0].known)
 
     def test_unknown_directive_with_dot(self) -> None:

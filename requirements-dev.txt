@@ -1,8 +1,8 @@
-# ASM X — development and CI tooling only.
+# ASM X - development and CI tooling only.
 #
 # None of these are runtime dependencies of the `asmx` package: they are the
 # tools used by `make quality`, the GitHub Actions workflows and pre-commit.
-# Loose lower bounds on purpose — the floor is what we know works, so CI
+# Loose lower bounds on purpose - the floor is what we know works, so CI
 # keeps testing newer releases instead of a frozen pin.
 
 -r requirements.txt

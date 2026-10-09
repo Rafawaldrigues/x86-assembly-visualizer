@@ -1,5 +1,4 @@
-# ---------------------------------------------------------------------------
-# ASM X — developer tasks
+# ASM X - developer tasks
 #
 #   make            (default target: help)
 #   make test       run the unittest suite
@@ -8,7 +7,6 @@
 # ASM X itself has no runtime dependencies; the targets that need extra
 # tooling (flake8, mypy, coverage, black, docker) are the only ones that
 # require `make install-dev` first.
-# ---------------------------------------------------------------------------
 
 .DEFAULT_GOAL := help
 
@@ -26,14 +24,14 @@ TESTS      := $(PYTHON) -m unittest discover -s tests -v
 COVERAGE   := $(XVFB_RUN)$(PYTHON) -m coverage run --source=asmx -m unittest discover -s tests
 
 help: ## List the available targets (default)
-	@echo "ASM X — available make targets:"
+	@echo "ASM X - available make targets:"
 	@echo
 	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) \
 		| sort \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  %-14s %s\n", $$1, $$2}'
 	@echo
 	@echo "  python:   $(PYTHON)"
-	@echo "  xvfb-run: $(if $(XVFB),$(XVFB),not found — GUI tests will skip)"
+	@echo "  xvfb-run: $(if $(XVFB),$(XVFB),not found - GUI tests will skip)"
 
 install-dev: ## Install the development tooling (asmx stays dependency-free)
 	$(PYTHON) -m pip install -r requirements-dev.txt
@@ -46,7 +44,7 @@ test-gui: ## Run the suite under xvfb-run so the GUI tests really execute
 		echo "using $(XVFB)"; \
 		$(XVFB_RUN)$(TESTS); \
 	else \
-		echo "xvfb-run not found — running without a virtual display"; \
+		echo "xvfb-run not found - running without a virtual display"; \
 		echo "(install it with: sudo apt install xvfb)"; \
 		$(TESTS); \
 	fi
@@ -81,7 +79,7 @@ check: ## Validate examples/linux-hello.asm with the CLI (falls back to CLI help
 	elif [ -f examples/linux-hello.asm ]; then \
 		$(PYTHON) -m asmx check examples/linux-hello.asm; \
 	else \
-		echo "examples/linux-hello.asm not found — showing the CLI help instead:"; \
+		echo "examples/linux-hello.asm not found - showing the CLI help instead:"; \
 		$(PYTHON) -m asmx check --help; \
 	fi
 
@@ -91,7 +89,7 @@ docker-build: ## Build the container image
 docker-test: docker-build ## Build the image and run the quality gate inside it
 	docker run --rm $(IMAGE) quality
 
-clean: ## Remove caches, coverage data and build artefacts
+clean: ## Remove caches, coverage data and build artifacts
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +
 	find . -type f -name '*.py[co]' -delete
 	rm -rf .mypy_cache .pytest_cache .ruff_cache .coverage coverage.xml htmlcov \

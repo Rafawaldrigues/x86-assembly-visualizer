@@ -1,5 +1,9 @@
 # ASM X
 
+[![Tests](https://github.com/Rafawaldrigues/x86-assembly-visualizer/actions/workflows/tests.yml/badge.svg)](https://github.com/Rafawaldrigues/x86-assembly-visualizer/actions/workflows/tests.yml)
+![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 ASM X is a small x86-64 assembly simulator and source viewer written in Python.
 It has a Tkinter editor and a command line interface. You can step through a
 program, inspect registers and memory, and check common mistakes before using

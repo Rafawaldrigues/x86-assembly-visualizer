@@ -1,9 +1,9 @@
 """A local, read-only web dashboard for a folder of analysis reports.
 
-The command line is enough to analyse one sample, but a folder with three
+The command line is enough to analyze one sample, but a folder with three
 hundred of them needs something you can sort, filter and click through. This
 module serves exactly that, using only :mod:`http.server` from the standard
-library — no Flask, no template engine, no CDN, no telemetry.
+library - no Flask, no template engine, no CDN, no telemetry.
 
 What it does:
 
@@ -62,7 +62,7 @@ logger = get_logger(__name__)
 #: Schema of the manifest the dashboard reads and writes.
 DASHBOARD_SCHEMA = "asmx-dashboard/1"
 
-#: Risk levels, most serious first, used for sorting and colouring.
+#: Risk levels, most serious first, used for sorting and coloring.
 RISK_ORDER: Tuple[str, ...] = ("critical", "high", "medium", "low")
 
 #: How many bytes of a report we are willing to read while scanning a folder.
@@ -71,14 +71,14 @@ MAX_REPORT_BYTES = 20 * 1024 * 1024
 
 @dataclass
 class Sample:
-    """One analysed sample, as the dashboard sees it.
+    """One analyzed sample, as the dashboard sees it.
 
     Attributes:
         name: File name, used as the link target and the display name.
         risk: Risk level (``low``..``critical``); empty when unknown.
         score: Risk score from 0 to 100.
         instructions: Instruction count.
-        behaviors: Number of behaviours observed.
+        behaviors: Number of behaviors observed.
         indicators: Number of indicators found.
         problems: Number of validation problems.
         platform: Short platform string (``linux · 64-bit``).
@@ -100,7 +100,7 @@ class Sample:
     extra: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialises the sample for the JSON API.
+        """Serializes the sample for the JSON API.
 
         Returns:
             Dictionary with the summary fields and the extras.
@@ -327,7 +327,7 @@ def build_index(samples: Sequence[Sample], *, title: str = "ASM X") -> Dict[str,
     """Builds the machine-readable index served by the dashboard.
 
     Args:
-        samples: Samples to summarise.
+        samples: Samples to summarize.
         title: Dashboard title.
 
     Returns:
@@ -499,7 +499,7 @@ def render_page(index: Dict[str, Any], *, title: str = "ASM X", live: bool = Tru
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>%(title)s — dashboard</title>
+<title>%(title)s - dashboard</title>
 <style>%(css)s</style>
 </head>
 <body>
@@ -559,7 +559,6 @@ class _Handler(BaseHTTPRequestHandler):
         """
         logger.debug("dashboard %s - %s", self.address_string(), format_name % args)
 
-    # -- helpers ------------------------------------------------------------
     def _authorized(self) -> bool:
         """Checks the optional token.
 
@@ -602,7 +601,7 @@ class _Handler(BaseHTTPRequestHandler):
         """Sends a JSON response.
 
         Args:
-            values_data: Payload to serialise.
+            values_data: Payload to serialize.
             status_code: HTTP status code.
         """
         self._respond(
@@ -638,7 +637,6 @@ class _Handler(BaseHTTPRequestHandler):
             return None
         return target_name if os.path.isfile(target_name) else None
 
-    # -- routes -------------------------------------------------------------
     def do_GET(self) -> None:  # noqa: N802 - inherited naming
         """Handles a GET request."""
         self._route()

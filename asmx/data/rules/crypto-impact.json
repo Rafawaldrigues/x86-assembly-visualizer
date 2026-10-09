@@ -6,7 +6,7 @@
       "id": "CRY001",
       "name": "Random bytes requested",
       "severity": "low",
-      "description": "The sample asks the kernel for random bytes: a key, a nonce or an identifier. Not suspicious by itself — meaningful next to file writes.",
+      "description": "The sample asks the kernel for random bytes: a key, a nonce or an identifier. Not suspicious by itself - meaningful next to file writes.",
       "tags": [
         "crypto"
       ],

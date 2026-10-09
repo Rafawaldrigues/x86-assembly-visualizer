@@ -1,9 +1,8 @@
 """Signature rules: a small, dependency-free rule engine for assembly sources.
 
-The validator in :mod:`asmx.linter` answers "is this code broken?" with 34 fixed
-codes. This module answers a different question: *"does this code look like
-something I have seen before?"* — the way a YARA rule, a Sigma rule or an
-antivirus signature does, but for assembly source instead of a compiled binary.
+The validator in :mod:`asmx.linter` reports mistakes with a fixed set of codes.
+This module asks a different question, whether the code resembles something
+known, in the style of YARA or Sigma rules but for assembly source.
 
 Rules are plain data, not code:
 
@@ -15,13 +14,12 @@ Rules are plain data, not code:
 * the ``match`` object is a conjunction of conditions: every key present must
   match, and the lists inside a key match when *any* item matches (unless the
   rule asks for all of them). Signals come from the analysis the rest of the
-  tool already produced — syscalls, external APIs, behaviour categories,
-  sections, mnemonics, validator codes, counts — plus regular expressions over
+  tool already produced - syscalls, external APIs, behavior categories,
+  sections, mnemonics, validator codes, counts - plus regular expressions over
   the source text.
 
-A match never says "this is malware". It says "this rule fired, and here is the
-line that made it fire" — an indicator to read, with the evidence attached, the
-same contract the behaviour classifier follows.
+A match does not mean "this is malware". It means a rule fired, and it reports
+the line that triggered it, like the behavior classifier.
 
 Example:
     >>> from asmx.rules import match_text, summary
@@ -142,7 +140,7 @@ class Rule:
     source: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialises the rule for JSON output.
+        """Serializes the rule for JSON output.
 
         Returns:
             Dictionary with every field in plain types.
@@ -184,7 +182,7 @@ class RuleMatch:
     lines: Tuple[int, ...] = ()
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialises the match for JSON output.
+        """Serializes the match for JSON output.
 
         Returns:
             Dictionary with every field in plain types.
@@ -201,7 +199,6 @@ class RuleMatch:
         }
 
 
-# ------------------------------------------------------------------ files ---
 def default_rules_dir() -> str:
     """Returns the directory of the rule set shipped inside the package.
 
@@ -443,9 +440,8 @@ def load_rules(
     return rule_items
 
 
-# ----------------------------------------------------------------- match ----
 def _as_list(value: Any) -> List[str]:
-    """Normalises a condition value into a list of strings.
+    """Normalizes a condition value into a list of strings.
 
     Args:
         value: A string, a list of strings, or something else.
@@ -487,7 +483,7 @@ def _code_only(text: str) -> str:
     """Blanks out the comments, keeping offsets and line numbers intact.
 
     Comments are documentation, not code: the string extraction layer and the
-    behaviour classifier ignore them, so rule patterns must ignore them too —
+    behavior classifier ignore them, so rule patterns must ignore them too -
     otherwise a comment that merely mentions ``/etc/passwd`` would fire the rule
     for embedding that path. Each comment is replaced by spaces of the same
     length, so every match still reports the original line number.
@@ -679,7 +675,7 @@ def _eval_condition(
         text: Source text.
         analysis: Program analysis.
         problems: Validator problems.
-        behaviors: Behaviour classification.
+        behaviors: Behavior classification.
 
     Returns:
         Tuple ``(evidence, lines)`` when every declared key held, ``None``
@@ -738,7 +734,7 @@ def _eval_condition(
             behavior_item = category_names[category_name]
             first_item = behavior_item.evidence[0] if behavior_item.evidence else ""
             evidence_items.append(
-                "behaviour %s (%s): %s" % (category_name, behavior_item.severity, first_item)
+                "behavior %s (%s): %s" % (category_name, behavior_item.severity, first_item)
             )
             source_lines.extend(behavior_item.lines[:1])
 
@@ -808,7 +804,7 @@ def _match_rule(
         text: Source text.
         analysis: Program analysis.
         problems: Validator problems.
-        behaviors: Behaviour classification.
+        behaviors: Behavior classification.
 
     Returns:
         The :class:`RuleMatch` when the rule fired, ``None`` otherwise.
@@ -852,13 +848,13 @@ def match_rules(
     behaviors: Optional[Sequence[Any]] = None,
     text: Optional[str] = None,
 ) -> List[RuleMatch]:
-    """Runs every rule against one analysed program.
+    """Runs every rule against one analyzed program.
 
     Args:
         rules: Rules to evaluate.
         analysis: Program analysis.
         problems: Validator problems; computed when omitted.
-        behaviors: Behaviour classification; computed when omitted.
+        behaviors: Behavior classification; computed when omitted.
         text: Source text; taken from ``analysis.program.source`` when omitted.
 
     Returns:
@@ -925,7 +921,7 @@ def _safe_default_rules(directory: Optional[str]) -> List[Rule]:
 
 
 def summary(matches: Sequence[RuleMatch]) -> str:
-    """Summarises the matches in one line.
+    """Summarizes the matches in one line.
 
     Args:
         matches: Matches returned by :func:`match_rules`.
@@ -951,7 +947,7 @@ def known_mnemonics() -> Iterable[str]:
     """Lists the mnemonics the rule engine can talk about.
 
     Returns:
-        The keys of the instruction catalogue, useful for writing rules and
+        The keys of the instruction catalog, useful for writing rules and
         checking typos.
 
     Example:

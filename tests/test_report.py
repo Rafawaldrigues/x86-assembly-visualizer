@@ -363,7 +363,7 @@ class TestSerialization(unittest.TestCase):
         """Cells with markup (chips, links, spans) must come out as HTML.
 
         When one of them is escaped, the page shows the code instead of the
-        element — that is how the ``path`` of the file turned into
+        element - that is how the ``path`` of the file turned into
         ``&lt;span class="mono"&gt;`` in the first version of the report.
         """
         page = render_html(report_of(EXAMPLES["suspicious"]["code"], emulate=False))
@@ -446,7 +446,7 @@ class TestSerialization(unittest.TestCase):
         second = report_of(BROKEN, emulate=False)
         second.source["report_file"] = "broken.report.html"
         page = render_index([first, second], command="asmx analyze x")
-        self.assertIn("ASM X — analysis index", page)
+        self.assertIn("ASM X - analysis index", page)
         self.assertIn("clean.report.html", page)
         self.assertIn("broken.report.html", page)
         self.assertIn("2 file(s) analyzed", page)

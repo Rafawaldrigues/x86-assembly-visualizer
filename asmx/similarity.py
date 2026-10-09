@@ -1,18 +1,13 @@
-"""Similarity and clustering for a pile of samples.
+"""Similarity and clustering for groups of samples.
 
-Analysing one file answers "what does this do?". Analysing three hundred answers
-nothing unless you can group them: which samples are near-duplicates, which ones
-share a technique, which one is the odd one out. This module turns each analysis
-into a small numeric vector and groups the vectors.
+Each analysis is turned into a numeric feature vector (instruction mix,
+syscalls, behavior categories, indicator kinds, size and shape), vectors are
+compared with cosine similarity, and samples are grouped with single- or
+complete-linkage agglomerative clustering over a threshold.
 
-What this is, precisely: **algorithmic similarity**, not a trained model. There
-is no machine learning here — no weights, no training set, no inference. The
-vector is built from what the other layers already extracted (instruction mix,
-syscalls, behaviour categories, indicator kinds, size and shape), the comparison
-is cosine similarity, and the grouping is single or complete linkage
-agglomerative clustering over a threshold you choose. That is honest, fast,
-deterministic, needs no dependency, and — unlike an opaque model — you can read
-exactly why two samples landed in the same group.
+There is no machine learning here: no trained weights and no inference. The
+result is deterministic, needs no dependency, and the reason two samples share a
+group can be read from their features.
 
 Example:
     >>> from asmx.similarity import cosine
@@ -98,7 +93,7 @@ def feature_vector(
     Args:
         analysis: Program analysis.
         problems: Validator problems; computed when omitted.
-        behaviors: Behaviour classification; computed when omitted.
+        behaviors: Behavior classification; computed when omitted.
         text: Source text; taken from the analysis when omitted.
 
     Returns:
@@ -107,7 +102,7 @@ def feature_vector(
         everything else.
 
     Raises:
-        ConfigError: Propagated from the behaviour classifier when a rule is
+        ConfigError: Propagated from the behavior classifier when a rule is
             malformed (never for well-formed analysis).
     """
     source_text = analysis.program.source if text is None else text
@@ -262,7 +257,7 @@ class Cluster:
     label: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialises the cluster for JSON output.
+        """Serializes the cluster for JSON output.
 
         Returns:
             Dictionary with the members, the cohesion and the label.
@@ -391,10 +386,10 @@ def similar_to(
 def groups(
     samples: Sequence[Dict[str, Any]], *, threshold: float = 0.8, linkage: str = "single"
 ) -> List[Dict[str, Any]]:
-    """Groups analysed programs by similarity, keeping their names.
+    """Groups analyzed programs by similarity, keeping their names.
 
     Args:
-        samples: Sequence of ``{"name": str, "analysis": Analysis}`` mappings —
+        samples: Sequence of ``{"name": str, "analysis": Analysis}`` mappings -
             the shape the batch command builds.
         threshold: Minimum similarity to share a group.
         linkage: ``single`` or ``complete``.

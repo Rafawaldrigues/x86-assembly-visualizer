@@ -26,19 +26,19 @@ from typing import Dict, List
 #: Available examples: short name -> ``{"title": ..., "code": ...}``.
 EXAMPLES: Dict[str, Dict[str, str]] = {
     "linux-hello": {
-        "title": "Linux — hello world with syscall",
+        "title": "Linux - hello world with syscall",
         "code": "; Hello world in NASM for Linux x86-64\n; build:  nasm -f elf64 hello.asm && ld hello.o -o hello\n\nsection .data\n    msg     db  \"Hello, world!\", 10     ; 10 = '\\n'\n    msg_len equ $ - msg                ; size computed by the assembler\n\nsection .text\n    global _start\n\n_start:\n    mov rax, 1              ; syscall write\n    mov rdi, 1              ; descriptor 1 = stdout\n    mov rsi, msg            ; address of the string\n    mov rdx, msg_len        ; how many bytes\n    syscall                 ; hands it to the kernel\n\n    mov rax, 60             ; syscall exit\n    xor rdi, rdi            ; exit code 0\n    syscall",  # noqa: E501
     },
     "linux-loop": {
-        "title": "Linux — loop, counter and conditional jump",
+        "title": "Linux - loop, counter and conditional jump",
         "code": '; Prints the same line five times, using a counter in R12.\nsection .data\n    line    db  "loop iteration", 10\n    size    equ $ - line\n\nsection .text\n    global _start\n\n_start:\n    mov r12, 5                  ; loop counter\n\n.loop:\n    cmp r12, 0                  ; is there an iteration left?\n    je  .done                   ; if it reached zero, leave\n\n    mov rax, 1\n    mov rdi, 1\n    mov rsi, line\n    mov rdx, size\n    syscall\n\n    dec r12                     ; counter = counter - 1\n    jmp .loop                   ; back to the top\n\n.done:\n    mov rax, 60\n    mov rdi, 0\n    syscall',  # noqa: E501
     },
     "linux-function": {
-        "title": "Linux — function with stack, arguments and return",
+        "title": "Linux - function with stack, arguments and return",
         "code": '; add_pair(a, b) called from _start, in the System V style.\nsection .bss\n    buffer  resb 32\n\nsection .data\n    prefix  db  "result: "\n    plen    equ $ - prefix\n    nl      db  10\n\nsection .text\n    global _start\n\nadd_pair:\n    push rbp                 ; prologue: saves the previous frame\n    mov  rbp, rsp            ; RBP anchors this frame\n    mov  rax, rdi            ; 1st argument\n    add  rax, rsi            ; adds the 2nd argument\n    pop  rbp                 ; epilogue\n    ret                      ; returns the value in RAX\n\n; converts RAX into decimal text inside buffer, returns the size in RAX\nitoa:\n    push rbp\n    mov  rbp, rsp\n    lea  rdi, [buffer + 31]\n    mov  rcx, 0\n    mov  rbx, 10\n.digit:\n    xor  rdx, rdx\n    div  rbx                 ; RAX = RAX / 10, RDX = remainder\n    add  rdx, 48             ; remainder becomes an ASCII character\n    dec  rdi\n    mov  [rdi], dl\n    inc  rcx\n    test rax, rax\n    jnz  .digit\n    mov  rsi, rdi\n    mov  rax, rcx\n    pop  rbp\n    ret\n\n_start:\n    mov  rdi, 17             ; 1st argument of add_pair\n    mov  rsi, 25             ; 2nd argument of add_pair\n    call add_pair            ; RAX = 42\n\n    call itoa                ; RSI = text, RAX = size\n\n    mov  rdx, rax\n    mov  rax, 1\n    mov  rdi, 1\n    syscall                  ; writes the number\n\n    mov  rax, 1\n    mov  rdi, 1\n    mov  rsi, nl\n    mov  rdx, 1\n    syscall                  ; line break\n\n    mov  rax, 60\n    xor  rdi, rdi\n    syscall',  # noqa: E501
     },
     "windows-hello": {
-        "title": "Windows — console through the kernel32 API",
+        "title": "Windows - console through the kernel32 API",
         "code": '; Hello world on Windows x64 (NASM + link with kernel32.lib)\n; The Microsoft ABI passes arguments in RCX, RDX, R8, R9\n; and requires 32 bytes of shadow space on the stack.\n\nextern GetStdHandle\nextern WriteConsoleA\nextern ExitProcess\n\nsection .data\n    msg     db  "Hello from Windows!", 13, 10\n    msg_len equ $ - msg\n\nsection .bss\n    written resq 1\n\nsection .text\n    global main\n\nmain:\n    sub  rsp, 40             ; 32 of shadow space + alignment\n\n    mov  rcx, -11            ; STD_OUTPUT_HANDLE\n    call GetStdHandle\n    mov  rbx, rax            ; keeps the handle\n\n    mov  rcx, rbx            ; handle\n    mov  rdx, msg            ; buffer\n    mov  r8,  msg_len        ; bytes to write\n    mov  r9,  written        ; where to store how many came out\n    call WriteConsoleA\n\n    xor  rcx, rcx            ; exit code 0\n    call ExitProcess',  # noqa: E501
     },
     "gcc-att": {

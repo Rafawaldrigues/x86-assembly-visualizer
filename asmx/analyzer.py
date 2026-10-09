@@ -139,7 +139,7 @@ class Analysis:
         return self.program.symbols
 
 
-# (pattern, explanation, weight) — strong clues weigh more than conventions
+# (pattern, explanation, weight) - strong clues weigh more than conventions
 # shared by both systems, such as "section .text".
 LINUX_HINTS = [
     (r"\bsyscall\b", "uses the SYSCALL instruction (Linux 64-bit kernel interface)", 3),
@@ -289,7 +289,7 @@ def semantics_of(ins: Line, ctx: Dict[str, Any]) -> Semantic:
     sem = Semantic(
         cat=info["cat"] if info else "misc",
         tag=info["cat"] if info else "misc",
-        label=info["name"].split("—")[0].strip() if info else m.upper(),
+        label=info["name"].split(" - ")[0].strip() if info else m.upper(),
     )
 
     if m in ("mov", "movzx", "movsx", "movsxd"):
@@ -401,7 +401,7 @@ def semantics_of(ins: Line, ctx: Dict[str, Any]) -> Semantic:
         if sc:
             nargs = len([a for a in sc[2].split(",") if a.strip()]) if sc[2] else 0
             regs = ", ".join(r.upper() for r in ARG_REGS_SYSCALL[:nargs])
-            sem.detail = "Enters the kernel to run %s — %s.%s The result comes back in RAX." % (
+            sem.detail = "Enters the kernel to run %s - %s.%s The result comes back in RAX." % (
                 sc[0],
                 sc[1],
                 (" Arguments in %s (%s)." % (regs, sc[2])) if nargs else "",

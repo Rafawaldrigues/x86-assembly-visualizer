@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Tidy sources and documentation: plain punctuation, American spelling, shorter
+  module descriptions and no section banner comments.
+- Update CI actions and group Dependabot updates into one pull request per ecosystem.
 - Use a classic light theme in the desktop interface, HTML reports and dashboard.
 - Shorten the README, remove promotional artwork and stale screenshots, and
   replace `GUIA.md` and `REFERENCIA.md` with `GUIDE.md` and `REFERENCE.md`.
@@ -19,7 +22,7 @@
   dashboard and parallel batch analysis with a JSON manifest.
 - Generate the instruction reference from the same catalog used by the application.
 
-## 1.0.0 — 2026-09-21
+## 1.0.0 - 2026-09-21
 
 - Source parser for common NASM/Intel, MASM and GAS/AT&T forms.
 - Platform detection, instruction explanations, control-flow analysis and

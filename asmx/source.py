@@ -1,6 +1,6 @@
 """Reading of source files: text, size, encoding and fingerprint.
 
-Every code entry point goes through here — the command line, the ``.asm``
+Every code entry point goes through here - the command line, the ``.asm``
 import of the project and the tests. That way there is a single place that
 decides what to do when the file does not exist, when it is a directory, when
 the extension is not assembly and when the bytes are not UTF-8 (a latin-1
@@ -110,7 +110,7 @@ def fingerprint(text: str, size: int = 12) -> str:
 
     It is used to name reports and to compare two analyses without depending on
     the file path. Trailing spaces at the end of a line and leftover line
-    breaks at the start and at the end do not change the result — only the code
+    breaks at the start and at the end do not change the result - only the code
     matters.
 
     Args:

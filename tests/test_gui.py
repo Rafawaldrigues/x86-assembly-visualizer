@@ -61,7 +61,6 @@ class TestGUI(unittest.TestCase):
         self.assertEqual(self.app.machine.issues, before)
         self.assertEqual(before, [])
 
-    # ------------------------------------------------------------ basic ---
     def test_opens_with_sample_and_analyzes(self) -> None:
         self.assertIn("Hello, world!", self.app.editor.get_code())
         self.assertIsNotNone(self.app.analysis)
@@ -80,7 +79,6 @@ class TestGUI(unittest.TestCase):
         self.set_code(EXAMPLES["windows-hello"]["code"])
         self.assertIn("Windows", self.app.platform_label.cget("text"))
 
-    # -------------------------------------------------------- problems ----
     def test_validation_lists_problems_and_marks_lines(self) -> None:
         from asmx.examples import EXAMPLES
 
@@ -116,7 +114,6 @@ class TestGUI(unittest.TestCase):
         ]
         self.assertNotIn("error", severities)
 
-    # ------------------------------------------------------- execution ----
     def test_step_updates_registers(self) -> None:
         self.app.reset_machine()
         self.app.step()
@@ -182,7 +179,6 @@ class TestGUI(unittest.TestCase):
             next(i.n for i in self.app.analysis.instrs if i.func == "sum_until"),
         )
 
-    # ---------------------------------------------------------- branches --
     def test_create_branch_from_interface(self) -> None:
         from asmx.ui import app as appmod
 
@@ -216,7 +212,6 @@ class TestGUI(unittest.TestCase):
         self.pump()
         self.assertIn("mov rax, 99", self.app.editor.get_code())
 
-    # ------------------------------------------------------------- notes --
     def test_note_appears_in_list(self) -> None:
         self.app.project.set_note(4, "the string lives here")
         self.app.refresh_notes()
@@ -236,7 +231,6 @@ class TestGUI(unittest.TestCase):
         self.pump()
         self.assertTrue(self.app.editor.get_code().startswith("mov rax, 1"))
 
-    # ------------------------------------------------------------ tests ---
     def test_scenarios_run_and_show_result(self) -> None:
         from asmx.workspace import Scenario
 
@@ -275,7 +269,6 @@ class TestGUI(unittest.TestCase):
         self.pump()
         self.assertIn("huge value", self.app.scenario_tree.get_children())
 
-    # ------------------------------------------------------ persistence ---
     def test_save_and_reopen_project(self) -> None:
         from asmx.workspace import Project
 
@@ -288,7 +281,6 @@ class TestGUI(unittest.TestCase):
         self.assertEqual(set(reloaded.branches), {self.app.project.active, "b2"})
         self.assertEqual(reloaded.note(2), "note")
 
-    # ----------------------------------------------------- documentation --
     def test_documentation_follows_cursor(self) -> None:
         line = next(i.n for i in self.app.analysis.instrs if i.mnemonic == "syscall")
         self.app.editor.goto_line(line)
@@ -306,7 +298,6 @@ class TestGUI(unittest.TestCase):
         self.assertTrue(all(i.startswith("jn") for i in items))
         self.assertIn("jne", items)
 
-    # -------------------------------------------------------- robustness --
     def test_invalid_code_does_not_crash_interface(self) -> None:
         for junk in ("", "   ", "???", "mov", "[[[", '"', "section"):
             with self.subTest(code=junk):

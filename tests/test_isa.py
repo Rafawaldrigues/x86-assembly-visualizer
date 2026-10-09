@@ -1,4 +1,4 @@
-"""Tests for the instruction catalogue: lookups, registers and tables."""
+"""Tests for the instruction catalog: lookups, registers and tables."""
 
 import importlib.util
 import json
@@ -55,8 +55,8 @@ def load_build_reference() -> ModuleType:
     return module
 
 
-class TestCatalogue(unittest.TestCase):
-    """The catalogue must be complete and consistent."""
+class TestCatalog(unittest.TestCase):
+    """The catalog must be complete and consistent."""
 
     def test_counts(self) -> None:
         self.assertEqual(len(ISA), 148)
@@ -75,7 +75,7 @@ class TestCatalogue(unittest.TestCase):
         for key in CATEGORIES:
             self.assertEqual(key, key.lower())
 
-    def test_json_file_matches_loaded_catalogue(self) -> None:
+    def test_json_file_matches_loaded_catalog(self) -> None:
         path = os.path.join(os.path.dirname(isa.__file__), "data", "isa.json")
         with open(path, encoding="utf-8") as handle:
             data = json.load(handle)
@@ -209,7 +209,7 @@ class TestBuildReference(unittest.TestCase):
     """docs/REFERENCE.md is generated, so it must never drift from the JSON.
 
     The reference file only exists in a checkout (it is not installed with the
-    package), so these tests skip — instead of failing — when they are run from
+    package), so these tests skip - instead of failing - when they are run from
     an installed copy without the documentation around.
     """
 
@@ -233,13 +233,13 @@ class TestBuildReference(unittest.TestCase):
         with open(REFERENCE, encoding="utf-8") as handle:
             text = handle.read()
         for mnemonic in ("mov", "jne", "syscall", "ret"):
-            self.assertIn("### %s — " % mnemonic.upper(), text)
+            self.assertIn("### %s - " % mnemonic.upper(), text)
 
     def test_generated_file_lists_every_mnemonic(self) -> None:
         with open(REFERENCE, encoding="utf-8") as handle:
             text = handle.read()
         for mnemonic in ISA:
-            self.assertIn("### %s — " % mnemonic.upper(), text)
+            self.assertIn("### %s - " % mnemonic.upper(), text)
 
     def test_check_reports_out_of_date_content(self) -> None:
         module = load_build_reference()

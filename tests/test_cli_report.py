@@ -366,7 +366,7 @@ class TestAnalyze(BaseCLI):
         self.assertIn("no assembly file", err)
 
     def test_single_file(self) -> None:
-        """A single file is analysed like a batch of one."""
+        """A single file is analyzed like a batch of one."""
         code, _, _ = self.run_cli("analyze", self.clean, "--out", self.output)
         self.assertEqual(code, EXIT_OK)
         self.assertIn("clean.report.html", os.listdir(self.output))

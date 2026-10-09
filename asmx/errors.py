@@ -3,7 +3,7 @@
 Why not use only ``ValueError``: whoever calls the library (the interface, the
 command line, a CI script) needs to tell "the file does not exist" from "the
 project is corrupted" without inspecting message text. Every class here carries
-a fixed ``code`` — the same contract that shows up in the JSON of
+a fixed ``code`` - the same contract that shows up in the JSON of
 ``python -m asmx ... --json`` and in the tests.
 
 All exceptions also inherit from the equivalent built-in error
@@ -110,7 +110,6 @@ class AsmxError(Exception):
         return data
 
 
-# -------------------------------------------------------------------- files --
 class SourceNotFoundError(AsmxError, FileNotFoundError):
     """The source file pointed to does not exist."""
 
@@ -200,7 +199,6 @@ class ParseError(AsmxError, ValueError):
         self.line = line
 
 
-# ------------------------------------------------------------------ project --
 class ProjectError(AsmxError, ValueError):
     """Generic error of project handling (branch, scenario, file)."""
 
@@ -292,7 +290,6 @@ class ScenarioError(AsmxError, ValueError):
         self.scenario = scenario
 
 
-# ------------------------------------------------------------- configuration --
 class ConfigError(AsmxError, ValueError):
     """Configuration missing, unreadable or with a value out of range."""
 
@@ -313,7 +310,6 @@ class ConfigError(AsmxError, ValueError):
         self.field = field
 
 
-# --------------------------------------------------------------- execution --
 class EmulationError(AsmxError, RuntimeError):
     """The virtual machine could not start or continue the execution."""
 
@@ -349,7 +345,6 @@ class AnalysisTimeoutError(AsmxError, TimeoutError):
         self.steps = steps
 
 
-# ------------------------------------------------------------------ lookup --
 class UnknownMnemonicError(AsmxError, KeyError):
     """Someone asked for documentation of an instruction that is not in the catalog."""
 

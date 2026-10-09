@@ -59,7 +59,7 @@
   "ISA": {
     "mov": {
       "cat": "data",
-      "name": "Move — copies a value",
+      "name": "Move - copies a value",
       "syntax": "MOV destination, source",
       "desc": "Copies the contents of the source to the destination. The source does not change. There is no memory-to-memory MOV: one of the two sides must be a register (or the source an immediate).",
       "ex": [
@@ -71,7 +71,7 @@
     },
     "movzx": {
       "cat": "data",
-      "name": "Move with Zero eXtend — copies filling with zeros",
+      "name": "Move with Zero eXtend - copies filling with zeros",
       "syntax": "MOVZX larger_destination, smaller_source",
       "desc": "Copies a small value (8 or 16 bits) into a larger register, filling the rest with zeros. Use it for unsigned values.",
       "ex": [
@@ -81,7 +81,7 @@
     },
     "movsx": {
       "cat": "data",
-      "name": "Move with Sign eXtend — copies preserving the sign",
+      "name": "Move with Sign eXtend - copies preserving the sign",
       "syntax": "MOVSX larger_destination, smaller_source",
       "desc": "Same as MOVZX, but replicates the sign bit. Use it for signed values, otherwise -1 in 8 bits becomes 255 in 32 bits.",
       "ex": [
@@ -91,7 +91,7 @@
     },
     "movsxd": {
       "cat": "data",
-      "name": "Move Sign-Extend Doubleword — 32 to 64 bits with sign",
+      "name": "Move Sign-Extend Doubleword - 32 to 64 bits with sign",
       "syntax": "MOVSXD destination64, source32",
       "desc": "Sign-extends a 32-bit value to 64 bits. Very common when an int index is used as a pointer offset.",
       "ex": [
@@ -101,7 +101,7 @@
     },
     "lea": {
       "cat": "data",
-      "name": "Load Effective Address — computes an address",
+      "name": "Load Effective Address - computes an address",
       "syntax": "LEA destination, [expression]",
       "desc": "Computes the address of the expression inside the brackets and stores the number in the destination, WITHOUT reading memory. It is the normal way to take the address of a string, and also a fast way to do arithmetic (multiply by 2/4/8 and add).",
       "ex": [
@@ -113,7 +113,7 @@
     },
     "xchg": {
       "cat": "data",
-      "name": "Exchange — swaps two values",
+      "name": "Exchange - swaps two values",
       "syntax": "XCHG a, b",
       "desc": "Swaps the contents of the two operands. When one of them is memory, the operation is atomic (it locks the bus).",
       "ex": [
@@ -123,7 +123,7 @@
     },
     "cmov": {
       "cat": "data",
-      "name": "Conditional Move — copies only when the condition is true",
+      "name": "Conditional Move - copies only when the condition is true",
       "syntax": "CMOVcc destination, source",
       "desc": "Copies the source to the destination only when the condition holds (the same suffix family as the jumps: E, NE, G, L, A, B...). It avoids a branch, which helps the processor not to mispredict.",
       "ex": [
@@ -134,7 +134,7 @@
     },
     "push": {
       "cat": "stack",
-      "name": "Push — pushes a value onto the stack",
+      "name": "Push - pushes a value onto the stack",
       "syntax": "PUSH source",
       "desc": "Subtracts 8 from RSP and writes the 64-bit value at that address. The stack grows toward LOWER addresses.",
       "ex": [
@@ -145,7 +145,7 @@
     },
     "pop": {
       "cat": "stack",
-      "name": "Pop — pops a value off the stack",
+      "name": "Pop - pops a value off the stack",
       "syntax": "POP destination",
       "desc": "Reads 8 bytes from the top of the stack into the destination and adds 8 to RSP. Every PUSH needs a matching POP (or an RSP adjustment) before the RET.",
       "ex": [
@@ -155,7 +155,7 @@
     },
     "enter": {
       "cat": "stack",
-      "name": "Enter — builds the stack frame",
+      "name": "Enter - builds the stack frame",
       "syntax": "ENTER size, level",
       "desc": "Equivalent to PUSH RBP / MOV RBP, RSP / SUB RSP, size. Rarely used today: the hand-written sequence is faster.",
       "ex": [
@@ -165,7 +165,7 @@
     },
     "leave": {
       "cat": "stack",
-      "name": "Leave — tears down the stack frame",
+      "name": "Leave - tears down the stack frame",
       "syntax": "LEAVE",
       "desc": "Equivalent to MOV RSP, RBP / POP RBP. It is the standard epilogue of a function that used RBP.",
       "ex": [
@@ -176,7 +176,7 @@
     },
     "add": {
       "cat": "arith",
-      "name": "Add — adds",
+      "name": "Add - adds",
       "syntax": "ADD destination, source",
       "desc": "destination = destination + source.",
       "ex": [
@@ -187,7 +187,7 @@
     },
     "adc": {
       "cat": "arith",
-      "name": "Add with Carry — adds with the carry-in",
+      "name": "Add with Carry - adds with the carry-in",
       "syntax": "ADC destination, source",
       "desc": "destination = destination + source + CF. Used to add numbers wider than 64 bits in parts.",
       "ex": [
@@ -198,7 +198,7 @@
     },
     "sub": {
       "cat": "arith",
-      "name": "Subtract — subtracts",
+      "name": "Subtract - subtracts",
       "syntax": "SUB destination, source",
       "desc": "destination = destination - source. It is also how stack space is reserved: SUB RSP, 32.",
       "ex": [
@@ -209,7 +209,7 @@
     },
     "sbb": {
       "cat": "arith",
-      "name": "Subtract with Borrow — subtracts with the borrow",
+      "name": "Subtract with Borrow - subtracts with the borrow",
       "syntax": "SBB destination, source",
       "desc": "destination = destination - source - CF. The counterpart of ADC for long numbers.",
       "ex": [
@@ -219,7 +219,7 @@
     },
     "inc": {
       "cat": "arith",
-      "name": "Increment — adds 1",
+      "name": "Increment - adds 1",
       "syntax": "INC destination",
       "desc": "destination = destination + 1. It does not touch CF (unlike ADD x, 1).",
       "ex": [
@@ -229,7 +229,7 @@
     },
     "dec": {
       "cat": "arith",
-      "name": "Decrement — subtracts 1",
+      "name": "Decrement - subtracts 1",
       "syntax": "DEC destination",
       "desc": "destination = destination - 1. Widely used in loop counters together with JNZ.",
       "ex": [
@@ -240,7 +240,7 @@
     },
     "neg": {
       "cat": "arith",
-      "name": "Negate — flips the sign",
+      "name": "Negate - flips the sign",
       "syntax": "NEG destination",
       "desc": "destination = 0 - destination (two's complement).",
       "ex": [
@@ -298,7 +298,7 @@
     },
     "and": {
       "cat": "logic",
-      "name": "AND — bitwise AND",
+      "name": "AND - bitwise AND",
       "syntax": "AND destination, source",
       "desc": "Keeps only the bits that are set in both operands. Used to mask (keep just part of the value).",
       "ex": [
@@ -308,7 +308,7 @@
     },
     "or": {
       "cat": "logic",
-      "name": "OR — bitwise OR",
+      "name": "OR - bitwise OR",
       "syntax": "OR destination, source",
       "desc": "Turns on in the destination every bit that is set in the source. Used to set flags.",
       "ex": [
@@ -318,7 +318,7 @@
     },
     "xor": {
       "cat": "logic",
-      "name": "XOR — exclusive OR",
+      "name": "XOR - exclusive OR",
       "syntax": "XOR destination, source",
       "desc": "A bit is 1 when the two are different. XOR of a register with itself is the idiomatic (and shortest) way to zero it.",
       "ex": [
@@ -328,7 +328,7 @@
     },
     "not": {
       "cat": "logic",
-      "name": "NOT — inverts every bit",
+      "name": "NOT - inverts every bit",
       "syntax": "NOT destination",
       "desc": "One's complement: every 0 becomes 1 and vice versa.",
       "ex": [
@@ -338,7 +338,7 @@
     },
     "shl": {
       "cat": "logic",
-      "name": "Shift Left — shifts bits to the left",
+      "name": "Shift Left - shifts bits to the left",
       "syntax": "SHL destination, count",
       "desc": "Each shift by 1 multiplies by 2. Zeros come in from the right.",
       "ex": [
@@ -348,7 +348,7 @@
     },
     "sal": {
       "cat": "logic",
-      "name": "Shift Arithmetic Left — identical to SHL",
+      "name": "Shift Arithmetic Left - identical to SHL",
       "syntax": "SAL destination, count",
       "desc": "The same instruction as SHL; it exists only for symmetry with SAR.",
       "ex": [
@@ -378,7 +378,7 @@
     },
     "rol": {
       "cat": "logic",
-      "name": "Rotate Left — rotates to the left",
+      "name": "Rotate Left - rotates to the left",
       "syntax": "ROL destination, count",
       "desc": "The bits that leave one side enter the other. Nothing is lost.",
       "ex": [
@@ -388,7 +388,7 @@
     },
     "ror": {
       "cat": "logic",
-      "name": "Rotate Right — rotates to the right",
+      "name": "Rotate Right - rotates to the right",
       "syntax": "ROR destination, count",
       "desc": "Rotation in the opposite direction of ROL.",
       "ex": [
@@ -398,7 +398,7 @@
     },
     "bt": {
       "cat": "logic",
-      "name": "Bit Test — tests a bit",
+      "name": "Bit Test - tests a bit",
       "syntax": "BT value, index",
       "desc": "Copies the selected bit into CF without changing the value.",
       "ex": [
@@ -409,7 +409,7 @@
     },
     "cmp": {
       "cat": "cmp",
-      "name": "Compare — compares two values",
+      "name": "Compare - compares two values",
       "syntax": "CMP a, b",
       "desc": "Computes a - b, throws the result away and keeps only the flags. It is always read together with the following branch: CMP RAX, 10 + JG means \"if RAX > 10\".",
       "ex": [
@@ -420,9 +420,9 @@
     },
     "test": {
       "cat": "cmp",
-      "name": "Test — an AND that only produces flags",
+      "name": "Test - an AND that only produces flags",
       "syntax": "TEST a, b",
-      "desc": "Computes a AND b and keeps only the flags. TEST RAX, RAX is the idiomatic way to ask \"is RAX zero?\" — shorter than CMP RAX, 0.",
+      "desc": "Computes a AND b and keeps only the flags. TEST RAX, RAX is the idiomatic way to ask \"is RAX zero?\" - shorter than CMP RAX, 0.",
       "ex": [
         "TEST RAX, RAX",
         "JZ was_zero"
@@ -431,7 +431,7 @@
     },
     "set": {
       "cat": "cmp",
-      "name": "Set on condition — becomes 0 or 1 according to the condition",
+      "name": "Set on condition - becomes 0 or 1 according to the condition",
       "syntax": "SETcc destination8",
       "desc": "Writes 1 into the destination byte if the condition is true, otherwise 0. This is how compilers produce a bool.",
       "ex": [
@@ -442,7 +442,7 @@
     },
     "jmp": {
       "cat": "branch",
-      "name": "Jump — unconditional branch",
+      "name": "Jump - unconditional branch",
       "syntax": "JMP destination",
       "desc": "Continues execution at the given label (or address), with no condition and no return address saved.",
       "ex": [
@@ -452,7 +452,7 @@
     },
     "loop": {
       "cat": "branch",
-      "name": "Loop — repeats using RCX as the counter",
+      "name": "Loop - repeats using RCX as the counter",
       "syntax": "LOOP label",
       "desc": "Decrements RCX and branches if RCX != 0. Equivalent to DEC RCX / JNZ, but it is usually slower than writing the two.",
       "ex": [
@@ -464,7 +464,7 @@
     },
     "call": {
       "cat": "call",
-      "name": "Call — calls a function",
+      "name": "Call - calls a function",
       "syntax": "CALL destination",
       "desc": "Pushes the address of the next instruction (the return address) and branches to the function. The RET afterwards uses that value to come back.",
       "ex": [
@@ -475,7 +475,7 @@
     },
     "ret": {
       "cat": "call",
-      "name": "Return — returns from the function",
+      "name": "Return - returns from the function",
       "syntax": "RET  |  RET n",
       "desc": "Pops the return address and continues from there. The stack must be exactly as it was on entry, or the return goes to the wrong address.",
       "ex": [
@@ -485,7 +485,7 @@
     },
     "syscall": {
       "cat": "sys",
-      "name": "Syscall — calls the kernel (Linux x86-64)",
+      "name": "Syscall - calls the kernel (Linux x86-64)",
       "syntax": "SYSCALL",
       "desc": "Hands control to the kernel. The service number goes in RAX and the arguments in RDI, RSI, RDX, R10, R8, R9. The return value comes back in RAX. RCX and R11 are destroyed.",
       "ex": [
@@ -499,9 +499,9 @@
     },
     "int": {
       "cat": "sys",
-      "name": "Interrupt — raises a software interrupt",
+      "name": "Interrupt - raises a software interrupt",
       "syntax": "INT number",
-      "desc": "INT 0x80 is the old 32-bit Linux system call — in 64-bit code the normal choice is SYSCALL. INT 3 is the breakpoint used by debuggers.",
+      "desc": "INT 0x80 is the old 32-bit Linux system call - in 64-bit code the normal choice is SYSCALL. INT 3 is the breakpoint used by debuggers.",
       "ex": [
         "INT 0x80",
         "INT 3"
@@ -510,17 +510,17 @@
     },
     "sysenter": {
       "cat": "sys",
-      "name": "Sysenter — fast kernel entry (32 bits)",
+      "name": "Sysenter - fast kernel entry (32 bits)",
       "syntax": "SYSENTER",
       "desc": "Kernel entry mechanism on 32-bit systems. On x86-64 it was replaced by SYSCALL.",
       "ex": [
         "SYSENTER"
       ],
-      "flags": "—"
+      "flags": "-"
     },
     "cpuid": {
       "cat": "sys",
-      "name": "CPUID — identifies the processor",
+      "name": "CPUID - identifies the processor",
       "syntax": "CPUID",
       "desc": "Returns CPU information in EAX/EBX/ECX/EDX according to the value previously placed in EAX.",
       "ex": [
@@ -531,7 +531,7 @@
     },
     "rdtsc": {
       "cat": "sys",
-      "name": "RDTSC — reads the cycle counter",
+      "name": "RDTSC - reads the cycle counter",
       "syntax": "RDTSC",
       "desc": "Places the number of cycles since reset in EDX:EAX. Used to measure time with high resolution.",
       "ex": [
@@ -541,13 +541,13 @@
     },
     "hlt": {
       "cat": "sys",
-      "name": "Halt — stops the processor",
+      "name": "Halt - stops the processor",
       "syntax": "HLT",
       "desc": "Only makes sense in kernel/bare-metal code. In a user program it causes a protection fault.",
       "ex": [
         "HLT"
       ],
-      "flags": "—"
+      "flags": "-"
     },
     "movsb": {
       "cat": "string",
@@ -562,7 +562,7 @@
     },
     "stosb": {
       "cat": "string",
-      "name": "Store String Byte — fills memory with AL",
+      "name": "Store String Byte - fills memory with AL",
       "syntax": "STOSB  (usually REP STOSB)",
       "desc": "Stores AL at [RDI] and advances RDI. With REP it becomes a memset.",
       "ex": [
@@ -574,7 +574,7 @@
     },
     "lodsb": {
       "cat": "string",
-      "name": "Load String Byte — loads a byte from [RSI] into AL",
+      "name": "Load String Byte - loads a byte from [RSI] into AL",
       "syntax": "LODSB",
       "desc": "Loads one byte from [RSI] into AL and advances RSI. The basis for walking through strings.",
       "ex": [
@@ -586,7 +586,7 @@
     },
     "scasb": {
       "cat": "string",
-      "name": "Scan String Byte — searches for a byte",
+      "name": "Scan String Byte - searches for a byte",
       "syntax": "SCASB  (usually REPNE SCASB)",
       "desc": "Compares AL with [RDI] and advances. With REPNE it finds a byte inside a buffer (the basis of strlen).",
       "ex": [
@@ -596,7 +596,7 @@
     },
     "cmpsb": {
       "cat": "string",
-      "name": "Compare String Byte — compares two regions",
+      "name": "Compare String Byte - compares two regions",
       "syntax": "CMPSB  (usually REPE CMPSB)",
       "desc": "Compares [RSI] with [RDI] and advances both. With REPE it is a memcmp.",
       "ex": [
@@ -606,7 +606,7 @@
     },
     "rep": {
       "cat": "string",
-      "name": "REP — repetition prefix",
+      "name": "REP - repetition prefix",
       "syntax": "REP / REPE / REPNE instruction",
       "desc": "Repeats the string instruction RCX times. REPE stops when ZF=0; REPNE stops when ZF=1.",
       "ex": [
@@ -616,7 +616,7 @@
     },
     "cld": {
       "cat": "string",
-      "name": "Clear Direction Flag — walk forward",
+      "name": "Clear Direction Flag - walk forward",
       "syntax": "CLD",
       "desc": "Clears DF: string instructions move forward (RSI/RDI increase). It is the state the ABI expects.",
       "ex": [
@@ -626,7 +626,7 @@
     },
     "std": {
       "cat": "string",
-      "name": "Set Direction Flag — walk backward",
+      "name": "Set Direction Flag - walk backward",
       "syntax": "STD",
       "desc": "Sets DF: string instructions move backward. Always restore it with CLD afterwards.",
       "ex": [
@@ -636,7 +636,7 @@
     },
     "movss": {
       "cat": "fpu",
-      "name": "Move Scalar Single — 32-bit float",
+      "name": "Move Scalar Single - 32-bit float",
       "syntax": "MOVSS xmm, source",
       "desc": "Moves a single-precision float between XMM registers and memory.",
       "ex": [
@@ -646,9 +646,9 @@
     },
     "movsd_sse": {
       "cat": "fpu",
-      "name": "Move Scalar Double — 64-bit double",
+      "name": "Move Scalar Double - 64-bit double",
       "syntax": "MOVSD xmm, source",
-      "desc": "Moves a double. Careful: the same MOVSD mnemonic also exists as a string instruction — the assembler decides from the operand.",
+      "desc": "Moves a double. Careful: the same MOVSD mnemonic also exists as a string instruction - the assembler decides from the operand.",
       "ex": [
         "MOVSD XMM0, [value]"
       ],
@@ -656,7 +656,7 @@
     },
     "addsd": {
       "cat": "fpu",
-      "name": "Add Scalar Double — double addition",
+      "name": "Add Scalar Double - double addition",
       "syntax": "ADDSD xmm, source",
       "desc": "Adds two doubles in XMM registers.",
       "ex": [
@@ -672,7 +672,7 @@
       "ex": [
         "MULSD XMM0, XMM1"
       ],
-      "flags": "—"
+      "flags": "-"
     },
     "cvtsi2sd": {
       "cat": "fpu",
@@ -682,11 +682,11 @@
       "ex": [
         "CVTSI2SD XMM0, RAX"
       ],
-      "flags": "—"
+      "flags": "-"
     },
     "nop": {
       "cat": "misc",
-      "name": "No Operation — does nothing",
+      "name": "No Operation - does nothing",
       "syntax": "NOP",
       "desc": "Burns one cycle. It is used to align code in memory and as placeholder space for patches.",
       "ex": [
@@ -696,7 +696,7 @@
     },
     "cdq": {
       "cat": "misc",
-      "name": "Convert Doubleword to Quadword — extends EAX into EDX",
+      "name": "Convert Doubleword to Quadword - extends EAX into EDX",
       "syntax": "CDQ",
       "desc": "Replicates the sign bit of EAX across EDX. Mandatory before a 32-bit IDIV.",
       "ex": [
@@ -707,7 +707,7 @@
     },
     "cqo": {
       "cat": "misc",
-      "name": "Convert Quadword to Octoword — extends RAX into RDX",
+      "name": "Convert Quadword to Octoword - extends RAX into RDX",
       "syntax": "CQO",
       "desc": "The 64-bit version of CDQ. Use it before IDIV with 64-bit operands.",
       "ex": [
@@ -728,7 +728,7 @@
     },
     "bswap": {
       "cat": "misc",
-      "name": "Byte Swap — reverses the byte order",
+      "name": "Byte Swap - reverses the byte order",
       "syntax": "BSWAP register",
       "desc": "Converts between little-endian and big-endian (network byte order).",
       "ex": [
@@ -738,7 +738,7 @@
     },
     "xadd": {
       "cat": "misc",
-      "name": "Exchange and Add — swaps and adds (atomic with LOCK)",
+      "name": "Exchange and Add - swaps and adds (atomic with LOCK)",
       "syntax": "XADD destination, source",
       "desc": "Swaps the operands and stores the sum in the destination. The basis of atomic counters.",
       "ex": [
@@ -748,7 +748,7 @@
     },
     "cmpxchg": {
       "cat": "misc",
-      "name": "Compare and Exchange — the x86 CAS",
+      "name": "Compare and Exchange - the x86 CAS",
       "syntax": "CMPXCHG destination, source",
       "desc": "If destination == RAX, stores the source in the destination; otherwise loads the destination into RAX. The basis of locks and lock-free structures.",
       "ex": [
@@ -758,7 +758,7 @@
     },
     "lock": {
       "cat": "misc",
-      "name": "LOCK — atomicity prefix",
+      "name": "LOCK - atomicity prefix",
       "syntax": "LOCK instruction",
       "desc": "Ensures the memory operation is atomic across cores.",
       "ex": [
@@ -768,7 +768,7 @@
     },
     "endbr64": {
       "cat": "misc",
-      "name": "ENDBR64 — marks a valid indirect branch target",
+      "name": "ENDBR64 - marks a valid indirect branch target",
       "syntax": "ENDBR64",
       "desc": "Part of the CET/IBT protection. It marks that this address may be the target of an indirect call/jmp. Modern compilers place it at the start of every function.",
       "ex": [
@@ -778,17 +778,17 @@
     },
     "ud2": {
       "cat": "misc",
-      "name": "UD2 — deliberate invalid instruction",
+      "name": "UD2 - deliberate invalid instruction",
       "syntax": "UD2",
       "desc": "Raises an invalid opcode exception. Compilers use it to mark unreachable code.",
       "ex": [
         "UD2"
       ],
-      "flags": "—"
+      "flags": "-"
     },
     "je": {
       "cat": "branch",
-      "name": "Jump if E — branches when equal",
+      "name": "Jump if E - branches when equal",
       "syntax": "JE label",
       "desc": "Branches to the label when the last comparison indicated equal. Flag condition: ZF = 1. When the condition is false, execution simply falls through to the next line.",
       "ex": [
@@ -799,7 +799,7 @@
     },
     "sete": {
       "cat": "cmp",
-      "name": "Set if E — 1 when equal",
+      "name": "Set if E - 1 when equal",
       "syntax": "SETE destination8",
       "desc": "Puts 1 in the destination byte when equal (ZF = 1), otherwise 0.",
       "ex": [
@@ -821,7 +821,7 @@
     },
     "jz": {
       "cat": "branch",
-      "name": "Jump if Z — branches when zero",
+      "name": "Jump if Z - branches when zero",
       "syntax": "JZ label",
       "desc": "Branches to the label when the last comparison indicated zero. Flag condition: ZF = 1. When the condition is false, execution simply falls through to the next line.",
       "ex": [
@@ -832,7 +832,7 @@
     },
     "setz": {
       "cat": "cmp",
-      "name": "Set if Z — 1 when zero",
+      "name": "Set if Z - 1 when zero",
       "syntax": "SETZ destination8",
       "desc": "Puts 1 in the destination byte when zero (ZF = 1), otherwise 0.",
       "ex": [
@@ -854,7 +854,7 @@
     },
     "jne": {
       "cat": "branch",
-      "name": "Jump if NE — branches when not equal",
+      "name": "Jump if NE - branches when not equal",
       "syntax": "JNE label",
       "desc": "Branches to the label when the last comparison indicated not equal. Flag condition: ZF = 0. When the condition is false, execution simply falls through to the next line.",
       "ex": [
@@ -865,7 +865,7 @@
     },
     "setne": {
       "cat": "cmp",
-      "name": "Set if NE — 1 when not equal",
+      "name": "Set if NE - 1 when not equal",
       "syntax": "SETNE destination8",
       "desc": "Puts 1 in the destination byte when not equal (ZF = 0), otherwise 0.",
       "ex": [
@@ -887,7 +887,7 @@
     },
     "jnz": {
       "cat": "branch",
-      "name": "Jump if NZ — branches when not zero",
+      "name": "Jump if NZ - branches when not zero",
       "syntax": "JNZ label",
       "desc": "Branches to the label when the last comparison indicated not zero. Flag condition: ZF = 0. When the condition is false, execution simply falls through to the next line.",
       "ex": [
@@ -898,7 +898,7 @@
     },
     "setnz": {
       "cat": "cmp",
-      "name": "Set if NZ — 1 when not zero",
+      "name": "Set if NZ - 1 when not zero",
       "syntax": "SETNZ destination8",
       "desc": "Puts 1 in the destination byte when not zero (ZF = 0), otherwise 0.",
       "ex": [
@@ -920,7 +920,7 @@
     },
     "jg": {
       "cat": "branch",
-      "name": "Jump if G — branches when greater (signed)",
+      "name": "Jump if G - branches when greater (signed)",
       "syntax": "JG label",
       "desc": "Branches to the label when the last comparison indicated greater (signed). Flag condition: ZF = 0 and SF = OF. When the condition is false, execution simply falls through to the next line.",
       "ex": [
@@ -931,7 +931,7 @@
     },
     "setg": {
       "cat": "cmp",
-      "name": "Set if G — 1 when greater (signed)",
+      "name": "Set if G - 1 when greater (signed)",
       "syntax": "SETG destination8",
       "desc": "Puts 1 in the destination byte when greater (signed) (ZF = 0 and SF = OF), otherwise 0.",
       "ex": [
@@ -953,7 +953,7 @@
     },
     "jge": {
       "cat": "branch",
-      "name": "Jump if GE — branches when greater or equal (signed)",
+      "name": "Jump if GE - branches when greater or equal (signed)",
       "syntax": "JGE label",
       "desc": "Branches to the label when the last comparison indicated greater or equal (signed). Flag condition: SF = OF. When the condition is false, execution simply falls through to the next line.",
       "ex": [
@@ -964,7 +964,7 @@
     },
     "setge": {
       "cat": "cmp",
-      "name": "Set if GE — 1 when greater or equal (signed)",
+      "name": "Set if GE - 1 when greater or equal (signed)",
       "syntax": "SETGE destination8",
       "desc": "Puts 1 in the destination byte when greater or equal (signed) (SF = OF), otherwise 0.",
       "ex": [
@@ -986,7 +986,7 @@
     },
     "jl": {
       "cat": "branch",
-      "name": "Jump if L — branches when less (signed)",
+      "name": "Jump if L - branches when less (signed)",
       "syntax": "JL label",
       "desc": "Branches to the label when the last comparison indicated less (signed). Flag condition: SF ≠ OF. When the condition is false, execution simply falls through to the next line.",
       "ex": [
@@ -997,7 +997,7 @@
     },
     "setl": {
       "cat": "cmp",
-      "name": "Set if L — 1 when less (signed)",
+      "name": "Set if L - 1 when less (signed)",
       "syntax": "SETL destination8",
       "desc": "Puts 1 in the destination byte when less (signed) (SF ≠ OF), otherwise 0.",
       "ex": [
@@ -1019,7 +1019,7 @@
     },
     "jle": {
       "cat": "branch",
-      "name": "Jump if LE — branches when less or equal (signed)",
+      "name": "Jump if LE - branches when less or equal (signed)",
       "syntax": "JLE label",
       "desc": "Branches to the label when the last comparison indicated less or equal (signed). Flag condition: ZF = 1 or SF ≠ OF. When the condition is false, execution simply falls through to the next line.",
       "ex": [
@@ -1030,7 +1030,7 @@
     },
     "setle": {
       "cat": "cmp",
-      "name": "Set if LE — 1 when less or equal (signed)",
+      "name": "Set if LE - 1 when less or equal (signed)",
       "syntax": "SETLE destination8",
       "desc": "Puts 1 in the destination byte when less or equal (signed) (ZF = 1 or SF ≠ OF), otherwise 0.",
       "ex": [
@@ -1052,7 +1052,7 @@
     },
     "ja": {
       "cat": "branch",
-      "name": "Jump if A — branches when above (unsigned)",
+      "name": "Jump if A - branches when above (unsigned)",
       "syntax": "JA label",
       "desc": "Branches to the label when the last comparison indicated above (unsigned). Flag condition: CF = 0 and ZF = 0. When the condition is false, execution simply falls through to the next line.",
       "ex": [
@@ -1063,7 +1063,7 @@
     },
     "seta": {
       "cat": "cmp",
-      "name": "Set if A — 1 when above (unsigned)",
+      "name": "Set if A - 1 when above (unsigned)",
       "syntax": "SETA destination8",
       "desc": "Puts 1 in the destination byte when above (unsigned) (CF = 0 and ZF = 0), otherwise 0.",
       "ex": [
@@ -1085,7 +1085,7 @@
     },
     "jae": {
       "cat": "branch",
-      "name": "Jump if AE — branches when above or equal (unsigned)",
+      "name": "Jump if AE - branches when above or equal (unsigned)",
       "syntax": "JAE label",
       "desc": "Branches to the label when the last comparison indicated above or equal (unsigned). Flag condition: CF = 0. When the condition is false, execution simply falls through to the next line.",
       "ex": [
@@ -1096,7 +1096,7 @@
     },
     "setae": {
       "cat": "cmp",
-      "name": "Set if AE — 1 when above or equal (unsigned)",
+      "name": "Set if AE - 1 when above or equal (unsigned)",
       "syntax": "SETAE destination8",
       "desc": "Puts 1 in the destination byte when above or equal (unsigned) (CF = 0), otherwise 0.",
       "ex": [
@@ -1118,7 +1118,7 @@
     },
     "jb": {
       "cat": "branch",
-      "name": "Jump if B — branches when below (unsigned)",
+      "name": "Jump if B - branches when below (unsigned)",
       "syntax": "JB label",
       "desc": "Branches to the label when the last comparison indicated below (unsigned). Flag condition: CF = 1. When the condition is false, execution simply falls through to the next line.",
       "ex": [
@@ -1129,7 +1129,7 @@
     },
     "setb": {
       "cat": "cmp",
-      "name": "Set if B — 1 when below (unsigned)",
+      "name": "Set if B - 1 when below (unsigned)",
       "syntax": "SETB destination8",
       "desc": "Puts 1 in the destination byte when below (unsigned) (CF = 1), otherwise 0.",
       "ex": [
@@ -1151,7 +1151,7 @@
     },
     "jbe": {
       "cat": "branch",
-      "name": "Jump if BE — branches when below or equal (unsigned)",
+      "name": "Jump if BE - branches when below or equal (unsigned)",
       "syntax": "JBE label",
       "desc": "Branches to the label when the last comparison indicated below or equal (unsigned). Flag condition: CF = 1 or ZF = 1. When the condition is false, execution simply falls through to the next line.",
       "ex": [
@@ -1162,7 +1162,7 @@
     },
     "setbe": {
       "cat": "cmp",
-      "name": "Set if BE — 1 when below or equal (unsigned)",
+      "name": "Set if BE - 1 when below or equal (unsigned)",
       "syntax": "SETBE destination8",
       "desc": "Puts 1 in the destination byte when below or equal (unsigned) (CF = 1 or ZF = 1), otherwise 0.",
       "ex": [
@@ -1184,7 +1184,7 @@
     },
     "js": {
       "cat": "branch",
-      "name": "Jump if S — branches when negative",
+      "name": "Jump if S - branches when negative",
       "syntax": "JS label",
       "desc": "Branches to the label when the last comparison indicated negative. Flag condition: SF = 1. When the condition is false, execution simply falls through to the next line.",
       "ex": [
@@ -1195,7 +1195,7 @@
     },
     "sets": {
       "cat": "cmp",
-      "name": "Set if S — 1 when negative",
+      "name": "Set if S - 1 when negative",
       "syntax": "SETS destination8",
       "desc": "Puts 1 in the destination byte when negative (SF = 1), otherwise 0.",
       "ex": [
@@ -1217,7 +1217,7 @@
     },
     "jns": {
       "cat": "branch",
-      "name": "Jump if NS — branches when non-negative",
+      "name": "Jump if NS - branches when non-negative",
       "syntax": "JNS label",
       "desc": "Branches to the label when the last comparison indicated non-negative. Flag condition: SF = 0. When the condition is false, execution simply falls through to the next line.",
       "ex": [
@@ -1228,7 +1228,7 @@
     },
     "setns": {
       "cat": "cmp",
-      "name": "Set if NS — 1 when non-negative",
+      "name": "Set if NS - 1 when non-negative",
       "syntax": "SETNS destination8",
       "desc": "Puts 1 in the destination byte when non-negative (SF = 0), otherwise 0.",
       "ex": [
@@ -1250,7 +1250,7 @@
     },
     "jc": {
       "cat": "branch",
-      "name": "Jump if C — branches when carry set",
+      "name": "Jump if C - branches when carry set",
       "syntax": "JC label",
       "desc": "Branches to the label when the last comparison indicated carry set. Flag condition: CF = 1. When the condition is false, execution simply falls through to the next line.",
       "ex": [
@@ -1261,7 +1261,7 @@
     },
     "setc": {
       "cat": "cmp",
-      "name": "Set if C — 1 when carry set",
+      "name": "Set if C - 1 when carry set",
       "syntax": "SETC destination8",
       "desc": "Puts 1 in the destination byte when carry set (CF = 1), otherwise 0.",
       "ex": [
@@ -1283,7 +1283,7 @@
     },
     "jnc": {
       "cat": "branch",
-      "name": "Jump if NC — branches when carry clear",
+      "name": "Jump if NC - branches when carry clear",
       "syntax": "JNC label",
       "desc": "Branches to the label when the last comparison indicated carry clear. Flag condition: CF = 0. When the condition is false, execution simply falls through to the next line.",
       "ex": [
@@ -1294,7 +1294,7 @@
     },
     "setnc": {
       "cat": "cmp",
-      "name": "Set if NC — 1 when carry clear",
+      "name": "Set if NC - 1 when carry clear",
       "syntax": "SETNC destination8",
       "desc": "Puts 1 in the destination byte when carry clear (CF = 0), otherwise 0.",
       "ex": [
@@ -1316,7 +1316,7 @@
     },
     "jo": {
       "cat": "branch",
-      "name": "Jump if O — branches when overflow set",
+      "name": "Jump if O - branches when overflow set",
       "syntax": "JO label",
       "desc": "Branches to the label when the last comparison indicated overflow set. Flag condition: OF = 1. When the condition is false, execution simply falls through to the next line.",
       "ex": [
@@ -1327,7 +1327,7 @@
     },
     "seto": {
       "cat": "cmp",
-      "name": "Set if O — 1 when overflow set",
+      "name": "Set if O - 1 when overflow set",
       "syntax": "SETO destination8",
       "desc": "Puts 1 in the destination byte when overflow set (OF = 1), otherwise 0.",
       "ex": [
@@ -1349,7 +1349,7 @@
     },
     "jno": {
       "cat": "branch",
-      "name": "Jump if NO — branches when overflow clear",
+      "name": "Jump if NO - branches when overflow clear",
       "syntax": "JNO label",
       "desc": "Branches to the label when the last comparison indicated overflow clear. Flag condition: OF = 0. When the condition is false, execution simply falls through to the next line.",
       "ex": [
@@ -1360,7 +1360,7 @@
     },
     "setno": {
       "cat": "cmp",
-      "name": "Set if NO — 1 when overflow clear",
+      "name": "Set if NO - 1 when overflow clear",
       "syntax": "SETNO destination8",
       "desc": "Puts 1 in the destination byte when overflow clear (OF = 0), otherwise 0.",
       "ex": [
@@ -1382,7 +1382,7 @@
     },
     "jp": {
       "cat": "branch",
-      "name": "Jump if P — branches when parity even",
+      "name": "Jump if P - branches when parity even",
       "syntax": "JP label",
       "desc": "Branches to the label when the last comparison indicated parity even. Flag condition: PF = 1. When the condition is false, execution simply falls through to the next line.",
       "ex": [
@@ -1393,7 +1393,7 @@
     },
     "setp": {
       "cat": "cmp",
-      "name": "Set if P — 1 when parity even",
+      "name": "Set if P - 1 when parity even",
       "syntax": "SETP destination8",
       "desc": "Puts 1 in the destination byte when parity even (PF = 1), otherwise 0.",
       "ex": [
@@ -1415,7 +1415,7 @@
     },
     "jnp": {
       "cat": "branch",
-      "name": "Jump if NP — branches when parity odd",
+      "name": "Jump if NP - branches when parity odd",
       "syntax": "JNP label",
       "desc": "Branches to the label when the last comparison indicated parity odd. Flag condition: PF = 0. When the condition is false, execution simply falls through to the next line.",
       "ex": [
@@ -1426,7 +1426,7 @@
     },
     "setnp": {
       "cat": "cmp",
-      "name": "Set if NP — 1 when parity odd",
+      "name": "Set if NP - 1 when parity odd",
       "syntax": "SETNP destination8",
       "desc": "Puts 1 in the destination byte when parity odd (PF = 0), otherwise 0.",
       "ex": [
@@ -1450,7 +1450,7 @@
       "cat": "string",
       "name": "Move String word",
       "syntax": "MOVSW  (usually REP MOVSW)",
-      "desc": "Copies one word (2 bytes) from the address in RSI to the address in RDI, then advances both registers by 2 (backwards when the direction flag is set). With the REP prefix it copies RCX words in one instruction — the fastest way to move a buffer, and the usual shape of a memory-copy payload.",
+      "desc": "Copies one word (2 bytes) from the address in RSI to the address in RDI, then advances both registers by 2 (backwards when the direction flag is set). With the REP prefix it copies RCX words in one instruction - the fastest way to move a buffer, and the usual shape of a memory-copy payload.",
       "ex": [
         "MOV RCX, 100",
         "REP MOVSB"
@@ -1461,7 +1461,7 @@
       "cat": "string",
       "name": "Move String dword",
       "syntax": "MOVSD  (usually REP MOVSD)",
-      "desc": "Copies one dword (4 bytes) from the address in RSI to the address in RDI, then advances both registers by 4 (backwards when the direction flag is set). With the REP prefix it copies RCX dwords in one instruction — the fastest way to move a buffer, and the usual shape of a memory-copy payload.",
+      "desc": "Copies one dword (4 bytes) from the address in RSI to the address in RDI, then advances both registers by 4 (backwards when the direction flag is set). With the REP prefix it copies RCX dwords in one instruction - the fastest way to move a buffer, and the usual shape of a memory-copy payload.",
       "ex": [
         "MOV RCX, 100",
         "REP MOVSB"
@@ -1472,7 +1472,7 @@
       "cat": "string",
       "name": "Move String qword",
       "syntax": "MOVSQ  (usually REP MOVSQ)",
-      "desc": "Copies one qword (8 bytes) from the address in RSI to the address in RDI, then advances both registers by 8 (backwards when the direction flag is set). With the REP prefix it copies RCX qwords in one instruction — the fastest way to move a buffer, and the usual shape of a memory-copy payload.",
+      "desc": "Copies one qword (8 bytes) from the address in RSI to the address in RDI, then advances both registers by 8 (backwards when the direction flag is set). With the REP prefix it copies RCX qwords in one instruction - the fastest way to move a buffer, and the usual shape of a memory-copy payload.",
       "ex": [
         "MOV RCX, 100",
         "REP MOVSB"
@@ -1483,7 +1483,7 @@
       "cat": "string",
       "name": "Store String word",
       "syntax": "STOSW  (usually REP STOSW)",
-      "desc": "Stores AX at the address in RDI and advances RDI by 2 (backwards when the direction flag is set). With REP it fills RCX words — how a buffer gets zeroed or filled in one go.",
+      "desc": "Stores AX at the address in RDI and advances RDI by 2 (backwards when the direction flag is set). With REP it fills RCX words - how a buffer gets zeroed or filled in one go.",
       "ex": [
         "XOR AL, AL",
         "MOV RCX, 64",
@@ -1495,7 +1495,7 @@
       "cat": "string",
       "name": "Store String dword",
       "syntax": "STOSD  (usually REP STOSD)",
-      "desc": "Stores EAX at the address in RDI and advances RDI by 4 (backwards when the direction flag is set). With REP it fills RCX dwords — how a buffer gets zeroed or filled in one go.",
+      "desc": "Stores EAX at the address in RDI and advances RDI by 4 (backwards when the direction flag is set). With REP it fills RCX dwords - how a buffer gets zeroed or filled in one go.",
       "ex": [
         "XOR AL, AL",
         "MOV RCX, 64",
@@ -1507,7 +1507,7 @@
       "cat": "string",
       "name": "Store String qword",
       "syntax": "STOSQ  (usually REP STOSQ)",
-      "desc": "Stores RAX at the address in RDI and advances RDI by 8 (backwards when the direction flag is set). With REP it fills RCX qwords — how a buffer gets zeroed or filled in one go.",
+      "desc": "Stores RAX at the address in RDI and advances RDI by 8 (backwards when the direction flag is set). With REP it fills RCX qwords - how a buffer gets zeroed or filled in one go.",
       "ex": [
         "XOR AL, AL",
         "MOV RCX, 64",
@@ -1585,7 +1585,7 @@
       "cat": "string",
       "name": "Compare String word",
       "syntax": "CMPSW  (usually REPE CMPSW)",
-      "desc": "Compares the word at [RSI] with the word at [RDI], sets the flags and advances both registers by 2 (backwards when the direction flag is set). With REPE it compares RCX words — memcmp in one instruction.",
+      "desc": "Compares the word at [RSI] with the word at [RDI], sets the flags and advances both registers by 2 (backwards when the direction flag is set). With REPE it compares RCX words - memcmp in one instruction.",
       "ex": [
         "REPE CMPSB"
       ],
@@ -1595,7 +1595,7 @@
       "cat": "string",
       "name": "Compare String dword",
       "syntax": "CMPSD  (usually REPE CMPSD)",
-      "desc": "Compares the dword at [RSI] with the dword at [RDI], sets the flags and advances both registers by 4 (backwards when the direction flag is set). With REPE it compares RCX dwords — memcmp in one instruction.",
+      "desc": "Compares the dword at [RSI] with the dword at [RDI], sets the flags and advances both registers by 4 (backwards when the direction flag is set). With REPE it compares RCX dwords - memcmp in one instruction.",
       "ex": [
         "REPE CMPSB"
       ],
@@ -1605,7 +1605,7 @@
       "cat": "string",
       "name": "Compare String qword",
       "syntax": "CMPSQ  (usually REPE CMPSQ)",
-      "desc": "Compares the qword at [RSI] with the qword at [RDI], sets the flags and advances both registers by 8 (backwards when the direction flag is set). With REPE it compares RCX qwords — memcmp in one instruction.",
+      "desc": "Compares the qword at [RSI] with the qword at [RDI], sets the flags and advances both registers by 8 (backwards when the direction flag is set). With REPE it compares RCX qwords - memcmp in one instruction.",
       "ex": [
         "REPE CMPSB"
       ],
@@ -1613,7 +1613,7 @@
     },
     "repnz": {
       "cat": "string",
-      "name": "REP — repetition prefix",
+      "name": "REP - repetition prefix",
       "syntax": "REP / REPE / REPNE instruction",
       "desc": "Repeats the string instruction RCX times. REPE stops when ZF=0; REPNE stops when ZF=1.",
       "ex": [
@@ -1623,7 +1623,7 @@
     },
     "repz": {
       "cat": "string",
-      "name": "REP — repetition prefix",
+      "name": "REP - repetition prefix",
       "syntax": "REP / REPE / REPNE instruction",
       "desc": "Repeats the string instruction RCX times. REPE stops when ZF=0; REPNE stops when ZF=1.",
       "ex": [
@@ -1633,7 +1633,7 @@
     },
     "repne": {
       "cat": "string",
-      "name": "REP — repetition prefix",
+      "name": "REP - repetition prefix",
       "syntax": "REP / REPE / REPNE instruction",
       "desc": "Repeats the string instruction RCX times. REPE stops when ZF=0; REPNE stops when ZF=1.",
       "ex": [
@@ -1643,7 +1643,7 @@
     },
     "repe": {
       "cat": "string",
-      "name": "REP — repetition prefix",
+      "name": "REP - repetition prefix",
       "syntax": "REP / REPE / REPNE instruction",
       "desc": "Repeats the string instruction RCX times. REPE stops when ZF=0; REPNE stops when ZF=1.",
       "ex": [
@@ -1754,12 +1754,12 @@
     "rip": "Pointer to the next instruction. Only branches change it; [rel x] addressing is relative to it."
   },
   "FLAG_DOC": {
-    "ZF": "Zero — the result was exactly zero (or the compared values were equal).",
-    "SF": "Sign — the highest bit of the result is 1 (negative number in signed interpretation).",
-    "CF": "Carry — a carry-out or borrow happened. It is the flag used by unsigned branches (JA/JB).",
-    "OF": "Overflow — the result went past the signed range. It is the flag used by signed branches (JG/JL).",
-    "PF": "Parity — the low byte of the result has an even number of 1 bits.",
-    "DF": "Direction — defines whether string instructions walk forward (0) or backward (1)."
+    "ZF": "Zero - the result was exactly zero (or the compared values were equal).",
+    "SF": "Sign - the highest bit of the result is 1 (negative number in signed interpretation).",
+    "CF": "Carry - a carry-out or borrow happened. It is the flag used by unsigned branches (JA/JB).",
+    "OF": "Overflow - the result went past the signed range. It is the flag used by signed branches (JG/JL).",
+    "PF": "Parity - the low byte of the result has an even number of 1 bits.",
+    "DF": "Direction - defines whether string instructions walk forward (0) or backward (1)."
   },
   "LINUX_SYSCALLS": {
     "0": [

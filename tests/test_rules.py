@@ -3,7 +3,7 @@
 The engine is data-driven, so most of the work here is checking that bad rule
 files are rejected with a useful message, that every condition type really
 matches (and really refuses to match), and that the rule set shipped with the
-package stays sane — an id typo or a rule without a description would otherwise
+package stays sane - an id typo or a rule without a description would otherwise
 only show up when a user ran it.
 """
 

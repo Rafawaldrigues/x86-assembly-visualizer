@@ -2,7 +2,7 @@
 """Shortcut to ASM X straight from the source code.
 
 ``python3 asmx.py`` opens the graphical interface; ``python3 asmx.py check
-prog.asm`` uses the command line — both paths enter through the same ``asmx``
+prog.asm`` uses the command line - both paths enter through the same ``asmx``
 package.
 """
 

@@ -1,16 +1,14 @@
 """ASM X configuration: one dataclass, an optional file and environment variables.
 
-The precedence order is always the same, from the most specific to the most
-general:
+Precedence, from most to least specific:
 
 1. explicit argument (``--timeout 5`` on the command line);
 2. environment variables (``ASMX_TIMEOUT=5``);
 3. configuration file (``asmx.yaml``, ``asmx.json`` or ``--config``);
 4. defaults of :class:`SandboxConfig`.
 
-YAML is optional on purpose: ASM X has no mandatory dependency, so
-``from_yaml_file`` only works when PyYAML is installed. JSON uses only the
-standard library and always works.
+YAML is optional: ``from_yaml_file`` needs PyYAML, while JSON uses only the
+standard library.
 
 Example:
     >>> from asmx.config import SandboxConfig
@@ -549,7 +547,6 @@ class SandboxConfig:
             raise ConfigError("could not write %s: %s" % (path, error), path=path) from error
         return path
 
-    # -------------------------------------------------------------- extra --
     def apply_logging(self, stream: Any = None, *, force: bool = True) -> LoggingState:
         """Applies the log fields of this configuration to the application logging.
 

@@ -1,14 +1,14 @@
 """Control-flow and call graphs, with rendering as SVG, DOT and Mermaid.
 
 The analyzer already knows where each block starts and ends and where each
-branch points; this module turns that into :class:`Graph` — nodes and edges
-ready to become a drawing — and writes the drawing in three formats, all
+branch points; this module turns that into :class:`Graph` - nodes and edges
+ready to become a drawing - and writes the drawing in three formats, all
 assembled by string concatenation, with no external library:
 
-* :func:`to_svg` — self-contained SVG, made to be pasted into the HTML report
+* :func:`to_svg` - self-contained SVG, made to be pasted into the HTML report
   and also to be opened on its own in the browser;
-* :func:`to_dot` — Graphviz DOT, for whoever prefers to render it outside;
-* :func:`to_mermaid` — Mermaid ``flowchart``, for the report that uses Mermaid.
+* :func:`to_dot` - Graphviz DOT, for whoever prefers to render it outside;
+* :func:`to_mermaid` - Mermaid ``flowchart``, for the report that uses Mermaid.
 
 The placement (:func:`layout`) is deterministic: the same graph always produces
 the same coordinates, because nothing here walks a ``set`` nor depends on the
@@ -19,7 +19,7 @@ survives the narrow column of the report well; unreachable code stays in the
 last row.
 
 The ``xmlns`` of the SVG is written with a character reference (``&#104;``) so
-that the final text does not cite ``http`` anywhere — the report embeds the
+that the final text does not cite ``http`` anywhere - the report embeds the
 drawing and fetches nothing from the network.  After being read by the browser
 or by an XML parser, the attribute value is the normal address of the SVG
 standard; the test ``test_svg_namespace`` and the check with the browser confirm
@@ -46,9 +46,6 @@ from .analyzer import Analysis, Block
 from .isa import WIN_APIS
 from .parser import Line
 
-# ---------------------------------------------------------------------------
-# Colors
-# ---------------------------------------------------------------------------
 
 #: Palette of each theme: ``dark`` (report default) and ``light``.
 #:
@@ -110,9 +107,6 @@ _EDGE_COLOR: Dict[str, str] = {
     "api": "edge_api",
 }
 
-# ---------------------------------------------------------------------------
-# Drawing measurements
-# ---------------------------------------------------------------------------
 
 #: Margin around the drawing, in pixels.
 _MARGIN = 26
@@ -171,11 +165,6 @@ ENTRY_LABELS: Tuple[str, ...] = ("_start", "main", "start", "winmain")
 
 #: Name given to the code that is outside any label (anonymous caller).
 _NO_FUNCTION_NAME = "code"
-
-
-# ---------------------------------------------------------------------------
-# Graph structures
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -289,11 +278,6 @@ class Graph:
         return not self.nodes
 
 
-# ---------------------------------------------------------------------------
-# Text
-# ---------------------------------------------------------------------------
-
-
 def escape(text: str) -> str:
     """Escape the characters that XML reserves.
 
@@ -397,11 +381,6 @@ def _number(value: float) -> str:
     return ("%.1f" % value).rstrip("0").rstrip(".")
 
 
-# ---------------------------------------------------------------------------
-# Assembling the graphs
-# ---------------------------------------------------------------------------
-
-
 def _entry_label(analysis: Analysis) -> Optional[str]:
     """Find which label marks the entry of the program.
 
@@ -503,7 +482,7 @@ def _block_detail(block: Block) -> str:
 def control_flow_graph(analysis: Analysis) -> Graph:
     """Build the control-flow graph: one node per basic block.
 
-    Unreachable blocks stay in the graph — the report needs to show dead code -
+    Unreachable blocks stay in the graph - the report needs to show dead code -
     and :func:`layout` reserves the last columns for them.
 
     Args:
@@ -657,7 +636,7 @@ def call_graph(analysis: Analysis) -> Graph:
 
     The functions involved in some call enter the drawing (whoever calls or
     whoever is called) plus an ``api`` node for each target that is not a label
-    of the file — a Windows API or an external function.  When the code calls
+    of the file - a Windows API or an external function.  When the code calls
     nothing, the graph comes back empty (:meth:`Graph.is_empty`), because there
     is no call to draw.
 
@@ -734,11 +713,6 @@ def call_graph(analysis: Analysis) -> Graph:
         for caller, target in pairs
     ]
     return Graph(kind="calls", title=title, nodes=tuple(nodes), edges=tuple(edges))
-
-
-# ---------------------------------------------------------------------------
-# Placement
-# ---------------------------------------------------------------------------
 
 
 def _has_loop(graph: Graph) -> bool:
@@ -909,11 +883,6 @@ def size_of(
     return (width, height)
 
 
-# ---------------------------------------------------------------------------
-# Drawing geometry
-# ---------------------------------------------------------------------------
-
-
 def _on_border(
     center: Tuple[float, float], target: Tuple[float, float], width: float, height: float
 ) -> Tuple[float, float]:
@@ -1060,11 +1029,6 @@ def _node_lines(
     return (label, detail)
 
 
-# ---------------------------------------------------------------------------
-# SVG
-# ---------------------------------------------------------------------------
-
-
 def _empty_svg(graph: Graph, colors: Dict[str, str]) -> str:
     """Draw the frame shown when there is nothing to draw.
 
@@ -1114,7 +1078,7 @@ def to_svg(graph: Graph, *, theme: str = "dark") -> str:
     external font and does not cite ``http``: it can be pasted into the HTML of
     the report or saved as a ``.svg`` file and opened in the browser.  Graphs
     with more than 60 nodes come out with a smaller font and shorter labels, so
-    that they do not become a blur — the content stays the same, just tighter.
+    that they do not become a blur - the content stays the same, just tighter.
 
     Args:
         graph: Graph returned by :func:`control_flow_graph` or
@@ -1281,11 +1245,6 @@ def to_svg(graph: Graph, *, theme: str = "dark") -> str:
     parts.append("  </g>")
     parts.append("</svg>")
     return "\n".join(parts) + "\n"
-
-
-# ---------------------------------------------------------------------------
-# DOT and Mermaid
-# ---------------------------------------------------------------------------
 
 
 def _dot_escape(text: str) -> str:

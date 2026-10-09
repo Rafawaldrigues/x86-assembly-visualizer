@@ -346,7 +346,7 @@ class AboutDialog(ModalDialog):
         )
         ttk.Label(
             self.body,
-            text="x86-64 assembly study and debugging environment — version %s" % version,
+            text="x86-64 assembly study and debugging environment - version %s" % version,
             style="Dim.TLabel",
         ).pack(anchor="w", pady=(0, 10))
         text = (

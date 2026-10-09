@@ -145,7 +145,6 @@ class Machine:
         self.clock: Callable[[], float] = clock or time.monotonic
         self.reset()
 
-    # ------------------------------------------------------------- state --
     def reset(self) -> None:
         """Returns the machine to the initial state and reloads the program data.
 
@@ -751,7 +750,7 @@ class Machine:
             length = self.regs["rdx"]
             addr = self.regs["rsi"]
             if length > 1 << 20:
-                self._issue("write with an absurd size (%d bytes) — RDX is probably wrong" % length)
+                self._issue("write with an absurd size (%d bytes) - RDX is probably wrong" % length)
                 raise MemoryFault("MEM_SIZE", "write exceeds the one-MiB transfer limit")
             self._check_memory(addr, length)
             s = "".join(chr(self.memory.peek(addr + i)) for i in range(length))
@@ -796,7 +795,7 @@ class Machine:
             self.regs["rax"] = qn
             return "getrandom: %d random bytes" % qn
         self.regs["rax"] = 0
-        self._issue("syscall %d is not emulated — the result in RAX is fictitious" % n)
+        self._issue("syscall %d is not emulated - the result in RAX is fictitious" % n)
         return "%s: not emulated, RAX zeroed" % name
 
     def do_win_api(self, raw_name: str) -> str:
@@ -845,10 +844,9 @@ class Machine:
             self.regs["rax"] = 0
             return "GetLastError: 0"
         self.regs["rax"] = 0
-        self._issue("external function %s is not emulated — RAX zeroed" % raw_name)
+        self._issue("external function %s is not emulated - RAX zeroed" % raw_name)
         return "%s: stub, RAX zeroed" % (api[0] if api else raw_name)
 
-    # --------------------------------------------------------- execution --
     @property
     def current(self) -> Optional[object]:
         """Instruction pointed to by the IP, when it exists.
@@ -949,7 +947,7 @@ class Machine:
                 self.set_arith_flags(a, b, r, size, False)
                 if self.flags["CF"]:
                     self._issue(
-                        "line %d: the sum overflowed %d bits (CF=1) — result truncated"
+                        "line %d: the sum overflowed %d bits (CF=1) - result truncated"
                         % (ins.n, size * 8)
                     )
                 self.write(o0, r & MASK64)
@@ -1033,7 +1031,7 @@ class Machine:
                 d = self.read(o0)
                 if d == 0:
                     self._issue(
-                        "line %d: division by zero — the real CPU raises the #DE exception "
+                        "line %d: division by zero - the real CPU raises the #DE exception "
                         "and the process dies" % ins.n
                     )
                     self.halted = True
@@ -1105,7 +1103,7 @@ class Machine:
                 name = o0.symbol or o0.text
                 if self.platform.os == "windows" and (self.regs["rsp"] % 16) not in (0, 8):
                     self._issue(
-                        "line %d: RSP is not aligned to 16 bytes on the call to %s — "
+                        "line %d: RSP is not aligned to 16 bytes on the call to %s - "
                         "the Windows ABI requires alignment" % (ins.n, name)
                     )
                 if name in self.label_at:
@@ -1133,9 +1131,9 @@ class Machine:
                     if self.call_depth > 0 or rv != 0:
                         self._issue(
                             "line %d: RET took %s from the stack, which is not a valid "
-                            "return address — the stack is unbalanced" % (ins.n, hexs(rv))
+                            "return address - the stack is unbalanced" % (ins.n, hexs(rv))
                         )
-                    note = "RET without a valid address on the stack — treated as the end "
+                    note = "RET without a valid address on the stack - treated as the end "
                     "of the program"
                 if o0 is not None and o0.type == "imm":
                     self.regs["rsp"] = (self.regs["rsp"] + o0.value) & MASK64
@@ -1163,7 +1161,7 @@ class Machine:
                             "INT 0x80 (32-bit ABI, syscall %d → %d): " % (i386, equivalent)
                         ) + self.do_syscall()
                 elif o0 is not None and o0.text == "3":
-                    note = "INT 3 — breakpoint"
+                    note = "INT 3 - breakpoint"
                 else:
                     note = "unemulated interrupt"
             elif m in ("nop", "endbr64", "cld", "std"):
@@ -1177,7 +1175,7 @@ class Machine:
                 count = self.regs["rcx"] if rep else 1
                 if count > 1 << 20:
                     self._issue(
-                        "line %d: REP with RCX = %d — probably a wrong counter" % (ins.n, count)
+                        "line %d: REP with RCX = %d - probably a wrong counter" % (ins.n, count)
                     )
                     self._check_transfer(count, "REP")
                 delta = -1 if self.flags["DF"] else 1
@@ -1206,7 +1204,7 @@ class Machine:
                 note = "%s %s" % (m, ("repeated %d times" % done) if rep else "executed")
             elif m == "hlt":
                 self.halted = True
-                note = "HLT — execution stopped"
+                note = "HLT - execution stopped"
             else:
                 note = 'instruction "%s" is not emulated; it was skipped' % m
                 self._issue("line %d: %s is not emulated by the virtual machine" % (ins.n, m))
@@ -1219,7 +1217,7 @@ class Machine:
             self._halt_memory_fault(fault, ins.n)
             return self._record(ins, str(fault), issue="fatal")
         except Exception as exc:  # noqa: BLE001
-            self._issue("line %d: simulation error — %s" % (ins.n, exc))
+            self._issue("line %d: simulation error - %s" % (ins.n, exc))
             note = "simulation error: %s" % exc
 
         self.ip = nxt
@@ -1228,7 +1226,7 @@ class Machine:
             note += " | end of code reached"
             if self.exit_code is None:
                 self._issue(
-                    "the code ended without an explicit exit call — in practice execution "
+                    "the code ended without an explicit exit call - in practice execution "
                     "would continue through invalid memory"
                 )
         return self._record(ins, note)
@@ -1281,7 +1279,7 @@ class Machine:
             if timeout is not None and n % 256 == 0 and (self.clock() - started) > timeout:
                 self.timed_out = True
                 self.halted = True
-                self._issue("execution went past %g s — stopped by time (timeout)" % timeout)
+                self._issue("execution went past %g s - stopped by time (timeout)" % timeout)
                 if raise_on_timeout:
                     raise AnalysisTimeoutError(timeout, steps=n)
                 break
@@ -1290,7 +1288,7 @@ class Machine:
                 if cur is not None and cur.n in breakpoints:
                     break
         if n >= limit:
-            self._issue("stopped after %d instructions — an infinite loop is very likely" % limit)
+            self._issue("stopped after %d instructions - an infinite loop is very likely" % limit)
             self.halted = True
         return n
 

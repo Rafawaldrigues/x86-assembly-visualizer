@@ -40,7 +40,7 @@ classifiers = [
     "Topic :: Software Development :: Debuggers",
     "Topic :: System :: Emulators",
 ]
-# ASM X is standard-library only — this list stays empty on purpose.
+# ASM X is standard-library only - this list stays empty on purpose.
 dependencies = []
 
 [project.optional-dependencies]

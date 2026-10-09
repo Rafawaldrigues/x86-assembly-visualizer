@@ -112,7 +112,6 @@ class CodeEditor(ttk.Frame):
         self._highlight_job = self._change_job = None
         self._destroyed = True
 
-    # ------------------------------------------------------------- tags ---
     def _make_tags(self) -> None:
         """Create the highlight tags used by the text widget."""
         t = self.text
@@ -129,7 +128,6 @@ class CodeEditor(ttk.Frame):
         t.tag_configure("found", background=theme.SEL)
         t.tag_raise("sel")
 
-    # ------------------------------------------------------- content ------
     def get_code(self) -> str:
         """Return the editor text exactly as it is in the widget.
 
@@ -192,7 +190,6 @@ class CodeEditor(ttk.Frame):
             self.text.focus_set()
         self.redraw_gutter()
 
-    # --------------------------------------------------------- events -----
     def _changed(self, event: Optional[tk.Event[tk.Misc]] = None) -> None:
         """React to an edit: schedule the highlight, redraw the gutter and notify observers."""
         self.schedule_highlight()
@@ -271,7 +268,6 @@ class CodeEditor(ttk.Frame):
         if self.on_breakpoint:
             self.on_breakpoint(line, line in self.breakpoints)
 
-    # ---------------------------------------------------------- gutter ----
     def redraw_gutter(self) -> None:
         """Redraw the gutter: numbers, breakpoints, notes and the running line."""
         self.gutter.delete("all")
@@ -340,7 +336,6 @@ class CodeEditor(ttk.Frame):
                 pass
         self.text.tag_lower("errorline")
 
-    # ------------------------------------------------------ highlight -----
     def schedule_highlight(self) -> None:
         """Schedule the highlight for soon, merging several edits in a row."""
         if self._destroyed:
@@ -408,7 +403,6 @@ class CodeEditor(ttk.Frame):
         self.text.tag_raise("string")
         self.text.tag_raise("comment")
 
-    # --------------------------------------------------------- comments ---
     def toggle_comment(self, event: Optional[tk.Event[tk.Misc]] = None) -> str:
         """Comment or uncomment the selection; with no selection, the cursor line.
 
@@ -446,7 +440,6 @@ class CodeEditor(ttk.Frame):
         self.text.insert("insert", text)
         self._changed()
 
-    # ------------------------------------------------------------ find ----
     def find(self, term: str, from_start: bool = False) -> bool:
         """Look for the term in the text and select the occurrence found.
 

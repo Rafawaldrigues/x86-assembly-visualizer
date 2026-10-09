@@ -1,7 +1,7 @@
 """Tests for the similarity and clustering module (:mod:`asmx.similarity`).
 
 The point of the module is grouping, so the tests use sources that are alike,
-sources that differ in exactly one dimension, and sources that share nothing —
+sources that differ in exactly one dimension, and sources that share nothing -
 plus the degenerate cases (empty vector, single sample, impossible threshold)
 that would otherwise divide by zero or loop forever.
 """
@@ -69,7 +69,7 @@ msg db "hi", 0
 
 
 class TestVector(unittest.TestCase):
-    """The vector must be normalised, deterministic and comparable."""
+    """The vector must be normalized, deterministic and comparable."""
 
     def test_vector_is_nonempty(self) -> None:
         vector = feature_vector(analyze(LOOP))

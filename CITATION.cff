@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use ASM X in academic work, a class or research, cite it like this:"
-title: "ASM X — environment for studying and debugging x86-64 assembly"
+title: "ASM X - environment for studying and debugging x86-64 assembly"
 abstract: >-
   A Python and Tkinter source viewer and teaching simulator for x86-64
   assembly, with static checks, memory diagnostics and analysis reports.

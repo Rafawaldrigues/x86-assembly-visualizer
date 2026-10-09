@@ -222,7 +222,6 @@ class Project:
         self.active: str = "main"
         self.dirty = False
 
-    # -------------------------------------------------------------- basics --
     @classmethod
     def new(cls, code: str = "", name: str = "project") -> "Project":
         """Creates a project with one ``main`` branch.
@@ -273,7 +272,6 @@ class Project:
             self.branch.code = code
             self.dirty = True
 
-    # ------------------------------------------------------------ branches --
     def fork(self, new_name: str, from_branch: Optional[str] = None) -> Branch:
         """Creates a branch by copying another one.
 
@@ -412,7 +410,6 @@ class Project:
         cb = self.branches[b].code.splitlines()
         return "\n".join(difflib.unified_diff(ca, cb, fromfile=a, tofile=b, lineterm=""))
 
-    # --------------------------------------------------------------- notes --
     def set_note(self, line: int, text: str) -> None:
         """Writes (or deletes) the note of one line of the active branch.
 
@@ -458,7 +455,6 @@ class Project:
         self.dirty = True
         return active
 
-    # ----------------------------------------------------------- scenarios --
     def add_scenario(self, scenario: Scenario) -> None:
         """Adds (or replaces, by name) a scenario in the active branch.
 
@@ -499,7 +495,6 @@ class Project:
                 return s
         raise ScenarioError("scenario not found: %s" % name, scenario=name)
 
-    # -------------------------------------------------------- persistence ---
     def to_dict(self) -> Dict[str, Any]:
         """Converts the whole project into a dictionary.
 

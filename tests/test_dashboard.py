@@ -1,6 +1,6 @@
 """Tests for the local dashboard (:mod:`asmx.dashboard`).
 
-The dashboard serves files that came from analysing untrusted assembly, so the
+The dashboard serves files that came from analyzing untrusted assembly, so the
 tests care about three things beyond the happy path: a hostile sample name must
 not become markup, a request must not escape the served directory, and the
 server must not become an open door when it is bound beyond the loopback.
@@ -156,7 +156,7 @@ class TestRender(unittest.TestCase):
 
     def test_contains_title_table_and_link(self) -> None:
         page_html = self.page_html()
-        self.assertIn("<title>ASM X — dashboard</title>", page_html)
+        self.assertIn("<title>ASM X - dashboard</title>", page_html)
         self.assertIn("suspicious.asm", page_html)
         self.assertIn('href="report/suspicious.report.html"', page_html)
         self.assertIn("network code", page_html)

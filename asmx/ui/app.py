@@ -197,7 +197,7 @@ class AsmXApp(tk.Tk):
             side="left", padx=6
         )
         ttk.Button(top, text="Reset", command=self.reset_machine).pack(side="left")
-        self.platform_label: ttk.Label = ttk.Label(top, text="—", style="Head.TLabel")
+        self.platform_label: ttk.Label = ttk.Label(top, text="-", style="Head.TLabel")
         self.platform_label.pack(side="right")
 
         self.status: ttk.Label = ttk.Label(self, text="", style="Status.TLabel", padding=(8, 3))
@@ -206,7 +206,6 @@ class AsmXApp(tk.Tk):
         main_pane = ttk.PanedWindow(self, orient="horizontal")
         main_pane.pack(fill="both", expand=True)
 
-        # ------------------------------------------------------- column 1 ----
         left = ttk.Frame(main_pane, width=240)
         left.pack_propagate(False)
         main_pane.add(left, weight=0)
@@ -225,7 +224,6 @@ class AsmXApp(tk.Tk):
         self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
         self.tree.bind("<Double-1>", self.on_tree_select)
 
-        # ------------------------------------------------------- column 2 ----
         center = ttk.PanedWindow(main_pane, orient="vertical")
         main_pane.add(center, weight=3)
 
@@ -350,7 +348,6 @@ class AsmXApp(tk.Tk):
         ts.pack(side="right", fill="y")
         self.trace_tree.pack(fill="both", expand=True)
 
-        # ------------------------------------------------------- column 3 ----
         right_box = ttk.Frame(main_pane, width=390)
         right_box.pack_propagate(False)
         main_pane.add(right_box, weight=0)
@@ -543,7 +540,7 @@ class AsmXApp(tk.Tk):
         else:
             self.editor.set_exec_line(None)
             self.exec_label.configure(
-                text="the code changed after the run started — reset (F10) to "
+                text="the code changed after the run started - reset (F10) to "
                 "run the new version",
                 foreground=theme.ACCENT,
             )
@@ -559,7 +556,7 @@ class AsmXApp(tk.Tk):
             label += " · %d%%" % p.confidence
         self.platform_label.configure(text=label, foreground=color)
         hints = p.evidence["linux"] + p.evidence["windows"]
-        self.platform_detail: str = "%s — %s. %s%s" % (
+        self.platform_detail: str = "%s - %s. %s%s" % (
             name,
             p.abi["name"],
             p.abi["notes"],
@@ -792,7 +789,7 @@ class AsmXApp(tk.Tk):
         line = self._tag_line(self.problem_tree.item(sel[0], "tags"))
         p = next((x for x in self.problems if x.line == line), None)
         if p:
-            self.problem_hint.configure(text="%s — %s" % (p.code, p.hint or p.message))
+            self.problem_hint.configure(text="%s - %s" % (p.code, p.hint or p.message))
 
     def on_problem_open(self, event: Optional[tk.Event[tk.Misc]] = None) -> None:
         """Jump to the line of the selected problem."""
@@ -807,7 +804,7 @@ class AsmXApp(tk.Tk):
         """Show what the selected register does in the status bar."""
         sel = self.reg_tree.selection()
         if sel and sel[0] in REG_DOC:
-            self.set_status("%s — %s" % (sel[0].upper(), REG_DOC[sel[0]]))
+            self.set_status("%s - %s" % (sel[0].upper(), REG_DOC[sel[0]]))
 
     # ========================================================= branches ===
     def refresh_branches(self) -> None:
@@ -823,7 +820,7 @@ class AsmXApp(tk.Tk):
             "New branch",
             "Name of the new branch",
             hint="The branch copies the current code. Use it to try an idea "
-            "without touching the original — for example, replace a value "
+            "without touching the original - for example, replace a value "
             "with a huge number and see what breaks.",
         ).show()
         if not name:
@@ -936,7 +933,7 @@ class AsmXApp(tk.Tk):
             messagebox.showerror("Open project", "Could not read the file:\n%s" % exc, parent=self)
             return
         self.load_branch_into_editor()
-        self.title("ASM X — %s" % os.path.basename(path))
+        self.title("ASM X - %s" % os.path.basename(path))
 
     def save_project(self) -> bool:
         """Save the project; with no path set, ask for one.
@@ -965,7 +962,7 @@ class AsmXApp(tk.Tk):
             return False
         self.project.set_code(self.editor.get_code())
         self.project.save(path)
-        self.title("ASM X — %s" % os.path.basename(path))
+        self.title("ASM X - %s" % os.path.basename(path))
         self.set_status("project saved to %s" % path)
         return True
 
@@ -978,7 +975,7 @@ class AsmXApp(tk.Tk):
             return
         self.project = Project.from_asm_file(path)
         self.load_branch_into_editor()
-        self.title("ASM X — %s" % os.path.basename(path))
+        self.title("ASM X - %s" % os.path.basename(path))
 
     def export_asm(self) -> None:
         """Export the code of the current branch to an .asm file."""
@@ -1001,7 +998,7 @@ class AsmXApp(tk.Tk):
             return
         self.project = Project.new(code=EXAMPLES[key]["code"], name=key)
         self.load_branch_into_editor()
-        self.title("ASM X — %s" % EXAMPLES[key]["title"])
+        self.title("ASM X - %s" % EXAMPLES[key]["title"])
 
     def confirm_discard(self) -> bool:
         """Ask what to do with unsaved changes.
@@ -1052,7 +1049,7 @@ class AsmXApp(tk.Tk):
         """Run one instruction and refresh the machine panel."""
         m = self._ensure_machine()
         if m.halted:
-            self.set_status("the run already finished — use Reset (F10)")
+            self.set_status("the run already finished - use Reset (F10)")
             return
         self.last_regs = dict(m.regs)
         m.step()
@@ -1117,7 +1114,7 @@ class AsmXApp(tk.Tk):
         self.last_regs = {}
         self.refresh_machine()
         self.right.select(0)
-        self.set_status("debugging %s in isolation — use Step (F8)" % choice.strip())
+        self.set_status("debugging %s in isolation - use Step (F8)" % choice.strip())
 
     def refresh_machine(self) -> None:
         """Redraw registers, flags, stack, variables, output and history."""
@@ -1192,7 +1189,7 @@ class AsmXApp(tk.Tk):
                 note = (note + " " if note else "") + "return address"
             self.mem_tree.insert(stack_node, "end", text=hexs(addr), values=(hexs(v), note))
         if m.regs["rsp"] >= STACK_TOP:
-            self.mem_tree.insert(stack_node, "end", text="—", values=("", "empty stack"))
+            self.mem_tree.insert(stack_node, "end", text="-", values=("", "empty stack"))
 
         if m.symbols:
             data_node = self.mem_tree.insert(
@@ -1235,7 +1232,7 @@ class AsmXApp(tk.Tk):
         else:
             self.set_status(
                 summary(self.problems)
-                + (" — start with the first error in the list" if errors else "")
+                + (" - start with the first error in the list" if errors else "")
             )
 
     # ======================================================== scenarios ===
@@ -1271,7 +1268,7 @@ class AsmXApp(tk.Tk):
         r = next((x for x in self.results if x.scenario == s.name), None)
         if r is None:
             self.scenario_detail.configure(
-                text="%s — has not run yet. It starts at %s with %s."
+                text="%s - has not run yet. It starts at %s with %s."
                 % (
                     s.name,
                     s.entry or "the entry point",
@@ -1355,7 +1352,7 @@ class AsmXApp(tk.Tk):
         scenarios = self.project.branch.scenarios
         if not scenarios:
             self.bottom.select(2)
-            self.set_status("no scenarios in this branch — create one in Tests › New scenario")
+            self.set_status("no scenarios in this branch - create one in Tests › New scenario")
             return
         self.project.set_code(self.editor.get_code())
         self.results = run_all_scenarios(
@@ -1438,7 +1435,7 @@ class AsmXApp(tk.Tk):
         if ins is not None:
             t.insert("end", "line %d\n" % ins.n, "sub")
             t.insert("end", ins.text + "\n", "code")
-            t.insert("end", "%s — %s\n\n" % (ins.sem.label, ins.sem.detail))
+            t.insert("end", "%s - %s\n\n" % (ins.sem.label, ins.sem.detail))
             regs = []
             for op in ins.operands:
                 if op.type == "reg" and op.reg in REG_INFO:
@@ -1499,7 +1496,7 @@ class AsmXApp(tk.Tk):
                 max_memory=self.sandbox_config.max_memory,
                 limit=self.sandbox_config.max_steps,
                 timeout=self.sandbox_config.timeout,
-                command="asmx (interface) — %s" % self.project.name,
+                command="asmx (interface) - %s" % self.project.name,
             )
             written = write_report(data, path)
         except Exception as exc:  # noqa: BLE001

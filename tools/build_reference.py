@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Regenerates ``docs/REFERENCE.md`` from the instruction catalogue.
+"""Regenerates ``docs/REFERENCE.md`` from the instruction catalog.
 
-The catalogue in ``asmx/data/isa.json`` drives the Docs tab, ``asmx explain``,
+The catalog in ``asmx/data/isa.json`` drives the Docs tab, ``asmx explain``,
 the report and the F1 help. The Markdown reference is a second copy of the same
 text, and two copies drift apart. This tool renders the Markdown straight from
 the JSON, so the reference can never fall behind the data:
 
-* one ``## Category: <label>`` section per category, in catalogue order;
-* one ``### MNEMONIC — <name>`` block per mnemonic, with syntax, description,
+* one ``## Category: <label>`` section per category, in catalog order;
+* one ``### MNEMONIC - <name>`` block per mnemonic, with syntax, description,
   examples, flags and the extra note when the record has one; the heading keeps
   the descriptive part of the name, since the first part repeats the mnemonic;
 * the register, flag, system call and Windows API tables at the end.
@@ -30,10 +30,10 @@ import re
 import sys
 from typing import Any, Dict, List, Sequence
 
-#: Project root, used to resolve the catalogue and the output file.
+#: Project root, used to resolve the catalog and the output file.
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-#: Catalogue loaded by :mod:`asmx.isa` at import time.
+#: Catalog loaded by :mod:`asmx.isa` at import time.
 CATALOGUE = os.path.join(ROOT, "asmx", "data", "isa.json")
 
 #: Markdown file this tool owns.
@@ -46,18 +46,18 @@ TITLE = "# x86-64 instruction reference"
 _ANCHOR_DROP = re.compile(r"[^a-z0-9 \-_]")
 
 
-def load_catalogue(path: str = CATALOGUE) -> Dict[str, Any]:
-    """Loads the JSON catalogue that feeds every documentation surface.
+def load_catalog(path: str = CATALOGUE) -> Dict[str, Any]:
+    """Loads the JSON catalog that feeds every documentation surface.
 
     Args:
         path: Path to ``isa.json``.
 
     Returns:
-        The parsed catalogue, with the section order of the file preserved.
+        The parsed catalog, with the section order of the file preserved.
     """
     with open(path, encoding="utf-8") as handle:
-        catalogue: Dict[str, Any] = json.load(handle)
-    return catalogue
+        catalog: Dict[str, Any] = json.load(handle)
+    return catalog
 
 
 def slugify(title: str) -> str:
@@ -99,7 +99,7 @@ def render_table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> List[
     lines = ["| " + " | ".join(headers) + " |"]
     lines.append("| " + " | ".join("---" for _ in headers) + " |")
     for row in rows:
-        cells = [cell if cell else "—" for cell in row]
+        cells = [cell if cell else "-" for cell in row]
         lines.append("| " + " | ".join(cells) + " |")
     return lines
 
@@ -107,9 +107,9 @@ def render_table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> List[
 def heading_title(record: Dict[str, Any]) -> str:
     """Picks the text that follows the mnemonic in a section heading.
 
-    Catalogue names look like ``Move — copies a value``: the part before the
+    Catalog names look like ``Move - copies a value``: the part before the
     dash repeats the mnemonic, so the heading uses only the descriptive tail
-    (``MOV — copies a value``). Names without a dash are used as they are.
+    (``MOV - copies a value``). Names without a dash are used as they are.
 
     Args:
         record: Instruction record with the ``name`` field.
@@ -118,8 +118,8 @@ def heading_title(record: Dict[str, Any]) -> str:
         Heading text, without the mnemonic and without the separator.
     """
     name: str = record["name"]
-    if " — " in name:
-        return name.split(" — ", 1)[1]
+    if " - " in name:
+        return name.split(" - ", 1)[1]
     return name
 
 
@@ -127,14 +127,14 @@ def render_instruction(mnemonic: str, record: Dict[str, Any]) -> List[str]:
     """Renders the block of a single mnemonic.
 
     Args:
-        mnemonic: Catalogue key, in lowercase (``mov``).
+        mnemonic: Catalog key, in lowercase (``mov``).
         record: Instruction record with ``name``, ``syntax``, ``desc``, ``ex``,
             ``flags`` and, sometimes, ``note``.
 
     Returns:
         Lines of the mnemonic section, without a trailing blank line.
     """
-    lines = ["### %s — %s" % (mnemonic.upper(), heading_title(record)), ""]
+    lines = ["### %s - %s" % (mnemonic.upper(), heading_title(record)), ""]
     lines.append("**Syntax:** `%s`" % record["syntax"])
     lines.append("")
     lines.append(record["desc"])
@@ -150,18 +150,18 @@ def render_instruction(mnemonic: str, record: Dict[str, Any]) -> List[str]:
     return lines
 
 
-def render_categories(catalogue: Dict[str, Any]) -> List[str]:
-    """Renders one section per category, in the order of the catalogue.
+def render_categories(catalog: Dict[str, Any]) -> List[str]:
+    """Renders one section per category, in the order of the catalog.
 
     Args:
-        catalogue: Parsed ``isa.json``.
+        catalog: Parsed ``isa.json``.
 
     Returns:
         Lines of every category section, separated by horizontal rules.
     """
-    instructions: Dict[str, Dict[str, Any]] = catalogue["ISA"]
+    instructions: Dict[str, Dict[str, Any]] = catalog["ISA"]
     lines: List[str] = []
-    for key, category in catalogue["CATEGORIES"].items():
+    for key, category in catalog["CATEGORIES"].items():
         members = [(m, r) for m, r in instructions.items() if r["cat"] == key]
         lines.extend(["---", "", "## Category: %s" % category["label"], ""])
         lines.append(category["hint"])
@@ -173,11 +173,11 @@ def render_categories(catalogue: Dict[str, Any]) -> List[str]:
     return lines
 
 
-def render_tables(catalogue: Dict[str, Any]) -> List[str]:
+def render_tables(catalog: Dict[str, Any]) -> List[str]:
     """Renders the register, flag, system call and API tables.
 
     Args:
-        catalogue: Parsed ``isa.json``.
+        catalog: Parsed ``isa.json``.
 
     Returns:
         Lines of the closing sections, separated by horizontal rules.
@@ -186,7 +186,7 @@ def render_tables(catalogue: Dict[str, Any]) -> List[str]:
     lines.extend(
         render_table(
             ["Register", "Description"],
-            [["`%s`" % name, _cell(text)] for name, text in catalogue["REG_DOC"].items()],
+            [["`%s`" % name, _cell(text)] for name, text in catalog["REG_DOC"].items()],
         )
     )
 
@@ -194,7 +194,7 @@ def render_tables(catalogue: Dict[str, Any]) -> List[str]:
     lines.extend(
         render_table(
             ["Flag", "Description"],
-            [["`%s`" % name, _cell(text)] for name, text in catalogue["FLAG_DOC"].items()],
+            [["`%s`" % name, _cell(text)] for name, text in catalog["FLAG_DOC"].items()],
         )
     )
 
@@ -204,7 +204,7 @@ def render_tables(catalogue: Dict[str, Any]) -> List[str]:
             ["Number", "Name", "Description", "Arguments"],
             [
                 [number, "`%s`" % entry[0], _cell(entry[1]), _cell(entry[2])]
-                for number, entry in catalogue["LINUX_SYSCALLS"].items()
+                for number, entry in catalog["LINUX_SYSCALLS"].items()
             ],
         )
     )
@@ -215,23 +215,23 @@ def render_tables(catalogue: Dict[str, Any]) -> List[str]:
             ["Function", "Description", "Parameters"],
             [
                 ["`%s`" % entry[0], _cell(entry[1]), _cell(entry[2])]
-                for entry in catalogue["WIN_APIS"].values()
+                for entry in catalog["WIN_APIS"].values()
             ],
         )
     )
     return lines
 
 
-def render(catalogue: Dict[str, Any]) -> str:
+def render(catalog: Dict[str, Any]) -> str:
     """Renders the complete reference document.
 
     Args:
-        catalogue: Parsed ``isa.json``.
+        catalog: Parsed ``isa.json``.
 
     Returns:
         Markdown text, ending with a single newline.
     """
-    total = len(catalogue["ISA"])
+    total = len(catalog["ISA"])
     lines = [
         TITLE,
         "",
@@ -246,13 +246,13 @@ def render(catalogue: Dict[str, Any]) -> str:
         "## Contents",
         "",
     ]
-    for key, category in catalogue["CATEGORIES"].items():
+    for key, category in catalog["CATEGORIES"].items():
         heading = "Category: %s" % category["label"]
         lines.append("- [%s](#%s)" % (category["label"], slugify(heading)))
     lines.append("")
-    lines.extend(render_categories(catalogue))
+    lines.extend(render_categories(catalog))
     lines.extend([""])
-    lines.extend(render_tables(catalogue))
+    lines.extend(render_tables(catalog))
     return "\n".join(lines) + "\n"
 
 
@@ -299,8 +299,8 @@ def main(argv: List[str]) -> int:
     Returns:
         Exit code described at the top of the module.
     """
-    catalogue = load_catalogue()
-    expected = render(catalogue)
+    catalog = load_catalog()
+    expected = render(catalog)
     if "--check" in argv:
         report = check(REFERENCE, expected)
         for line in report:
@@ -311,7 +311,7 @@ def main(argv: List[str]) -> int:
         return 0
     with open(REFERENCE, "w", encoding="utf-8") as handle:
         handle.write(expected)
-    print("wrote %s (%d bytes, %d mnemonics)" % (REFERENCE, len(expected), len(catalogue["ISA"])))
+    print("wrote %s (%d bytes, %d mnemonics)" % (REFERENCE, len(expected), len(catalog["ISA"])))
     return 0
 
 

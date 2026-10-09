@@ -1,33 +1,29 @@
-"""Behaviors: what the program does, with honest mapping to ATT&CK.
+"""Behavior classification mapped to MITRE ATT&CK.
 
-This is the layer that answers "what does this program do?" from the
-:class:`~asmx.analyzer.Analysis`: each :class:`Behavior` gathers concrete
-evidence (line + mnemonic, syscall or API) and, when there is a real signal,
-one or more MITRE ATT&CK identifiers.
+Builds a list of :class:`Behavior` objects from an
+:class:`~asmx.analyzer.Analysis`. Each behavior carries its evidence (line plus
+mnemonic, syscall or API) and, when there is a signal, one or more ATT&CK
+technique identifiers.
 
-**This is a hint, not a verdict.** Every detection comes from static patterns in
-the source — syscall names, called APIs, the text of the strings and the shape
-of the loops — and none of them proves malicious behavior: a didactic program
-that opens a file and a data collector use exactly the same call. The mapping to
-ATT&CK is a clue for the analyst, with the same caveat, and that is why every
-technique description says it is a hint derived from static patterns, not proof.
+The results are hints, not verdicts. Every detection comes from static patterns
+in the source (syscall names, called APIs, string contents, loop shape), and a
+teaching program that opens a file uses the same call as a data collector.
 
-Honesty rules applied here:
+Rules the classifier follows:
 
 * every behavior has at least one piece of evidence citing the line and the
-  mnemonic, the syscall or the API observed;
-* confidence comes from the number of evidence items (1-2 -> 60, 3-5 -> 80,
-  6+ -> 95) and weak hints (home-made cipher, waiting or measuring time in a
-  loop, validator warnings) are capped at 50;
-* a category with no signal at all does not appear: an empty list is better
-  than an invented suspicion;
-* :func:`classify` never raises — an empty program returns ``[]``.
+  mnemonic, syscall or API observed;
+* confidence depends on the amount of evidence (1-2 -> 60, 3-5 -> 80, 6+ -> 95);
+  weak hints (home-made cipher, waiting or measuring time in a loop, validator
+  warnings) are capped at 50;
+* a category with no signal is omitted;
+* :func:`classify` does not raise; an empty program returns ``[]``.
 
-Known limitations, so that nobody reads the output as something it is not:
+Limitations:
 
 * ``process`` requires real execution, creation or manipulation of a process;
   ending the program itself (``ExitProcess``, ``exit``, ``exit_group``) does not
-  count, because every program ends — an external call only enters the category
+  count, because every program ends. An external call only enters the category
   when the external function is one of execution (``system``, ``execve``...);
 * syscall detection only sees the services present in
   :data:`asmx.isa.LINUX_SYSCALLS`; names such as ``chmod``, ``clone``,
@@ -35,11 +31,11 @@ Known limitations, so that nobody reads the output as something it is not:
   fire (the list of each category stays there, for the day the table grows);
 * ``string-handling`` also marks loops that load and store memory through an
   indexed register, because that is how a block of bytes is copied without the
-  ``rep movs*`` instructions — it is a weak hint and the text says so;
+  ``rep movs*`` instructions - it is a weak hint and the text says so;
 * ``self-modifying`` only recognizes a write whose address is a declared code
   label; the same access made through a pointer computed earlier is not
   statically traceable;
-* nothing is executed: whoever wants real behavior needs the virtual machine.
+* nothing is executed; observed behavior requires running the program in the virtual machine.
 
 Example:
     >>> from asmx.analyzer import analyze
@@ -63,7 +59,6 @@ from .parser import Operand
 
 logger = get_logger(__name__)
 
-# ----------------------------------------------------------------- catalog --
 
 #: Behavior categories: key -> label, description and severity.
 BEHAVIOR_CATEGORIES: Dict[str, Dict[str, str]] = {
@@ -106,7 +101,7 @@ BEHAVIOR_CATEGORIES: Dict[str, Dict[str, str]] = {
     "crypto": {
         "label": "Cryptography or obfuscation",
         "description": "Asks the kernel for random bytes and loops with many "
-        "bit operations — a hint of a home-made cipher or of obfuscation.",
+        "bit operations - a hint of a home-made cipher or of obfuscation.",
         "severity": "medium",
     },
     "persistence": {
@@ -611,7 +606,6 @@ _SYSCALL_DOC: Dict[str, str] = {
 }
 
 
-# ------------------------------------------------------------------- model --
 @dataclass(frozen=True)
 class Behavior:
     """A behavior observed in the program, with the evidence that supports it.
@@ -800,7 +794,6 @@ class _Context:
     code_labels: Set[str]
 
 
-# -------------------------------------------------------------- utilities --
 def _confidence(count: int) -> int:
     """Translates the number of evidence items into confidence from 0 to 100.
 
@@ -1195,7 +1188,6 @@ def _host_token(code: str) -> str:
     return ""
 
 
-# -------------------------------------------------------------- detections --
 def _scan_syscall(ctx: _Context, ins: Line, collector: _Collector) -> None:
     """Marks the syscall of the instruction in the categories it belongs to.
 
@@ -1253,7 +1245,7 @@ def _scan_mnemonic(ins: Line, collector: _Collector) -> None:
         collector.add(
             "anti-analysis",
             ins.n,
-            "line %d: %s (identifies or times the machine — a hint of evasion)" % (ins.n, mnemonic),
+            "line %d: %s (identifies or times the machine - a hint of evasion)" % (ins.n, mnemonic),
             mnemonic,
             mitre=("T1497",),
         )
@@ -1335,7 +1327,7 @@ def _scan_external_call(ctx: _Context, ins: Line, collector: _Collector) -> None
     Ending the program itself (``ExitProcess``, ``exit``, ``exit_group``) does
     not enter here: every program ends, and counting that as process
     manipulation would be a false alarm. External functions that execute nothing
-    are also left out — what matters is the effect, not the link.
+    are also left out - what matters is the effect, not the link.
 
     Args:
         ctx: Data derived from the analysis.
@@ -1395,7 +1387,7 @@ def _scan_loop_memory(instrs: Sequence[Line], collector: _Collector) -> None:
     collector.add(
         "string-handling",
         store.n,
-        "line %d: %s — indexed load and store in the loop of lines %d-%d "
+        "line %d: %s - indexed load and store in the loop of lines %d-%d "
         "(byte by byte movement)" % (store.n, _instruction_text(store), instrs[0].n, instrs[-1].n),
         "loop over memory",
         weak=True,
@@ -1418,7 +1410,7 @@ def _scan_loop_time(ctx: _Context, instrs: Sequence[Line], collector: _Collector
             "anti-analysis",
             ins.n,
             "line %d: syscall %s in the loop of lines %d-%d "
-            "(waiting or measuring time — a hint)" % (ins.n, name, instrs[0].n, instrs[-1].n),
+            "(waiting or measuring time - a hint)" % (ins.n, name, instrs[0].n, instrs[-1].n),
             "syscall " + name,
             weak=True,
             mitre=("T1497",),
@@ -1441,7 +1433,7 @@ def _scan_loop_bits(block: Block, collector: _Collector) -> None:
     collector.add(
         "crypto",
         sample.n,
-        "line %d: %s — %d bit operations in the same loop block "
+        "line %d: %s - %d bit operations in the same loop block "
         "(a hint of a home-made cipher or of obfuscation)"
         % (sample.n, _instruction_text(sample), len(ops)),
         "bit loop",
@@ -1522,7 +1514,7 @@ def _scan_loop_block(block: Block, collector: _Collector) -> None:
     collector.add(
         "data-processing",
         sample.n,
-        "line %d: %s — loop of lines %d-%d with no external call "
+        "line %d: %s - loop of lines %d-%d with no external call "
         "(only registers and memory)"
         % (sample.n, _instruction_text(sample), instrs[0].n, instrs[-1].n),
         "calculation loop",
@@ -1644,7 +1636,7 @@ def _scan_problems(ctx: _Context, problems: Sequence[Problem], collector: _Colle
         collector.add(
             "anti-analysis",
             line,
-            "line %d: %s — %s warning from the validator (weak hint)" % (line, quoted, code),
+            "line %d: %s - %s warning from the validator (weak hint)" % (line, quoted, code),
             "warning " + code,
             weak=True,
         )
@@ -1663,7 +1655,7 @@ def _apply_combinations(collector: _Collector) -> None:
         collector.mark(
             "network",
             "T1041",
-            "line %d: %s together with %s (line %d) — a hint of sending local data out"
+            "line %d: %s together with %s (line %d) - a hint of sending local data out"
             % (network.line, network.signal, files.signal, files.line),
             "network + files",
         )
@@ -1671,7 +1663,7 @@ def _apply_combinations(collector: _Collector) -> None:
         collector.mark(
             "crypto",
             "T1486",
-            "line %d: %s together with %s (line %d) — a hint of encryption of local data"
+            "line %d: %s together with %s (line %d) - a hint of encryption of local data"
             % (crypto.line, crypto.signal, files.signal, files.line),
             "cipher + files",
         )
@@ -1693,7 +1685,6 @@ def _safe_problems(analysis: Analysis) -> List[Problem]:
         return []
 
 
-# -------------------------------------------------------------- interface --
 def classify(analysis: Analysis, problems: Optional[Sequence[Problem]] = None) -> List[Behavior]:
     """Turns the analysis into readable behaviors.
 

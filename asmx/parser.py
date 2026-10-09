@@ -1,10 +1,9 @@
 """x86-64 assembly parser: NASM/Intel, MASM and GAS/AT&T.
 
-The parser is tolerant on purpose: it never refuses a file. Each line becomes a
-:class:`Line` with whatever could be recognized — label, data, directive or
-instruction —, and whatever looked strange shows up later in the validator,
-with a line number. That way the student sees the explanation of what they
-wrote even when the real assembler would complain.
+The parser is tolerant and never refuses a file. Each line becomes a
+:class:`Line` with whatever was recognized (label, data, directive or
+instruction); anything unusual is reported later by the validator with its line
+number, so the explanation still works when a real assembler would complain.
 
 The dialect is detected from the content (:func:`detect_flavor`): ``%rax``/``$10``
 mean AT&T, ``.code``/``PROC`` mean MASM, and everything else is treated as
@@ -76,7 +75,7 @@ class Line:
         mnemonic: Instruction mnemonic, in lowercase.
         prefix: Instruction prefix (``rep``, ``lock``).
         operands: Operands already classified.
-        known: Whether the mnemonic exists in the catalogue.
+        known: Whether the mnemonic exists in the catalog.
         section: Section in force on the line.
         func: Function (previous non-local label) the line is in.
         new_section: Section opened on this very line.

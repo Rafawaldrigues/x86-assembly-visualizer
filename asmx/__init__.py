@@ -1,4 +1,4 @@
-"""ASM X — study and debugging environment for x86-64 assembly.
+"""ASM X - study and debugging environment for x86-64 assembly.
 
 The idea is simple: read the assembly and explain what it does before any heavy
 tool gets in the way. The package is split into layers that do not depend on one

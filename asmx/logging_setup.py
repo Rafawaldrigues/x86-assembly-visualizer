@@ -2,9 +2,9 @@
 
 Two formats, the same content:
 
-* **text** — readable in the terminal, used by default when someone runs the
+* **text** - readable in the terminal, used by default when someone runs the
   tool by hand;
-* **JSON** — one object per line, with ``ts``, ``level``, ``logger``, ``event``,
+* **JSON** - one object per line, with ``ts``, ``level``, ``logger``, ``event``,
   ``message`` and the extra fields of the event. It is the format for CI, for
   Docker and for anything that will read the logs with ``jq``.
 

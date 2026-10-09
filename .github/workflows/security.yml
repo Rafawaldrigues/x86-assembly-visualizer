@@ -18,10 +18,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -36,10 +36,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -51,13 +51,7 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Audit the dependencies this project declares
-        # ASM X has no runtime dependency: what is audited here is the
-        # development tooling (flake8, mypy, coverage, black, bandit,
-        # build...). We audit what the project DECLARES, not the pip or
-        # setuptools that came with the runner image — pointing at a
-        # vulnerability in the runner toolchain would give a red that is not
-        # this project's. When an advisory shows up in a real dependency, the
-        # job fails.
+        # Audits the declared development tooling, not the runner's own pip/setuptools.
         run: pip-audit --desc --progress-spinner off --requirement requirements-dev.txt
 
   zero-runtime-dependencies:
@@ -65,10 +59,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 

@@ -91,7 +91,6 @@ def _func_ranges(analysis: Analysis) -> Dict[str, List[Any]]:
     return groups
 
 
-# --------------------------------------------------------------- strings --
 def check_strings(analysis: Analysis) -> List[Problem]:
     """Checks the strings of the data lines.
 
@@ -143,7 +142,7 @@ def check_strings(analysis: Analysis) -> List[Problem]:
                         source_line.n,
                         WARNING,
                         "STR001",
-                        "the string has a non-ASCII character (%s) — each one becomes "
+                        "the string has a non-ASCII character (%s) - each one becomes "
                         "2 or more bytes in UTF-8" % " ".join(sorted(set(outside))),
                         "the size computed with $ - label will not match the number of "
                         "letters; switch to ASCII or count the real bytes",
@@ -274,7 +273,6 @@ def check_cstrings(analysis: Analysis) -> List[Problem]:
     return out
 
 
-# -------------------------------------------------------------- division --
 def check_division(analysis: Analysis) -> List[Problem]:
     """Checks the divisions inside each basic block.
 
@@ -350,7 +348,6 @@ def check_division(analysis: Analysis) -> List[Problem]:
     return out
 
 
-# ----------------------------------------------------------------- stack --
 def check_stack(analysis: Analysis) -> List[Problem]:
     """Checks the stack balance in each function that ends in RET.
 
@@ -507,7 +504,6 @@ def check_abi(analysis: Analysis) -> List[Problem]:
     return out
 
 
-# -------------------------------------------------------------- operands --
 def check_operands(analysis: Analysis) -> List[Problem]:
     """Checks operands and mnemonics instruction by instruction.
 
@@ -612,7 +608,6 @@ def check_operands(analysis: Analysis) -> List[Problem]:
     return out
 
 
-# --------------------------------------------------------------- symbols --
 def check_symbols(analysis: Analysis) -> List[Problem]:
     """Checks that every used symbol exists and that every label is used.
 
@@ -760,7 +755,6 @@ def check_exit(analysis: Analysis) -> List[Problem]:
     return []
 
 
-# ------------------------------------------------------------------ flow --
 def check_flow(analysis: Analysis) -> List[Problem]:
     """Checks the flow between basic blocks.
 
@@ -794,7 +788,7 @@ def check_flow(analysis: Analysis) -> List[Problem]:
                 WARNING,
                 "FLOW001",
                 "block %s is never reached" % b.name,
-                "no jump or call leads here — dead code or a wrong label",
+                "no jump or call leads here - dead code or a wrong label",
             )
         )
 
@@ -842,7 +836,6 @@ def check_flow(analysis: Analysis) -> List[Problem]:
     return out
 
 
-# -------------------------------------------------------------- syscalls --
 def check_syscalls(analysis: Analysis) -> List[Problem]:
     """Checks the use of SYSCALL inside the blocks.
 
