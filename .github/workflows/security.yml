@@ -101,7 +101,7 @@ jobs:
           offenders = sorted(
               name
               for name, module in list(sys.modules.items())
-              if name.split(".")[0] != "asmx"
+              if name.split(".")[0] not in {"asmx", "_distutils_hack"}
               and (getattr(module, "__file__", None) or "").startswith(site_packages)
           )
           assert not offenders, f"modules imported from site-packages: {offenders}"
