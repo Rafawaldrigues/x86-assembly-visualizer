@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM python:3.11-slim AS builder
+FROM python:3.15-slim AS builder
 
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1
@@ -13,7 +13,7 @@ COPY asmx/ ./asmx/
 RUN python -m pip install --upgrade pip build \
     && python -m build --wheel --outdir /dist
 
-FROM python:3.11-slim AS runtime
+FROM python:3.15-slim AS runtime
 
 LABEL org.opencontainers.image.title="ASM X" \
       org.opencontainers.image.description="Desktop environment to study, validate and debug x86-64 assembly, without external dependency" \
